@@ -1,0 +1,76 @@
+schema: spec-driven
+
+context: |
+  PROJECT
+  WorkBeat backend — the server half of WorkBeat, a multi-tenant SaaS that lets a company see how
+  its own company-owned Windows and macOS devices are used (apps, websites, activity levels,
+  optional screenshots) and block unwanted websites. $1 per employee per month; screenshots are a
+  paid add-on (PRD "Pricing").
+
+  WHAT THIS REPOSITORY BUILDS (B1)
+    apps/api          NestJS (Node 20) with the Fastify adapter. All business logic, tenancy, RBAC,
+                      agent ingestion, reports, Stripe, cron routes, per-employee policy.
+    packages/shared   zod schemas and constants: the contract the agents, the Downloader and the
+                      web platform consume (B9). It answers the agents' open question Q1.
+    db/               numbered SQL migrations for Supabase PostgreSQL 15+ and their self-checks.
+  Supabase provides Postgres (through the Supavisor pooler, transaction mode), Auth (one project for
+  company users and WorkBeat staff, D41) and Storage (private buckets, signed URLs). Email: Resend.
+  Billing: Stripe.
+
+  WHAT THIS REPOSITORY DOES NOT BUILD
+  The Mac and Windows agents and the Downloader (their own repositories) and the web platform,
+  WorkBeat Admin (Next.js, its own repository). Their behaviour is a CONSUMER of this API: what they
+  send and how they react to each status and code is fixed in their specs and summarised in
+  docs/core/api/agent-contract.md. Never specify agent or web UI behaviour as this repository's work.
+
+  THE DATA MODEL
+  db/migrations/0001_init.sql is the schema; docs/core/architecture/data-model.md explains it. Use
+  its table and column names. Row-level security uses app.scope (tenant, staff, system) and
+  app.company_id, set per request transaction (B2).
+
+  TIMERS THE API MUST SERVE (values from packages/shared; never hard-coded)
+    heartbeat     every 5 min per device      POST /agents/heartbeat
+    policy        every 30 min per device     GET  /agents/policy with ETag
+    sync          every 10 min per device     POST /agents/activity, screenshot uploads
+    offline       15 min without a heartbeat  /cron/heartbeat-check every 5 min
+    retention     daily 02:00                 /cron/cleanup
+    custom domain every 5 min                 /cron/domain-verify
+
+  SOURCE AUTHORITY. Precedence, highest first:
+    1. WorkBeat Plan v3.2 (15 Nov 2026)          The source of truth. D1–D44 are its rulings.
+    2. docs/decisions/backend-decisions.md       B1–B19, this repository's rulings.
+    3. WorkBeat PRD (9 Nov 2026)                 Product logic. Amended by 1 and 2.
+    4. The agent repositories' specs             The consumer contract. Where Plan v3.2 changed it
+                                                 (D43 no install tokens, D44 employee required),
+                                                 the plan wins and the agent repos are behind.
+  Cite "D<n>", "B<n>", "Plan-v3.2 §n" and "PRD <section name>".
+
+  THE FIVE RULES MOST OFTEN GOT WRONG
+  1. company_id comes from the credential or the host, never from a request body (Plan §6.1).
+  2. WorkBeat staff never read employee, device, activity, URL or screenshot data (D41).
+  3. Seats are counted from devices that are neither deactivated nor released; a key reissue
+     changes only the key (D43).
+  4. Agent writes are idempotent on their ID; a repeat returns the first result (D13).
+  5. No secret, token, key, JWT or signed URL is ever logged.
+
+rules:
+  specs:
+    - >-
+      Every requirement MUST carry an HTML comment immediately under its heading naming its
+      sources, in the form: <!-- source: D43 · B4 · Plan-v3.2 §5.3 · PRD "Data model" -->.
+    - Use SHALL or MUST in every requirement statement. Never "should" or "may".
+    - Every requirement needs at least one "#### Scenario:" heading, with exactly four hashtags.
+    - Keep each requirement statement under 500 characters; split it rather than run over.
+    - >-
+      Specs state observable behaviour of the API: routes, HTTP status, error code, response
+      fields, rows written, emails sent, what each role may do. Table and column names from the
+      schema, API paths, field names and error codes ARE allowed. No NestJS class or module names.
+    - >-
+      Agent and web platform behaviour is never this repository's work. Where a requirement exists
+      because a client relies on it, cite the client's spec or agent-contract.md.
+  proposal:
+    - The Why section must name the D-number, B-number, Plan-v3.2 section or PRD section that motivates it.
+  design:
+    - Record which upstream clause each decision amends, and why the newer rule wins.
+  tasks:
+    - Group tasks by capability; every group ends with its tests, including a tenant-isolation test where data is read.

@@ -1,0 +1,23 @@
+## Purpose
+
+Per-credential request limits that protect the API from a misbehaving agent, a brute-forced
+licence key or a runaway client, answered in a way every client already handles.
+
+## ADDED Requirements
+
+### Requirement: Limits apply per credential
+<!-- source: Plan-v3.2 §6.3 · agent-contract.md -->
+The API SHALL limit requests per device key, per licence key, per user and per client IP for unauthenticated routes, with the limits in `packages/shared`. Agent limits MUST allow at least three times the normal cadence of each agent route.
+
+#### Scenario: A healthy agent never hits the limit
+- **WHEN** a device sends a heartbeat every 5 minutes, policy every 30 and a batch every 10
+- **THEN** none of its requests is refused for rate
+
+### Requirement: Over the limit answers 429 with Retry-After
+<!-- source: agent-contract.md "Status and code catalog" -->
+A request over its limit SHALL get `429` with `code` `RATE_LIMITED` and a `Retry-After` header in seconds, and MUST NOT be processed.
+
+#### Scenario: A script hammers /license/validate
+- **WHEN** one IP exceeds the licence validation limit
+- **THEN** further calls get `429 RATE_LIMITED` with `Retry-After`
+- **AND** no enrollment token is issued for them
