@@ -5,7 +5,7 @@ Conventions, auth and the code catalog are in [README.md](README.md).
 
 **Applies to every route below unless it says otherwise; not repeated per route:**
 
-- `Authorization: Bearer <Supabase JWT>`; missing, bad or disabled → `401 UNAUTHENTICATED`.
+- `Authorization: Bearer <session token>` from `POST /v1/auth/login` (B22); missing, bad, expired or disabled → `401 UNAUTHENTICATED`.
 - `super_admin` → `403 FORBIDDEN` (except `GET /v1/me` and the no-credential routes).
 - `400`/`422 VALIDATION_FAILED`, `413 PAYLOAD_TOO_LARGE`, `429 RATE_LIMITED`, `500 INTERNAL`.
 - Tenant from the token; an ID of another company → `404 NOT_FOUND`
@@ -24,6 +24,19 @@ Contents: [Session](#session) · [Team & invitations](#team--invitations) ·
 
 ## Session
 
+Sign-in routes need no credential and are limited to 20 a minute per IP each (`429 RATE_LIMITED`,
+no lockout, B25). Spec: [`user-authentication`][user-authentication], [`staff-accounts`][staff-accounts].
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /v1/auth/login` | `email`, `password` | company user: `{ mfa_required: false, token, expires_at, user }`; `super_admin`: `{ mfa_required: true, mfa_enrolled, mfa_token, expires_at }`; wrong → `401 UNAUTHENTICATED` |
+| `POST /v1/auth/mfa/enroll` | `mfa_token` | `{ secret, otpauth_uri }`; already set up → `409 CONFLICT` |
+| `POST /v1/auth/mfa/verify` | `mfa_token`, `code` | `{ token, expires_at, user }`; wrong code → `401 MFA_CODE_INVALID` + `attempts_left`; 6th try or expired token → `401 UNAUTHENTICATED` |
+| `POST /v1/auth/logout` | — (Bearer) | `204` |
+| `POST /v1/auth/password` | `current_password`, `new_password` (Bearer) | `{ changed: true }`; other sessions end; wrong current → `422` |
+| `POST /v1/auth/password-reset/request` | `email` | always `204`; emails a 30-minute single-use link to `<PORTAL_URL>/reset-password?token=…` |
+| `POST /v1/auth/password-reset/confirm` | `token`, `new_password` | `{ changed: true }`, every session ends; `404 PASSWORD_RESET_INVALID`, `410 PASSWORD_RESET_EXPIRED` |
+
 ### `GET /v1/me`
 Roles: company_admin, manager, it_admin, super_admin · Spec: [`user-authentication`][user-authentication]
 Who the caller is.
@@ -39,7 +52,7 @@ Response `200`:
 | company | object \| null | `{ id: uuid, name: string, slug: string, status: enum(trial\|active\|suspended\|expired) }`; `null` for `super_admin` |
 
 Errors: `401 UNAUTHENTICATED` (no token, expired, disabled user, role/company mismatch, company role without `company_id`).
-Notes: open to a `super_admin` at `aal1` too ([staff-api.md](staff-api.md#get-v1me)).
+Notes: open to a `super_admin` too, with `company: null` ([staff-api.md](staff-api.md#get-v1me)).
 
 ### `POST /v1/invitations/lookup`
 Roles: none (no credential) · Spec: [`team-invitations`][team-invitations]
@@ -76,11 +89,11 @@ Request:
 |---|---|---|---|
 | token | string | yes | |
 | name | string | yes | |
-| password | string | yes | set on the Supabase Auth user |
+| password | string | yes | 10–200 characters, stored as a scrypt hash |
 
 Response `201`: fields not specified.
 Errors: as `POST /v1/invitations/lookup`; no user is created on either.
-Notes: in one transaction: Supabase Auth user with `app_metadata` `{ role, company_id }`, `users` row, `invitations.accepted_at`. A staff invitation creates a user with no `company_id`.
+Notes: in one transaction: `users` row, `invitations.accepted_at` and a session, returned as `{ token, expires_at, user }`. A staff invitation creates a user with no `company_id`.
 
 ---
 

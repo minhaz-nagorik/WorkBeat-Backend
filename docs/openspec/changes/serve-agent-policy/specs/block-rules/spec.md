@@ -101,3 +101,11 @@ Every create, update or delete of a `block_rules` row SHALL raise `companies.pol
 #### Scenario: Deleted twice
 - **WHEN** an admin deletes a rule that was already deleted
 - **THEN** the response is `404` with `code` `NOT_FOUND`
+
+### Requirement: The block list names who added each rule
+<!-- source: Plan-v3.5 §4.5 "Policy" -->
+`GET /v1/block-rules` rows SHALL carry `created_by_name`, the name of the `users` row in `created_by`, or `null` when there is none.
+
+#### Scenario: A rule added by IT
+- **WHEN** an IT admin named Rafi added a rule and a manager lists the block list
+- **THEN** that row carries `created_by_name` `Rafi`

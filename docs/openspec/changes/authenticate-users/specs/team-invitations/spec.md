@@ -65,7 +65,7 @@ An invitation for an email that already has an open invitation in the company, o
 
 ### Requirement: An invitation is accepted once
 <!-- source: B3 · D41 · Plan-v3.5 §4.4 -->
-`POST /v1/invitations/lookup` with `token` SHALL return `email`, `role` and the company `name`. `POST /v1/invitations/accept` with `token`, `name` and `password` SHALL create the Supabase Auth user with `app_metadata` `{ role, company_id }`, insert the `users` row and set `accepted_at`, in one transaction. Both resolve the token only through `auth_invitation`.
+`POST /v1/invitations/lookup` with `token` SHALL return `email`, `role` and the company `name`. `POST /v1/invitations/accept` with `token`, `name` and `password` SHALL insert the `users` row with the invitation's role and company and a scrypt password hash, set `accepted_at`, and return `201` with a session (`token`, `expires_at`, `user`), in one transaction. Both resolve the token only through `auth_invitation`.
 
 #### Scenario: A manager accepts
 - **WHEN** a valid manager invitation is accepted
@@ -83,7 +83,7 @@ An invitation for an email that already has an open invitation in the company, o
 #### Scenario: Accepted twice at the same moment
 - **WHEN** two `POST /v1/invitations/accept` with one token are handled concurrently
 - **THEN** one gets `201` and the other `410 INVITATION_EXPIRED`
-- **AND** exactly one Supabase Auth user and one `users` row exist
+- **AND** exactly one `users` row exists
 
 #### Scenario: Accepted at the expiry instant
 - **WHEN** a token is presented when the server time equals `expires_at`
@@ -147,13 +147,13 @@ Resending an accepted or revoked invitation SHALL answer `409 CONFLICT` and chan
 - **THEN** either the user exists and the revocation answers `409 CONFLICT`, or the acceptance answers `410 INVITATION_EXPIRED` and no user exists
 
 ### Requirement: A failed acceptance leaves no account
-<!-- source: B3 · D41 · Plan-v3.5 §4.4 -->
-When the Supabase Auth user is created but the `users` row or `accepted_at` cannot be written, the API SHALL delete that Auth user before answering `500 INTERNAL`, and the invitation MUST stay open so the same link can be used again. A password the Auth service refuses MUST answer `422 VALIDATION_FAILED` and create nothing.
+<!-- source: B3 · B22 · D41 -->
+The user, `accepted_at` and the session SHALL be written in one transaction, so any failure MUST leave no `users` row and the invitation open for the same link. A password outside 10–200 characters MUST answer `400` or `422 VALIDATION_FAILED` and create nothing.
 
-#### Scenario: The database write fails after the Auth user exists
-- **WHEN** inserting the `users` row fails after the Auth user was created
-- **THEN** no Auth user remains for the email and the invitation is still open
+#### Scenario: The database write fails
+- **WHEN** inserting the session fails after the `users` row was written
+- **THEN** no `users` row remains for the email and the invitation is still open
 
 #### Scenario: A weak password
-- **WHEN** the password is refused by the Auth password policy
-- **THEN** the response is `422 VALIDATION_FAILED` and the invitation is still open
+- **WHEN** the password has 6 characters
+- **THEN** the response is `VALIDATION_FAILED` and the invitation is still open

@@ -8,7 +8,8 @@
     "db:migrate": "tsc -p . && node --env-file-if-exists=.env dist/scripts/migrate.js",
     "seed": "tsc -p . && node --env-file-if-exists=.env dist/scripts/seed.js",
     "smoke": "tsc -p . && node --env-file-if-exists=.env dist/scripts/smoke.js",
-    "smoke:portal": "tsc -p . && node --env-file-if-exists=.env dist/scripts/smoke-portal.js"
+    "smoke:portal": "tsc -p . && node --env-file-if-exists=.env dist/scripts/smoke-portal.js",
+    "test": "tsc -p . && node --test 'dist/**/*.test.js'"
   },
   "dependencies": {
     "@fastify/rate-limit": "10.3.0",

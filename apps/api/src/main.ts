@@ -18,9 +18,10 @@ import { EmployeesController } from './portal/employees.controller';
 import { PolicyController } from './portal/policy.controller';
 import { ReportsController } from './portal/reports.controller';
 import { SessionController } from './portal/session.controller';
+import { StaffController } from './portal/staff.controller';
 
 // Unauthenticated routes that guess secrets get the tight per-IP limit.
-const TIGHT = ['/v1/license/validate', '/v1/auth/login', '/v1/invitations/'];
+const TIGHT = ['/v1/license/validate', '/v1/auth/', '/api/v1/license/validate', '/v1/invitations/'];
 
 const cfg = config();
 
@@ -55,7 +56,7 @@ class AllErrors implements ExceptionFilter {
 
 @Module({
   controllers: [InstallController, AgentsController, StorageController, SessionController, CompanyController,
-    EmployeesController, DevicesController, PolicyController, ReportsController],
+    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController],
   providers: [
     { provide: Db, useValue: new Db(cfg.DATABASE_URL) },
     { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY) },
@@ -66,7 +67,9 @@ class AppModule {}
 async function main() {
   const adapter = new FastifyAdapter({
     bodyLimit: LIMITS.bodyBytes,
-    trustProxy: true, // behind cloudflared / a reverse proxy
+    // Only a proxy on this host (cloudflared, nginx) is trusted for X-Forwarded-*: a client-sent
+    // X-Forwarded-For can then not fake the IP the rate limits key on.
+    trustProxy: ['127.0.0.1', '::1'],
     // The agents' specs use a base URL ending in /api/v1: /api/v1/... is served as /v1/...
     rewriteUrl: (req: { url?: string }) => (req.url?.startsWith('/api/v1/') ? req.url.slice(4) : req.url ?? '/'),
     genReqId: (req: { headers: Record<string, unknown> }) => {
@@ -101,10 +104,10 @@ async function main() {
     global: true,
     timeWindow: 60_000,
     keyGenerator: (req) => {
-      const tight = TIGHT.some((p) => req.url.startsWith(p));
+      const tight = TIGHT.find((p) => req.url.startsWith(p));
       const k = req.headers['x-device-key'] ?? req.headers.authorization;
       if (typeof k === 'string' && !tight) return 'dev:' + sha256(k); // per device key or user session
-      return (tight ? 'lic:' : 'ip:') + req.ip;
+      return (tight ? `lic:${tight}:` : 'ip:') + req.ip; // one bucket per sensitive route group
     },
     max: (_req, key) => (key.startsWith('dev:') ? LIMITS.ratePerDeviceKey : key.startsWith('lic:') ? LIMITS.ratePerIpLicense : LIMITS.ratePerIp),
     errorResponseBuilder: (_req, ctx) => ({ statusCode: 429, retryAfter: ctx.after }),

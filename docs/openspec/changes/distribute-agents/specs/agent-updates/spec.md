@@ -77,3 +77,11 @@ A released or deactivated device SHALL receive no policy and no update URL, beca
 #### Scenario: A deactivated PC
 - **WHEN** a deactivated device calls `GET /v1/agents/policy`
 - **THEN** it gets `401 DEVICE_REVOKED` and no `update_package_url`
+
+### Requirement: Admins and IT list the live agent versions
+<!-- source: Plan-v3.5 §4.5 "Deployment" · agent-releases -->
+`GET /v1/agent-versions` SHALL return, to a `company_admin` or `it_admin`, `{ macos: [...], windows: [...] }`: the distinct versions of non-withdrawn `agent` releases per platform, newest first. A `manager` MUST get `403 FORBIDDEN`.
+
+#### Scenario: Picking the company minimum
+- **WHEN** macOS releases 1.3.0 and 1.4.0 are live and 1.5.0 is withdrawn
+- **THEN** `macos` is `["1.4.0", "1.3.0"]`

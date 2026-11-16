@@ -1,87 +1,119 @@
 ## Purpose
 
 How a company user or a WorkBeat staff member proves who they are on every portal and staff
-route, where their role and company come from, and what an unauthenticated call gets.
+route: signing in with a password, the session token that follows, what ends it, and what an
+unauthenticated call gets.
 
 ## ADDED Requirements
 
-### Requirement: Portal and staff routes need a verified Supabase token
-<!-- source: D41 · Plan-v3.5 §4.4 "Authentication and authorization" -->
-Every route outside the agent, Downloader, webhook, cron, invitation, host-resolution (`GET /v1/hosts/resolve`) and health routes SHALL require `Authorization: Bearer <Supabase JWT>` whose signature, issuer and expiry the API verifies. A missing, malformed, expired or forged token MUST get `401 UNAUTHENTICATED` and the route MUST NOT run.
+### Requirement: Users sign in with email and password
+<!-- source: D41 · B22 · B25 -->
+`POST /v1/auth/login` with `email` and `password` SHALL compare the password with the scrypt hash of the enabled `users` row of that email. A company user MUST get `200` with `mfa_required` false, `token`, `expires_at` and `user` as `GET /v1/me` returns it. A wrong password, an unknown or disabled email MUST all get the same `401 UNAUTHENTICATED`.
+
+#### Scenario: A company admin signs in
+- **WHEN** a company admin sends the right email and password
+- **THEN** the response is `200` with `mfa_required` false, a `token` starting `wbs_` and `expires_at` 7 days later
+
+#### Scenario: A wrong password and an unknown email
+- **WHEN** one request sends a wrong password and another an email with no account
+- **THEN** both answer `401 UNAUTHENTICATED` with the same body
+
+#### Scenario: A removed user signs in
+- **WHEN** a user with `disabled_at` set sends their right password
+- **THEN** the response is `401 UNAUTHENTICATED`
+
+### Requirement: A super admin signs in through the same route, then MFA
+<!-- source: D41 · B23 · Plan-v3.5 §4.6 -->
+For a `super_admin`, `POST /v1/auth/login` with the right password SHALL answer `200` with `mfa_required` true, `mfa_enrolled`, `mfa_token` and its `expires_at`, and MUST NOT issue a session. The session is issued only by the second factor (`staff-accounts`).
+
+#### Scenario: Staff enter their password
+- **WHEN** a `super_admin` sends the right email and password
+- **THEN** the response carries `mfa_required` true and an `mfa_token`, and no `token`
+
+### Requirement: Portal and staff routes need a live session
+<!-- source: D41 · B22 -->
+Every route outside the agent, Downloader, webhook, cron, sign-in, password-reset, MFA, invitation, host-resolution and health routes SHALL require `Authorization: Bearer <token>` whose SHA-256 matches a `sessions` row that is not revoked, not expired and belongs to an enabled user. Anything else MUST get `401 UNAUTHENTICATED` and the route MUST NOT run.
 
 #### Scenario: No token
 - **WHEN** `GET /v1/me` is called without `Authorization`
 - **THEN** the response is `401` with `code` `UNAUTHENTICATED`
 
-#### Scenario: Expired token
-- **WHEN** a request carries a JWT past its `exp`
-- **THEN** the response is `401 UNAUTHENTICATED`
-- **AND** no query on a tenant table runs
-
-#### Scenario: A token from another Supabase project
-- **WHEN** a request carries a well-formed JWT signed by a key the API does not trust
-- **THEN** the response is `401 UNAUTHENTICATED`
-
-#### Scenario: An unsigned token
-- **WHEN** a JWT has header `alg` `none`
-- **THEN** the response is `401 UNAUTHENTICATED`
-
-#### Scenario: A token at its expiry second
-- **WHEN** a JWT's `exp` equals the server time
-- **THEN** the response is `401 UNAUTHENTICATED`
-
-### Requirement: Role and company come only from app_metadata
-<!-- source: D41 · Plan-v3.5 §4.4, §6.1 -->
-The API SHALL read the caller's `role` and `company_id` only from the token's `app_metadata`, which only the API writes. It MUST ignore `user_metadata` and any role or company in the request. A `super_admin` MUST have no `company_id`; every other role MUST have one.
-
-#### Scenario: A user edits their own metadata
-- **WHEN** a manager's token carries `user_metadata.role` = `company_admin`
-- **THEN** the request is handled with role `manager`
-
-#### Scenario: A company role without a company
-- **WHEN** a token's `app_metadata` has role `it_admin` and no `company_id`
-- **THEN** the response is `401 UNAUTHENTICATED`
-
-#### Scenario: Staff with a company
-- **WHEN** a token's `app_metadata` has role `super_admin` and a `company_id`
-- **THEN** the response is `401 UNAUTHENTICATED`
-
-#### Scenario: A company in the request body
-- **WHEN** a company A admin sends a request body with `company_id` of company B
-- **THEN** the request runs for company A only
-
-### Requirement: The token must match an enabled users row
-<!-- source: D41 · data-model.md "users" -->
-The API SHALL load the `users` row with the token's subject. When no row exists, its `disabled_at` is set, or its `role` or `company_id` differs from `app_metadata`, the response MUST be `401 UNAUTHENTICATED`. A removed user MUST be refused on their next call, even with an unexpired token.
-
-#### Scenario: A removed user calls again
-- **WHEN** a company admin has removed a manager and the manager's unexpired token calls `GET /v1/me`
-- **THEN** the response is `401 UNAUTHENTICATED`
-
-#### Scenario: A demoted user's old token
-- **WHEN** a company admin was changed to `manager` and their unexpired token still says `company_admin`
-- **THEN** the response is `401 UNAUTHENTICATED` until they sign in again
-
-#### Scenario: A disabled user with a valid JWT
-- **WHEN** a user with `disabled_at` set calls any portal route with a token that passes signature and expiry checks
+#### Scenario: An expired session
+- **WHEN** a request carries a token whose `expires_at` has passed
 - **THEN** the response is `401 UNAUTHENTICATED` and no tenant table is read
 
-#### Scenario: A user of a suspended company
-- **WHEN** an enabled company admin of a `suspended` company calls `GET /v1/me`
-- **THEN** the response is `200` with `company.status` `suspended`
+#### Scenario: A made-up token
+- **WHEN** a request carries a `wbs_` token that matches no session
+- **THEN** the response is `401 UNAUTHENTICATED`
+
+### Requirement: Sessions end on logout, password change and removal
+<!-- source: B22 · B24 · D41 -->
+A session SHALL last 7 days. `POST /v1/auth/logout` MUST revoke the caller's session and answer `204`. `POST /v1/auth/password` with `current_password` and `new_password` (10–200 characters) MUST revoke the user's other sessions; a wrong current password MUST answer `422 VALIDATION_FAILED`. Removing a user MUST revoke all of their sessions.
+
+#### Scenario: Sign out
+- **WHEN** a user calls `POST /v1/auth/logout` and then `GET /v1/me` with the same token
+- **THEN** the first answers `204` and the second `401 UNAUTHENTICATED`
+
+#### Scenario: A password change signs out other devices
+- **WHEN** a user changes their password from one browser
+- **THEN** that browser's session keeps working and every other session of theirs answers `401`
+
+#### Scenario: A removed user calls again
+- **WHEN** a company admin has removed a manager and the manager's unexpired session calls `GET /v1/me`
+- **THEN** the response is `401 UNAUTHENTICATED`
+
+### Requirement: A forgotten password is reset by email
+<!-- source: B24 -->
+`POST /v1/auth/password-reset/request` with `email` SHALL always answer `204`, and for an enabled user MUST email a link with a single-use token valid 30 minutes. `POST /v1/auth/password-reset/confirm` with `token` and `new_password` MUST set the password, use up every open reset of the user, and revoke all their sessions and MFA challenges. It MUST answer `404 PASSWORD_RESET_INVALID` or `410 PASSWORD_RESET_EXPIRED`.
+
+#### Scenario: An unknown email
+- **WHEN** a reset is requested for an email with no account
+- **THEN** the response is `204` and no email is sent
+
+#### Scenario: The link is used
+- **WHEN** a user confirms with the emailed token and a new password
+- **THEN** the response is `200`, their old sessions answer `401` and they can sign in with the new password
+
+#### Scenario: The link is used twice
+- **WHEN** the same token is confirmed a second time
+- **THEN** the response is `410 PASSWORD_RESET_EXPIRED` and the password is unchanged
+
+### Requirement: Sign-in routes are rate-limited per IP, never locked
+<!-- source: B25 · rate-limiting -->
+`/v1/auth/*`, `/v1/invitations/*` and `/v1/license/validate` SHALL each allow 20 requests a minute per client IP and answer `429 RATE_LIMITED` with `Retry-After` beyond it. No number of wrong passwords MUST lock an account. The client IP MUST come from `X-Forwarded-For` only when the connection is from a proxy on the API host.
+
+#### Scenario: Guessing passwords
+- **WHEN** one IP sends a 21st login request within a minute
+- **THEN** it gets `429 RATE_LIMITED` with `Retry-After`, and the account still signs in from another IP
+
+#### Scenario: A faked forwarding header
+- **WHEN** a client sends each request with a different `X-Forwarded-For` through the tunnel
+- **THEN** the limit still counts them as one IP
 
 ### Requirement: The request scope follows the authenticated user
 <!-- source: B2 · Plan-v3.5 §6.1 -->
-A company user's request SHALL run in `tenant` scope with `app.company_id` from their `users` row. A `super_admin` request SHALL run in `staff` scope with no `app.company_id`.
+A company user's request SHALL run in `tenant` scope with `app.company_id` from their `users` row. A `super_admin` request SHALL run in `staff` scope with no `app.company_id`. A company role without a `company_id`, or a `super_admin` with one, MUST get `401 UNAUTHENTICATED`.
 
 #### Scenario: A company admin reads data
 - **WHEN** a company admin of company A calls a portal route
 - **THEN** the transaction runs with `app.scope` = `tenant` and `app.company_id` = A
 
+#### Scenario: A company in the request body
+- **WHEN** a company A admin sends a request body with `company_id` of company B
+- **THEN** the request runs for company A only
+
 ### Requirement: The signed-in user can read who they are
-<!-- source: Plan-v3.5 §4.5 · D41 -->
-`GET /v1/me` SHALL return the caller's `id`, `email`, `name`, `role` and, for a company user, `company` with `id`, `name`, `slug` and `status`; for a `super_admin`, `company` MUST be `null`. All four roles SHALL be allowed.
+<!-- source: Plan-v3.5 §4.5 · D41 · B19 -->
+`GET /v1/me` SHALL return the caller's `id`, `email`, `name`, `role` and, for a company user, `company` with `id`, `name`, `slug`, `status` and `timezone`; for a `super_admin`, `company` MUST be `null`. All four roles SHALL be allowed.
 
 #### Scenario: A staff member signs in
-- **WHEN** a `super_admin` with MFA calls `GET /v1/me`
+- **WHEN** a `super_admin` with a session from the second factor calls `GET /v1/me`
 - **THEN** the response carries `role` `super_admin` and `company` `null`
+
+#### Scenario: A manager needs the company day
+- **WHEN** a manager calls `GET /v1/me`
+- **THEN** `company.timezone` carries the company's IANA zone
+
+#### Scenario: A user of a suspended company
+- **WHEN** an enabled company admin of a `suspended` company calls `GET /v1/me`
+- **THEN** the response is `200` with `company.status` `suspended`

@@ -1,6 +1,6 @@
 ## Why
 
-Company users and WorkBeat staff sign in through one Supabase Auth project (D41), so the role and
+Company users and WorkBeat staff sign in through the API's own password sign-in (D41, B22), so the role and
 company in a token are the only thing between a customer and another company's data, or a
 customer and the staff area (Plan-v3.5 §8 "One sign-in for staff and company users"). Every
 portal route needs the same guard: a verified token, a role allowed by the permission matrix
@@ -9,13 +9,13 @@ held to MFA with no self sign-up (Plan-v3.5 §4.4, §4.6).
 
 ## What Changes
 
-- **Token verification** on every portal and staff route: Supabase JWT, role and `company_id`
-  from `app_metadata` only, cross-checked against `users`; `GET /v1/me`.
+- **Sign-in and sessions**: email and password, opaque session tokens stored hashed, logout,
+  password change and self-service reset (B22, B24), per-IP rate limits (B25); `GET /v1/me`.
 - **Role guard** with the permission matrix, manager scoping to `employees.manager_user_id`,
   and `404` for another company's IDs.
 - **Team invitations**: a company admin invites, resends, cancels, changes roles and removes
   users; anyone accepts with the emailed token.
-- **Staff accounts**: invited only by another `super_admin`, MFA required on every staff call,
+- **Staff accounts**: invited only by another `super_admin`, TOTP MFA before any staff session (B23),
   no sign-up route, no impersonation.
 
 ## Capabilities
@@ -35,6 +35,9 @@ None.
 
 - Consumed by the web platform (WorkBeat Admin): sign-in, team page, staff team page.
 - Every later portal and staff route applies `role-access`.
-- New portal codes: `UNAUTHENTICATED`, `FORBIDDEN`, `MFA_REQUIRED`, `NOT_FOUND`, `CONFLICT`,
+- New portal codes: `UNAUTHENTICATED`, `FORBIDDEN`, `MFA_CODE_INVALID`, `PASSWORD_RESET_INVALID`,
+  `PASSWORD_RESET_EXPIRED`, `NOT_FOUND`, `CONFLICT`,
   `INVITATION_INVALID`, `INVITATION_EXPIRED`, added to the catalog in `packages/shared` (B9).
-- Schema: `users`, `invitations` and `auth_invitation` in `db/migrations/0001_init.sql`; no change.
+- Schema: `users`, `invitations` and `auth_invitation` in `0001_init.sql`; `password_hash`, `sessions`,
+  `auth_session`, `auth_login` in `0004_portal_auth.sql`; MFA columns, `mfa_challenges`,
+  `password_resets` in `0005_mfa_and_password_reset.sql`.

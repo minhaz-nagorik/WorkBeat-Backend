@@ -5,12 +5,14 @@
 
 ## 1. user-authentication
 
-- [ ] 1.1 Bearer guard verifying the Supabase JWT (signature, expiry, issuer) and reading `role` and `company_id` from `app_metadata` only (D41)
-- [ ] 1.2 Cross-check against `users` (same role and company, `disabled_at` NULL); set the request scope from it (B2)
-- [ ] 1.3 `GET /v1/me`
-- [ ] 1.4 Add `UNAUTHENTICATED`, `FORBIDDEN`, `MFA_REQUIRED`, `NOT_FOUND`, `CONFLICT`, `INVITATION_INVALID`, `INVITATION_EXPIRED` to the catalog in `packages/shared`
-- [ ] 1.5 Tests: no token, expired token, forged `user_metadata.role` → 401 or ignored; disabled user → 401; `GET /v1/me` of a user in company A never returns company B
-- [ ] 1.6 Tests (edge cases): JWT from an untrusted key → 401; `alg` `none` → 401; `exp` = now → 401; `super_admin` with a `company_id` → 401; `company_id` in body ignored; demoted user's old token → 401; disabled user with a valid JWT → 401 before any tenant read; suspended company user → `GET /v1/me` 200
+- [x] 1.1 `POST /v1/auth/login`, `/logout`, `/password`; scrypt hashes; `wbs_` session tokens stored hashed, 7 days; bearer guard through `auth_session` (B22, 0004)
+- [x] 1.2 Cross-check against `users` (same role and company, `disabled_at` NULL); set the request scope from it (B2)
+- [x] 1.3 `GET /v1/me` (with `company.timezone`)
+- [ ] 1.4 Add `UNAUTHENTICATED`, `FORBIDDEN`, `MFA_CODE_INVALID`, `PASSWORD_RESET_INVALID`, `PASSWORD_RESET_EXPIRED`, `NOT_FOUND`, `CONFLICT`, `INVITATION_INVALID`, `INVITATION_EXPIRED` to the catalog in `packages/shared`
+- [x] 1.5 Tests (`pnpm smoke:portal`): no token → 401; wrong password → 401; removed user → 401; logout → 401; password change and reset end other sessions
+- [x] 1.7 Password reset: `POST /v1/auth/password-reset/request` (always 204) and `/confirm`; single-use 30-minute token; `password_resets` (B24, 0005)
+- [x] 1.8 Per-IP rate limit per route group, no lockout; only a proxy on the host is trusted for `X-Forwarded-For` (B25)
+- [ ] 1.6 Tests (edge cases): made-up token → 401; expired session → 401; `super_admin` with a `company_id` → 401; `company_id` in body ignored; disabled user with a live session → 401 before any tenant read; suspended company user → `GET /v1/me` 200
 
 ## 2. role-access
 
@@ -21,18 +23,18 @@
 
 ## 3. team-invitations
 
-- [ ] 3.1 `GET /v1/team`, `POST /v1/team/invitations`, resend, cancel
-- [ ] 3.2 Invitation email through Resend with the token link; invitation lifetime constant in `packages/shared`
-- [ ] 3.3 `POST /v1/invitations/lookup` and `POST /v1/invitations/accept`: Supabase Auth user created with `app_metadata`, `users` row, `accepted_at`, one transaction
-- [ ] 3.4 `PATCH /v1/team/users/:id` and `DELETE /v1/team/users/:id`, with the last-admin check and session revocation in Supabase Auth
+- [x] 3.1 `GET /v1/team`, `POST /v1/team/invitations`, resend, cancel
+- [x] 3.2 Invitation email through Resend with the token link; invitation lifetime constant in `packages/shared`
+- [x] 3.3 `POST /v1/invitations/lookup` and `POST /v1/invitations/accept`: `users` row with a password hash, `accepted_at` and a session, one transaction
+- [x] 3.4 `PATCH /v1/team/users/:id` and `DELETE /v1/team/users/:id`, with the last-admin check and session revocation
 - [ ] 3.5 Tests: duplicate open invite → 409; accept twice → 410; expired → 410; unknown → 404; last company admin cannot be removed or demoted; the token never appears in a log; tenant isolation: company A admin cannot list, resend or cancel company B invitations
-- [ ] 3.6 Accept: lock the invitation row (`FOR UPDATE`) for accept, resend and revoke; delete the Supabase Auth user when the DB write fails; check `users.email` again at accept; serialise role changes and removals on the company's `company_admin` rows so the last-admin check cannot race
-- [ ] 3.7 Tests (edge cases): email of a user in another company → 409 revealing nothing; case-only duplicate → 409; disabled user's email → 409; concurrent invites → one 201, one email; old token after resend → 404 `INVITATION_INVALID`; expired invitation resent; concurrent accepts → one 201, one 410, one Auth user; accept at `expires_at` → 410; email became a user meanwhile → 409, invitation open; disabled inviter still accepted; suspended company accept works; resend accepted → 409; revoke twice → 204 with first `revoked_at`; revoke accepted → 409; revoke vs accept race; DB failure after Auth user → no Auth user, invitation open; weak password → 422; last admin self-demotion → 409; two admins demote each other → one remains; manager → it_admin clears `manager_user_id`; other company user → 404; role `super_admin` → 422
+- [ ] 3.6 Accept: lock the invitation row (`FOR UPDATE`) for accept, resend and revoke; roll back the user when any write fails; check `users.email` again at accept; serialise role changes and removals on the company's `company_admin` rows so the last-admin check cannot race
+- [ ] 3.7 Tests (edge cases): email of a user in another company → 409 revealing nothing; case-only duplicate → 409; disabled user's email → 409; concurrent invites → one 201, one email; old token after resend → 404 `INVITATION_INVALID`; expired invitation resent; concurrent accepts → one 201, one 410, one user; accept at `expires_at` → 410; email became a user meanwhile → 409, invitation open; disabled inviter still accepted; suspended company accept works; resend accepted → 409; revoke twice → 204 with first `revoked_at`; revoke accepted → 409; revoke vs accept race; DB failure → no user, invitation open; weak password → 422; last admin self-demotion → 409; two admins demote each other → one remains; manager → it_admin clears `manager_user_id`; other company user → 404; role `super_admin` → 422
 
 ## 4. staff-accounts
 
 - [ ] 4.1 `GET /v1/staff/team`, `POST /v1/staff/invitations`, `DELETE /v1/staff/invitations/:id`, `DELETE /v1/staff/users/:id`
-- [ ] 4.2 MFA check on the JWT `aal` claim for every `super_admin` request
-- [ ] 4.3 Operator script that creates the first `super_admin` (no route), documented in the runbook
-- [ ] 4.4 Tests: company invitation with role `super_admin` → 422; staff token at `aal1` → 403 `MFA_REQUIRED`; no route returns a token for another user; staff team list contains no company users
-- [ ] 4.5 Tests (edge cases): staff invite of a company user's email → 409; `aal1` staff invite → 403 `MFA_REQUIRED`, nothing written; `aal1` `GET /v1/me` → 200; missing `aal` → treated as `aal1`; company roles not asked for MFA; staff self-disable → 409; last two staff disabling each other → one remains; disabled staff with `aal2` token → 401; company user ID on the staff delete route → 404
+- [x] 4.2 TOTP MFA before any staff session: `mfa_token` at login, `POST /v1/auth/mfa/enroll` and `/verify`, 5 attempts, replay refused; `POST /v1/staff/users/:id/mfa/reset` (B23, 0005)
+- [x] 4.3 Operator script that creates the first `super_admin` (no route): `pnpm seed -- --staff-email`
+- [ ] 4.4 Tests: company invitation with role `super_admin` → 422; staff password without a code gives no session; no route returns a token for another user; staff team list contains no company users
+- [ ] 4.5 Tests (edge cases): staff invite of a company user's email → 409; wrong code → 401 `MFA_CODE_INVALID` with `attempts_left`; sixth code → 401; code reused → 401; company roles not asked for MFA; staff self-disable → 409; last two staff disabling each other → one remains; disabled staff with a live session → 401; company user ID on the staff delete route → 404

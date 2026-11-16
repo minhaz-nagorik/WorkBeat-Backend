@@ -154,3 +154,39 @@ An import with any invalid row (no `name`, a malformed email, an unknown manager
 #### Scenario: A pause for an archived employee
 - **WHEN** a company admin posts a pause for an archived employee
 - **THEN** the response is `409` with `code` `CONFLICT` and no pause is written
+
+### Requirement: Employees carry a derived presence
+<!-- source: Plan-v3.5 §4.5 "Employees" · B12 · B18 -->
+`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` and `deactivated_at` NULL), `tamper` (one such device is `tamper`), `active` or `idle` (the latest `activity_buckets` row in the last 15 minutes has active samples, or none), else `offline`. It MUST never be stored.
+
+#### Scenario: A paused employee with a tampered laptop
+- **WHEN** an employee has a pause in force and a device with an open tamper event
+- **THEN** `presence` is `paused`
+
+#### Scenario: An employee with only a released device
+- **WHEN** every device of the employee is released
+- **THEN** `presence` is `no_device`
+
+#### Scenario: Working right now
+- **WHEN** the employee's newest activity bucket from 4 minutes ago has 3 active samples
+- **THEN** `presence` is `active`
+
+#### Scenario: The IT admin's list
+- **WHEN** an `it_admin` lists employees
+- **THEN** rows carry only `id`, `name`, `email` and `department`, without `presence`
+
+### Requirement: Employees carry their devices
+<!-- source: Plan-v3.5 §4.5 "Employees" · D48 -->
+The same rows SHALL carry `devices`: the employee's devices with `released_at` NULL as `{ id, hostname, os, status, last_heartbeat_at }`, `status` as `device-status` (receive-device-health) derives it, so a `manager` sees their team's devices without `GET /v1/devices`.
+
+#### Scenario: A manager opens an employee
+- **WHEN** a manager reads an employee of their team who has one Mac
+- **THEN** `devices` holds that Mac with its `status`
+
+### Requirement: The directory filters by manager
+<!-- source: B12 · manager-teams -->
+`GET /v1/employees` SHALL accept `manager_user_id` and then return only employees with that `manager_user_id`, intersected with the caller's scope.
+
+#### Scenario: The team of one manager
+- **WHEN** a company admin lists employees with `manager_user_id` of manager M
+- **THEN** every row has `manager_user_id` M

@@ -51,8 +51,8 @@ record for a read, update or action, `204` with no body for a delete.
 
 | Caller | Header | Resolves to |
 |---|---|---|
-| Company user, staff | `Authorization: Bearer <Supabase JWT>` | `role` and `company_id` from `app_metadata` only (never `user_metadata` or the request), cross-checked against an enabled `users` row ([`user-authentication`][user-authentication]) |
-| Staff (`super_admin`) | Same, with `aal` = `aal2` | `aal1` → `403 MFA_REQUIRED` on every route except `GET /v1/me` ([`staff-accounts`][staff-accounts]) |
+| Company user, staff | `Authorization: Bearer <session token>` (`wbs_…` from `POST /v1/auth/login`, 7 days, B22) | role and company from the session's enabled `users` row, never from the request ([`user-authentication`][user-authentication]) |
+| Staff (`super_admin`) | Same; the session is issued only by `POST /v1/auth/mfa/verify` (TOTP, B23) | login returns an `mfa_token` and no session ([`staff-accounts`][staff-accounts]) |
 | Downloader | `X-License-Key` | See [agent-contract.md](agent-contract.md) |
 | Agent at enrollment | `Authorization: Bearer <enrollment token>` | See [agent-contract.md](agent-contract.md) |
 | Agent, uninstaller | `X-Device-Key` | See [agent-contract.md](agent-contract.md) |
@@ -110,7 +110,9 @@ One catalog for all clients, owned by this repository (B9, `packages/shared`).
 | 402 | `LICENSE_SUSPENDED` | Downloader, agent | Company suspended (validate, enroll) |
 | 402 | `LICENSE_EXPIRED` | Downloader, agent | Company expired; body carries `blocking_ends_at` |
 | 403 | `FORBIDDEN` | portal, staff, uninstaller | Role not allowed on the route; device key deactivating another device |
-| 403 | `MFA_REQUIRED` | staff | `super_admin` token at `aal1` |
+| 401 | `MFA_CODE_INVALID` + `attempts_left` | staff | wrong or reused TOTP code at `POST /v1/auth/mfa/verify` |
+| 404 | `PASSWORD_RESET_INVALID` | anyone | unknown reset token |
+| 410 | `PASSWORD_RESET_EXPIRED` | anyone | reset token used or past 30 minutes |
 | 403 | `SEAT_LIMIT_EXCEEDED` | Downloader, agent | No free seat |
 | 403 | `ENROLLMENT_TOKEN_EXPIRED` | agent | Token older than 24 h |
 | 403 | `ENROLLMENT_TOKEN_EXHAUSTED` | agent | Token already used |

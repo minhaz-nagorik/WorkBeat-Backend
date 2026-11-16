@@ -32,6 +32,7 @@ async function main() {
       'admin-email': { type: 'string', default: 'admin@example.test' },
       'admin-name': { type: 'string', default: 'Company Admin' },
       'rotate-key': { type: 'boolean', default: false },
+      'staff-email': { type: 'string' }, // create a super_admin (no company); MFA is set up at first sign-in
     },
   });
   const url = process.env.ADMIN_DATABASE_URL, secret = process.env.SECRETS_ENCRYPTION_KEY;
@@ -48,6 +49,13 @@ async function main() {
       c.query("INSERT INTO users (email, name, role, company_id, password_hash) VALUES ($1, $2, 'company_admin', $3, $4)",
         [a['admin-email']!.toLowerCase(), a['admin-name'], companyId, await hashPassword(adminPassword)]);
     const existing = (await c.query('SELECT id FROM companies WHERE slug = $1', [a.slug])).rows[0];
+    if (a['staff-email']) { // operator script: the only way to create the first super_admin (staff-accounts)
+      await c.query("INSERT INTO users (email, name, role, password_hash) VALUES ($1, $2, 'super_admin', $3)",
+        [a['staff-email'].toLowerCase(), a['admin-name'], await hashPassword(adminPassword)]);
+      await c.query('COMMIT');
+      console.log(`staff ${a['staff-email']} created; password (shown once): ${adminPassword}`);
+      return;
+    }
     if (existing && a['rotate-key']) { // new licence key; the old one and its unused tokens stop working
       await c.query('UPDATE licenses SET key_hash = $2, key_ciphertext = $3, key_last4 = $4, key_reset_at = now() WHERE company_id = $1',
         [existing.id, sha256(normaliseLicenceKey(licenceKey)), encrypt(licenceKey, secret), licenceKey.slice(-4)]);

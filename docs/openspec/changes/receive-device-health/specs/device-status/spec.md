@@ -97,3 +97,23 @@ Each device SHALL carry `badges`: `outdated` when `agent_version` is below the e
 #### Scenario: A super admin opens the device list
 - **WHEN** a `super_admin` calls `GET /v1/devices`
 - **THEN** the response is `403 FORBIDDEN` and no device is read
+
+### Requirement: Device health has fixed fields
+<!-- source: Plan-v3.5 §4.1 "Heartbeat" · heartbeat -->
+`GET /v1/devices/:id` `health` SHALL always carry `store_bytes`, `oldest_unsent_at`, `dropped_records`, `dropped_samples`, `screenshot_skips`, `quarantined_batches`, `blocking_status`, `helper_restarts_24h`, `upload_failures_24h`, `update_failure` and `uptime_seconds` from the latest heartbeat (`null` before one), and `outdated`, `notice_ack_version` and `reported_policy_version`.
+
+#### Scenario: A device that never sent a heartbeat
+- **WHEN** a just-enrolled device is read
+- **THEN** `health` has every key above, the counters `null` and `outdated` a boolean
+
+#### Scenario: Drops reported by record type
+- **WHEN** the latest heartbeat sent `dropped_records` as `{ "app_sessions": 2 }`
+- **THEN** `health.dropped_records` is that object
+
+### Requirement: List rows carry release and deactivation times
+<!-- source: D38 · D6 -->
+Every `GET /v1/devices` row SHALL carry `released_at` and `deactivated_at`, `null` when not set.
+
+#### Scenario: A released laptop in the list
+- **WHEN** IT lists devices including one released yesterday
+- **THEN** its row has `status` `released` and yesterday's `released_at`

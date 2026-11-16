@@ -31,7 +31,7 @@ resolved, and how fresh the feed is.
 
 ### Requirement: The feed is filtered and paged
 <!-- source: Plan-v3.5 §4.5 "Dashboard" · B9 -->
-`GET /v1/alerts` SHALL accept `type` (one or more event types), `state` (`open` or `resolved`), `device_id`, `from`, `to` and a cursor, and MUST return at most the page size in `packages/shared` with the next cursor.
+`GET /v1/alerts` SHALL accept `type` (one or more event types, comma-separated), `state` (`open` or `resolved`), `device_id`, `employee_id`, `from`, `to` and `cursor`, and MUST return `{ items, next_cursor, counts }`: at most the page size in `packages/shared`, the next cursor, and `counts` per `event_type` for the same filters without `type` and `cursor`.
 
 #### Scenario: IT reviews open offline alerts
 - **WHEN** an IT admin calls `GET /v1/alerts?type=offline&state=open`
@@ -89,3 +89,11 @@ An event SHALL appear in `GET /v1/alerts` as soon as the request or job that sto
 #### Scenario: Staff ask for alerts
 - **WHEN** a super admin calls `GET /v1/alerts`
 - **THEN** the response is `403 FORBIDDEN`
+
+### Requirement: The feed is filtered per employee
+<!-- source: Plan-v3.5 §4.5 "Employees" -->
+`employee_id` SHALL limit the feed to events of devices bound to that employee, inside the caller's scope; for a manager, an employee outside the team MUST return an empty list.
+
+#### Scenario: Alerts on the employee page
+- **WHEN** a company admin lists alerts with `employee_id` of employee E
+- **THEN** every item's `employee.id` is E and `counts` covers only E's events

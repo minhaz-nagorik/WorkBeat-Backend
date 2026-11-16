@@ -145,3 +145,15 @@ A `productivity_rules` row with `match_type` `domain` SHALL match a visit whose 
 #### Scenario: A look-alike domain
 - **WHEN** `github.com` is `productive` and a visit's `domain` is `notgithub.com`
 - **THEN** the visit counts as neutral
+
+### Requirement: Activity and productivity can be grouped by period
+<!-- source: Plan-v3.5 §4.5 "Reports" · B19 -->
+`GET /v1/reports/activity` and `/reports/productivity` SHALL accept `group_by` `day`, `week` (Monday start) or `month` and then add `periods`: one row per period of the effective range, zeros included, with `period_start` (the period's first day, clipped to `from`), `tracked_seconds`, `activity_percent`, `productive_seconds`, `neutral_seconds` and `unproductive_seconds`. Any other value MUST answer `422`.
+
+#### Scenario: Weeks of a month
+- **WHEN** a report for 1–30 November is asked with `group_by` `week`
+- **THEN** `periods` has one row per Monday-start week, the first starting 1 November
+
+#### Scenario: An unknown grouping
+- **WHEN** `group_by` is `year`
+- **THEN** the response is `422 VALIDATION_FAILED`

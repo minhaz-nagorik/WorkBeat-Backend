@@ -1,11 +1,14 @@
 // End-to-end check of the portal API against a running local API.
-// Usage: ADMIN_EMAIL=… ADMIN_PASSWORD=… [BASE_URL=http://localhost:3000] pnpm smoke:portal
+// Usage: ADMIN_EMAIL=… ADMIN_PASSWORD=… [STAFF1_EMAIL=… STAFF1_PASSWORD=… STAFF2_EMAIL=… STAFF2_PASSWORD=…]
+//        [BASE_URL=http://localhost:3000] pnpm smoke:portal
 // Reads invitation emails from STORAGE_DIR/outbox, so run it against a local API without RESEND_API_KEY.
 // Writes test users, employees, rules and one device into the admin's company.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Client } from 'pg';
+import { currentStep, totpAt } from '../totp';
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 const OUTBOX = join(process.env.STORAGE_DIR ?? './storage', 'outbox');
@@ -15,7 +18,11 @@ async function call(method: string, path: string, token?: string, body?: unknown
   const h: Record<string, string> = { ...headers };
   if (token) h.authorization = `Bearer ${token}`;
   if (body !== undefined && typeof body !== 'string') h['content-type'] = 'application/json';
-  const r = await fetch(BASE + path, { method, headers: h, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body) });
+  let r = await fetch(BASE + path, { method, headers: h, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body) });
+  if (r.status === 429) { // sign-in routes are limited per IP: wait as told, then retry once
+    await new Promise((ok) => setTimeout(ok, (Number(r.headers.get('retry-after')) || 60) * 1000 + 500));
+    r = await fetch(BASE + path, { method, headers: h, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body) });
+  }
   const text = await r.text();
   let json: any = null;
   try { json = text ? JSON.parse(text) : null; } catch { json = text; }
@@ -43,10 +50,56 @@ async function join_(admin: string, role: string) {
   return { token: acc.token as string, id: acc.user.id as string, email };
 }
 
+// Staff MFA (TOTP). Needs STAFF1_EMAIL/STAFF1_PASSWORD and STAFF2_EMAIL/STAFF2_PASSWORD of two
+// test super_admins (pnpm seed -- --staff-email …). Their factors are cleared first, through
+// ADMIN_DATABASE_URL, so the run can enroll them again.
+async function staff() {
+  const db = new Client({ connectionString: process.env.ADMIN_DATABASE_URL });
+  await db.connect();
+  await db.query('UPDATE users SET mfa_secret_ciphertext = NULL, mfa_enabled_at = NULL, mfa_last_step = NULL WHERE email = ANY ($1)',
+    [[process.env.STAFF1_EMAIL!.toLowerCase(), process.env.STAFF2_EMAIL!.toLowerCase()]]);
+  await db.end();
+  const signIn = async (n: 1 | 2) => {
+    const l = expect(await call('POST', '/v1/auth/login', undefined, { email: process.env[`STAFF${n}_EMAIL`], password: process.env[`STAFF${n}_PASSWORD`] }), 200);
+    assert.equal(l.mfa_required, true); assert.equal(l.token, undefined);
+    return l;
+  };
+  const enroll = async (n: 1 | 2) => {
+    const l = await signIn(n);
+    assert.equal(l.mfa_enrolled, false);
+    expect(await call('POST', '/v1/auth/mfa/verify', undefined, { mfa_token: l.mfa_token, code: '000000' }), 409, 'CONFLICT');
+    const e = expect(await call('POST', '/v1/auth/mfa/enroll', undefined, { mfa_token: l.mfa_token }), 200);
+    assert.match(e.otpauth_uri, /^otpauth:\/\/totp\//);
+    const wrong = await call('POST', '/v1/auth/mfa/verify', undefined, { mfa_token: l.mfa_token, code: '000000' });
+    expect(wrong, 401, 'MFA_CODE_INVALID'); assert.equal(wrong.json.attempts_left, 4); // the 409 above is not an attempt
+    const code = totpAt(e.secret, currentStep());
+    const s = expect(await call('POST', '/v1/auth/mfa/verify', undefined, { mfa_token: l.mfa_token, code }), 200);
+    return { token: s.token as string, secret: e.secret as string, id: s.user.id as string, code };
+  };
+  const s1 = await enroll(1), s2 = await enroll(2);
+  const me1 = expect(await call('GET', '/v1/me', s1.token), 200);
+  assert.equal(me1.role, 'super_admin'); assert.equal(me1.company, null);
+  expect(await call('GET', '/v1/employees', s1.token), 403, 'FORBIDDEN');
+  // a second sign-in reuses the factor; the code just used is refused (replay)
+  const again = await signIn(2);
+  assert.equal(again.mfa_enrolled, true);
+  expect(await call('POST', '/v1/auth/mfa/enroll', undefined, { mfa_token: again.mfa_token }), 409);
+  expect(await call('POST', '/v1/auth/mfa/verify', undefined, { mfa_token: again.mfa_token, code: s2.code }), 401, 'MFA_CODE_INVALID');
+  expect(await call('POST', `/v1/staff/users/${s1.id}/mfa/reset`, s1.token), 409);
+  expect(await call('POST', `/v1/staff/users/${s1.id}/mfa/reset`, mgrLessAdmin!), 403);
+  expect(await call('POST', `/v1/staff/users/${s1.id}/mfa/reset`, s2.token), 200);
+  expect(await call('GET', '/v1/me', s1.token), 401);
+  assert.equal((await signIn(1)).mfa_enrolled, false);
+  ok('staff: password then TOTP, enrolment, wrong code count, replay refused, reset by another super_admin');
+}
+let mgrLessAdmin: string | null = null;
+
 async function main() {
   expect(await call('POST', '/v1/auth/login', undefined, { email: process.env.ADMIN_EMAIL, password: 'wrong-password' }), 401, 'UNAUTHENTICATED');
   const login = expect(await call('POST', '/v1/auth/login', undefined, { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD }), 200);
   const admin: string = login.token;
+  mgrLessAdmin = admin;
+  assert.equal(login.mfa_required, false);
   const me = expect(await call('GET', '/v1/me', admin), 200);
   assert.equal(me.role, 'company_admin'); assert.ok(me.company.timezone);
   expect(await call('GET', '/v1/me'), 401, 'UNAUTHENTICATED');
@@ -215,9 +268,23 @@ async function main() {
 
   expect(await call('DELETE', `/v1/team/users/${mgr.id}`, admin), 204);
   expect(await call('GET', '/v1/me', mgr.token), 401, 'UNAUTHENTICATED');
+  // password reset (self-service), for the it_admin
+  expect(await call('POST', '/v1/auth/password-reset/request', undefined, { email: `nobody-${run}@example.test` }), 204);
+  expect(await call('POST', '/v1/auth/password-reset/request', undefined, { email: it.email }), 204);
+  await new Promise((r) => setTimeout(r, 300)); // the email is sent after the answer
+  const resetToken = decodeURIComponent(inviteToken(it.email));
+  expect(await call('POST', '/v1/auth/password-reset/confirm', undefined, { token: resetToken, new_password: 'short' }), 422);
+  expect(await call('POST', '/v1/auth/password-reset/confirm', undefined, { token: 'wbr_nope', new_password: 'a new long password' }), 404, 'PASSWORD_RESET_INVALID');
+  expect(await call('POST', '/v1/auth/password-reset/confirm', undefined, { token: resetToken, new_password: 'a new long password' }), 200);
+  expect(await call('POST', '/v1/auth/password-reset/confirm', undefined, { token: resetToken, new_password: 'a new long password' }), 410, 'PASSWORD_RESET_EXPIRED');
+  expect(await call('GET', '/v1/me', it.token), 401);
+  it.token = expect(await call('POST', '/v1/auth/login', undefined, { email: it.email, password: 'a new long password' }), 200).token;
+  ok('password reset: always 204, single use, ends sessions');
+
   expect(await call('POST', '/v1/auth/logout', it.token), 204);
   expect(await call('GET', '/v1/me', it.token), 401);
   ok('removed user and logged-out session lose access');
+  if (process.env.STAFF1_EMAIL) await staff();
   console.log('\nall portal checks passed against', BASE);
 }
 main().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

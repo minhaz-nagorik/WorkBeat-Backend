@@ -5,9 +5,9 @@ Conventions, auth and the code catalog are in [README.md](README.md).
 
 **Applies to every route below; not repeated per route:**
 
-- `Authorization: Bearer <Supabase JWT>` for a `super_admin`; missing, bad or disabled →
+- `Authorization: Bearer <session token>` of a `super_admin`, issued only after TOTP (B23); missing, bad or disabled →
   `401 UNAUTHENTICATED`.
-- The token's `aal` must be `aal2`; at `aal1` → `403 MFA_REQUIRED` ([`staff-accounts`][staff-accounts]).
+- Sign-in: `POST /v1/auth/login` → `{ mfa_required: true, mfa_enrolled, mfa_token, expires_at }`; then `POST /v1/auth/mfa/enroll { mfa_token }` (no factor yet) and `POST /v1/auth/mfa/verify { mfa_token, code }` → `{ token, expires_at, user }` ([`staff-accounts`][staff-accounts]). Lost factor: `POST /v1/staff/users/:id/mfa/reset` by another `super_admin`.
 - Every company role (`company_admin`, `manager`, `it_admin`) → `403 FORBIDDEN` ([`role-access`][role-access]).
 - `400`/`422 VALIDATION_FAILED`, `429 RATE_LIMITED`, `500 INTERNAL`.
 - Runs in `staff` scope, no `app.company_id`; reads only `companies`, `licenses`, `users`,
@@ -31,7 +31,7 @@ Who the staff member is.
 Request: none.
 Response `200`: `id` uuid, `email` string, `name` string, `role` `super_admin`, `company` `null`.
 Errors: `401 UNAUTHENTICATED`.
-Notes: the only route open to a `super_admin` at `aal1`, so the web platform can send them to MFA.
+Notes: a staff session exists only after MFA, so every staff call has passed it.
 Runs in `staff` scope. A `super_admin` token must carry no `company_id`.
 
 Staff accept their invitation through `POST /v1/invitations/accept`

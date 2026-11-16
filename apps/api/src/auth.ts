@@ -57,13 +57,24 @@ export async function portalUser(c: Tx, req: FastifyRequest, roles: Role[], opts
   if (!u || (u.role !== 'super_admin' && !u.company_id)) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in required');
   const user: User = { id: u.user_id, company_id: u.company_id, role: u.role, email: u.email, name: u.name, session_id: u.session_id };
   if (u.role === 'super_admin') {
-    if (opts.allowStaff) return user;
-    throw new ApiError(403, 'FORBIDDEN', 'Not allowed');
+    if (!opts.allowStaff) throw new ApiError(403, 'FORBIDDEN', 'Not allowed');
+    await c.query("SELECT set_config('app.scope', 'staff', true)"); // staff never get tenant scope (D41)
+    tag(req, { scope: 'staff' });
+    return user;
   }
   if (!roles.includes(u.role)) throw new ApiError(403, 'FORBIDDEN', 'Not allowed for your role');
   await c.tenant(u.company_id);
   tag(req, { company_id: u.company_id });
   return user;
+}
+
+// Staff routes: super_admin only, in staff scope. A staff session exists only after MFA (0005).
+export async function staffUser(c: Tx, req: FastifyRequest): Promise<User> {
+  const t = bearer(req);
+  const u = t ? (await c.query('SELECT * FROM auth_session($1)', [sha256(t)])).rows[0] : null;
+  if (!u) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in required');
+  if (u.role !== 'super_admin') throw new ApiError(403, 'FORBIDDEN', 'Staff only');
+  return portalUser(c, req, [], { allowStaff: true });
 }
 
 // An employee the caller may see: own company (RLS), and own team for a manager. Else 404.
