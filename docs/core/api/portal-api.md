@@ -459,7 +459,7 @@ Request:
 | field | type | required | notes |
 |---|---|---|---|
 | name | string | yes | non-empty |
-| email | string | no | |
+| email | string | yes | valid address; `PATCH` may leave it out but not clear it |
 | department | string | no | |
 | manager_user_id | uuid \| null | no | an enabled `manager` of the company |
 
@@ -521,7 +521,7 @@ Errors:
 |---|---|---|
 | 403 | `FORBIDDEN` | not company_admin |
 | 413 | `PAYLOAD_TOO_LARGE` | file over the import limit |
-| 422 | `VALIDATION_FAILED` | any row with no `name`, malformed email, `manager email` not a manager of the company, or an email twice in the file; names each line number |
+| 422 | `VALIDATION_FAILED` | any row with no `name`, a missing or malformed email, `manager email` not a manager of the company, or an email twice in the file; names each line number |
 
 Notes: all or nothing — any invalid row creates no employee.
 

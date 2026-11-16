@@ -42,7 +42,7 @@ const SCREENSHOT_VIEW_SECONDS = 5 * 60;
 const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
 const employeeBody = z.object({
   name: z.string().trim().min(1).max(200),
-  email: z.string().trim().toLowerCase().email().max(254).nullish().or(z.literal('').transform(() => null)),
+  email: z.string().trim().toLowerCase().email().max(254), // required: identifies the person and dedupes imports
   department: optText(200),
   manager_user_id: z.string().uuid().nullish(),
 });
@@ -134,10 +134,10 @@ export class EmployeesController {
         const [name = '', mail = '', dept = '', mgr = ''] = r.map((v) => v.trim());
         const email = mail.toLowerCase();
         const manager = mgr ? managers.find((m) => m.email === mgr.toLowerCase()) : null;
-        if (!name || (email && !z.string().email().safeParse(email).success) || (mgr && !manager) || (email && seen.has(email))) bad.push(i + 1);
-        if (email) seen.add(email);
-        if (email && taken.has(email)) skipped.push(email);
-        else create.push({ name, email: email || null, department: dept || null, manager_user_id: manager?.id ?? null });
+        if (!name || !z.string().email().safeParse(email).success || (mgr && !manager) || (email && seen.has(email))) bad.push(i + 1);
+        seen.add(email);
+        if (taken.has(email)) skipped.push(email);
+        else create.push({ name, email, department: dept || null, manager_user_id: manager?.id ?? null });
       });
       if (bad.length) throw new ApiError(422, 'VALIDATION_FAILED', 'Invalid rows', { lines: bad });
       if (create.length)

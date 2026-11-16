@@ -7,7 +7,7 @@ why an employee who still has a device cannot be removed.
 
 ### Requirement: Company admins add and edit employees
 <!-- source: PRD "Permission matrix" · Plan-v3.5 §4.4 "Employees and devices" -->
-`POST /v1/employees` and `PATCH /v1/employees/:id` SHALL accept `name` (required, non-empty), `email`, `department` and `manager_user_id`, and only from a `company_admin`; any other role MUST get `403 FORBIDDEN`. An `email` already held by a non-archived employee of the company MUST return `409 CONFLICT`. The employee MUST be written in the caller's company.
+`POST /v1/employees` and `PATCH /v1/employees/:id` SHALL accept `name` (required, non-empty), `email` (required, a valid address; `PATCH` may leave it out but MUST NOT clear it), `department` and `manager_user_id`, and only from a `company_admin`; any other role MUST get `403 FORBIDDEN`. An `email` already held by a non-archived employee of the company MUST return `409 CONFLICT`. The employee MUST be written in the caller's company.
 
 #### Scenario: An admin adds an employee
 - **WHEN** a company admin posts `{ "name": "Ana Silva", "email": "ana@acme.com" }`
@@ -34,9 +34,9 @@ why an employee who still has a device cannot be removed.
 - **WHEN** an admin posts `{ "name": "   " }`
 - **THEN** the response is `422` with `code` `VALIDATION_FAILED` naming `name`
 
-#### Scenario: Employees without an email
-- **WHEN** an admin adds two employees with no `email`
-- **THEN** both are created
+#### Scenario: An employee without an email
+- **WHEN** an admin adds an employee with no `email`, or clears the email of an existing one
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED` naming `email` and nothing is written
 
 #### Scenario: A company_id in the body
 - **WHEN** a company A admin posts an employee with `company_id` of company B
@@ -64,7 +64,7 @@ why an employee who still has a device cannot be removed.
 
 ### Requirement: Employees are imported from CSV
 <!-- source: PRD "Permission matrix" · Plan-v3.5 §4.4 "Employees and devices" -->
-`POST /v1/employees/import` SHALL accept from a `company_admin` a CSV with the columns `name, email, department, manager email`, with or without a header row. A row whose email matches a non-archived employee of the company MUST be skipped. A `manager email` MUST name a user with role `manager` in the company. The response MUST give `created`, `skipped` and the skipped emails.
+`POST /v1/employees/import` SHALL accept from a `company_admin` a CSV with the columns `name, email, department, manager email`, with or without a header row. A row with no or an invalid email MUST be reported as an invalid line. A row whose email matches a non-archived employee of the company MUST be skipped. A `manager email` MUST name a user with role `manager` in the company. The response MUST give `created`, `skipped` and the skipped emails.
 
 #### Scenario: A file with a header row and an existing employee
 - **WHEN** an admin imports a file with a header row and three rows, one with an existing employee's email
