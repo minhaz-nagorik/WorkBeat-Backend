@@ -18,7 +18,7 @@ expired company's agents count down to, and the codes the agent routes answer in
 - **THEN** both fields are ignored and the company stays `suspended`
 
 ### Requirement: Trial and active companies are served
-<!-- source: B14 · Plan-v3.2 §4.4 -->
+<!-- source: B14 · Plan-v3.5 §4.4 -->
 A company in `trial` or `active` SHALL be served on every agent and Downloader route without a status code, subject only to seats and credentials.
 
 #### Scenario: A trial company enrolls a device
@@ -62,7 +62,7 @@ For a `suspended` company, agent routes SHALL answer `402 COMPANY_SUSPENDED`, an
 - **THEN** `blocking_ends_at` is `null`
 
 ### Requirement: Company users can read their status
-<!-- source: Plan-v3.2 §4.5 · D29 -->
+<!-- source: Plan-v3.5 §4.5 · D29 -->
 `GET /v1/company/status` SHALL return, to every company role, `status`, `suspended_reason`, `trial_ends_at`, `expired_at` and `blocking_ends_at` for the caller's company. Portal reads and the billing routes MUST keep working while the company is `suspended` or `expired`.
 
 #### Scenario: A suspended company signs in

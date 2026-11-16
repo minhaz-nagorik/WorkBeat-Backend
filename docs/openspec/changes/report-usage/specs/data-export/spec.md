@@ -6,7 +6,7 @@ summaries for a range, with the same scope as reports and a bounded size.
 ## ADDED Requirements
 
 ### Requirement: Three CSV exports exist
-<!-- source: Plan-v3.2 §4.4 "Reports and data lifecycle" · PRD "Activity levels, productivity, calendar and timesheets" -->
+<!-- source: Plan-v3.5 §4.4 "Reports and data lifecycle" · PRD "Activity levels, productivity, calendar and timesheets" -->
 The API SHALL serve `GET /v1/exports/app-sessions.csv`, `/exports/url-visits.csv` and `/exports/daily-summaries.csv`, taking the range and scope parameters of `usage-reports`. Each row MUST carry the employee name and email, and times MUST be ISO 8601 with the `companies.timezone` offset. Session and visit rows MUST carry their productivity `category` resolved at export time.
 
 #### Scenario: Daily summaries for a team
@@ -34,7 +34,7 @@ Export routes SHALL run in `tenant` scope and allow only `company_admin` (all em
 - **THEN** the response is `404` with `code` `NOT_FOUND`
 
 ### Requirement: An export is bounded by a row cap
-<!-- source: Plan-v3.2 §6.3 -->
+<!-- source: Plan-v3.5 §6.3 -->
 An export SHALL be built in one request, and when it would exceed the row cap in `packages/shared` it MUST get `422 EXPORT_TOO_LARGE` with the cap, and no partial file. Ranges MUST be validated and clamped as in `usage-reports`.
 
 #### Scenario: A year of sessions for the whole company

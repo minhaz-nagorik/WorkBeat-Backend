@@ -6,7 +6,7 @@ and who can change it, the signup defaults included.
 ## ADDED Requirements
 
 ### Requirement: Company admins edit the sensitive list; managers read it
-<!-- source: D4 · Plan-v3.2 §4.4 "Monitoring policy" · authenticate-users/role-access -->
+<!-- source: D4 · Plan-v3.5 §4.4 "Monitoring policy" · authenticate-users/role-access -->
 `POST /v1/sensitive-domains` and `DELETE /v1/sensitive-domains/:id` SHALL be accepted only from a `company_admin`, and `GET /v1/sensitive-domains` MUST return `id`, `pattern`, `is_default` and `created_at` to a `company_admin` and a `manager`. An `it_admin` MUST get `403 FORBIDDEN` on every route here. A duplicate `lower(pattern)` MUST return `409 CONFLICT`.
 
 #### Scenario: An admin adds a health portal
@@ -27,7 +27,7 @@ and who can change it, the signup defaults included.
 - **THEN** the response is `403` with `code` `FORBIDDEN`
 
 ### Requirement: Defaults can be removed like any other entry
-<!-- source: D4 · Plan-v3.2 §6.2 "sensitive_domains" -->
+<!-- source: D4 · Plan-v3.5 §6.2 "sensitive_domains" -->
 Rows with `is_default` true, seeded at signup by `provision-companies`, SHALL be removable by a `company_admin` through the same route as any other entry. A removed default MUST NOT be restored by the API.
 
 #### Scenario: An admin removes a default
@@ -64,7 +64,7 @@ Every insert or delete of a `sensitive_domains` row SHALL raise `companies.polic
 - **THEN** `companies.policy_version` rises and the next policy lists it
 
 ### Requirement: Sensitive-domain IDs stay inside the company
-<!-- source: B2 · Plan-v3.2 §6.1 -->
+<!-- source: B2 · Plan-v3.5 §6.1 -->
 `DELETE /v1/sensitive-domains/:id` on an ID that is not an entry of the caller's company, including one already deleted, SHALL return `404 NOT_FOUND` and change nothing.
 
 #### Scenario: Another company's entry

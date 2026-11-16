@@ -6,7 +6,7 @@ suspended device from being flagged offline.
 ## ADDED Requirements
 
 ### Requirement: A heartbeat stores the latest health on the device
-<!-- source: Plan-v3.2 §4.1 "Heartbeat", §4.4 "Ingestion and device health" · D39 · W11 · agent-contract.md "Payload fields" -->
+<!-- source: Plan-v3.5 §4.1 "Heartbeat", §4.4 "Ingestion and device health" · D39 · W11 · agent-contract.md "Payload fields" -->
 The API SHALL write the heartbeat's `agent_version`, `policy_version` (as `reported_policy_version`), `helper_status`, `browser_access`, `permissions`, `active_pause_id` and, when sent, `os_version` to the device's row, and MUST keep only the latest values: no heartbeat history is stored. Windows `permissions` = `not_required` MUST be accepted (W11).
 
 #### Scenario: A Mac reports Screen Recording pending
@@ -28,7 +28,7 @@ The API SHALL write the heartbeat's `agent_version`, `policy_version` (as `repor
 - **THEN** the stored `os_version` is kept and the other fields are written
 
 ### Requirement: Counters and store health are kept in one health object
-<!-- source: Plan-v3.2 §4.1 "Heartbeat" · D7 · D25 · report-device-health/heartbeat -->
+<!-- source: Plan-v3.5 §4.1 "Heartbeat" · D7 · D25 · report-device-health/heartbeat -->
 The API SHALL store `store_bytes`, `oldest_unsent_at`, `dropped_records`, `dropped_samples`, `screenshot_skips`, `quarantined_batches`, `blocking_status`, `helper_restarts_24h`, `upload_failures_24h`, `update_failure` and `uptime_seconds` in `devices.health`, replacing the previous object.
 
 #### Scenario: Records were dropped under the cap
@@ -41,7 +41,7 @@ The API SHALL store `store_bytes`, `oldest_unsent_at`, `dropped_records`, `dropp
 - **THEN** it is accepted and `devices.health` holds those values
 
 ### Requirement: A heartbeat marks the device seen and ends an offline period
-<!-- source: PRD "Online status and tamper detection" · Plan-v3.2 §6.4 -->
+<!-- source: PRD "Online status and tamper detection" · Plan-v3.5 §6.4 -->
 Each accepted heartbeat SHALL set `devices.last_heartbeat_at` to the server time, set `offline_since` to null and set `resolved_at` on the device's open `offline` tamper event, in the same transaction.
 
 #### Scenario: An offline device comes back
@@ -54,7 +54,7 @@ Each accepted heartbeat SHALL set `devices.last_heartbeat_at` to the server time
 - **THEN** both get `200` and the row holds the same values with a later `last_heartbeat_at`
 
 ### Requirement: The response carries the policy version and the pause in force
-<!-- source: D31 · D32 · B5 · Plan-v3.2 §4.4 "Monitoring policy" -->
+<!-- source: D31 · D32 · B5 · Plan-v3.5 §4.4 "Monitoring policy" -->
 A `200` response SHALL carry `policy_version`, the device's resolved version as `agent-policy` (serve-agent-policy) computes it, and `monitoring_pause`: the employee's pause with `cancelled_at` null and `starts_at` ≤ now < `ends_at`, as `{ pause_id, starts_at, ends_at }`, or null when none is. With overlapping pauses it MUST return the one ending last.
 
 #### Scenario: An admin extends a pause in force
@@ -110,7 +110,7 @@ A heartbeat failing its `packages/shared` schema SHALL be refused with `400` or 
 - **THEN** the response is `422 VALIDATION_FAILED` and no field is updated
 
 ### Requirement: Heartbeats never move the device back in time
-<!-- source: Plan-v3.2 §6.4 · PRD "Online status and tamper detection" -->
+<!-- source: Plan-v3.5 §6.4 · PRD "Online status and tamper detection" -->
 `last_heartbeat_at` SHALL be set to the greater of its stored value and the server time of the heartbeat, and the health fields MUST hold the values of the heartbeat committed last. Heartbeats carry no client time, so arrival order decides.
 
 #### Scenario: Two heartbeats of one device at once

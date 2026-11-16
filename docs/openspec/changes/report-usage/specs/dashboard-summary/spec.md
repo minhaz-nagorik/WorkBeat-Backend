@@ -6,7 +6,7 @@ alerts and seats, each shown only to the roles allowed to see it.
 ## ADDED Requirements
 
 ### Requirement: The dashboard is one call shaped by role
-<!-- source: Plan-v3.2 §4.5 "Dashboard" · D41 · B2 -->
+<!-- source: Plan-v3.5 §4.5 "Dashboard" · D41 · B2 -->
 `GET /v1/dashboard` SHALL run in `tenant` scope for `company_admin`, `manager` and `it_admin`, and return only the sections the role is allowed to see. `super_admin` MUST get `403 FORBIDDEN`.
 
 #### Scenario: A staff user calls the dashboard
@@ -14,7 +14,7 @@ alerts and seats, each shown only to the roles allowed to see it.
 - **THEN** the response is `403` with `code` `FORBIDDEN`
 
 ### Requirement: Device counts follow device status
-<!-- source: Plan-v3.2 §4.5 "Dashboard" · Plan-v3.2 §5.9 · B12 -->
+<!-- source: Plan-v3.5 §4.5 "Dashboard" · Plan-v3.5 §5.9 · B12 -->
 The response SHALL carry `devices` with `online`, `offline` and `tamper` counts as `device-status` (receive-device-health) derives them, excluding released and deactivated devices. `company_admin` and `it_admin` MUST count all the company's devices; `manager` MUST count only devices of employees whose `manager_user_id` is the caller.
 
 #### Scenario: A manager's dashboard
@@ -30,7 +30,7 @@ The response SHALL carry `devices` with `online`, `offline` and `tamper` counts 
 - **THEN** `devices` is `online` 0, `offline` 0, `tamper` 0
 
 ### Requirement: Today's activity is shown to report readers only
-<!-- source: D1 · PRD "Users and roles" · Plan-v3.2 §4.5 "Dashboard" -->
+<!-- source: D1 · PRD "Users and roles" · Plan-v3.5 §4.5 "Dashboard" -->
 For `company_admin` and `manager` the response SHALL carry `today` with `tracked_seconds` and `activity_percent` for the caller's scope from local midnight in `companies.timezone`, computed as `usage-reports` computes them. For `it_admin` the response MUST NOT carry `today`.
 
 #### Scenario: An IT admin's dashboard
@@ -42,7 +42,7 @@ For `company_admin` and `manager` the response SHALL carry `today` with `tracked
 - **THEN** `today` covers only the five minutes since Dhaka midnight
 
 ### Requirement: Recent alerts come from the alerts feed
-<!-- source: Plan-v3.2 §4.5 "Dashboard" · PRD "Users and roles" -->
+<!-- source: Plan-v3.5 §4.5 "Dashboard" · PRD "Users and roles" -->
 The response SHALL carry `alerts`: the newest five entries the caller would see in `alerts-feed` (process-tamper-alerts), with that capability's fields and role scoping.
 
 #### Scenario: Six open alerts

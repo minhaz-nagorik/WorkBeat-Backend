@@ -17,7 +17,7 @@
 - [ ] 2.1 Permission matrix as one table in `packages/shared`; every portal and staff route declares its roles, and a route without a declaration fails to start
 - [ ] 2.2 Manager filter on every query that reads `employees` or rows keyed by `employee_id`
 - [ ] 2.3 Tests: each role × each area returns the matrix answer; manager reading an employee of another manager → 404; company A user requesting a company B ID → 404; tenant isolation: two companies' users in parallel never see each other's rows
-- [ ] 2.4 Tests (edge cases): undeclared route fails startup; manager write with another company's ID → 403 not 404; it_admin screenshots → 403; manager reads productivity rules, write → 403; manager `manager_user_id` of another manager → 403; reassigned employee → 404 on the next request
+- [ ] 2.4 Tests (edge cases): undeclared route fails startup; manager write with another company's ID → 403 not 404; it_admin screenshots → 403; manager reads productivity rules, write → 403; manager `manager_user_id` of another manager → 403; employee moved to another manager → 404 on the next request
 
 ## 3. team-invitations
 

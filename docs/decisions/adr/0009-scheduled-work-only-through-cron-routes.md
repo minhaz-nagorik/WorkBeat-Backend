@@ -6,7 +6,7 @@
 ## Context
 
 The backend has periodic work: offline detection and custom-domain checks every 5 minutes,
-expired enrollment token cleanup hourly, retention cleanup daily at 02:00 (Plan-v3.2 §6.4), and
+expired enrollment token cleanup hourly, retention cleanup daily at 02:00 (Plan-v3.5 §6.4), and
 the alert digest hourly (process-tamper-alerts design). The API runs as several container
 instances. An in-process NestJS scheduler would run each job once per instance (Plan §3), and a
 job that runs twice at once can double-send an email or race its own deletes. Jobs must see every
@@ -49,7 +49,7 @@ Any in-process timer, interval or queue consumer that does scheduled work (CLAUD
 
 ## Links
 
-- Decisions: [B10, B15](../backend-decisions.md), Plan-v3.2 §3, §6.4.
+- Decisions: [B10, B15](../backend-decisions.md), Plan-v3.5 §3, §6.4.
 - Design: [run-scheduled-jobs](../../openspec/changes/run-scheduled-jobs/design.md).
 - Specs: [cron-routes](../../openspec/changes/run-scheduled-jobs/specs/cron-routes/spec.md),
   [data-retention](../../openspec/changes/run-scheduled-jobs/specs/data-retention/spec.md),

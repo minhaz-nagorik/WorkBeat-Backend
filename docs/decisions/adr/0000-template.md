@@ -6,7 +6,7 @@
 ## Context
 
 What forces this decision. Constraints, and what breaks if nothing is decided. Reference the
-upstream clause that drives it (D-number, B-number, Plan-v3.2 §n, PRD section); do not restate it.
+upstream clause that drives it (D-number, B-number, Plan-v3.5 §n, PRD section); do not restate it.
 
 ## Decision
 
@@ -28,6 +28,6 @@ Omit the section when there is nothing to name.
 
 ## Links
 
-- Decisions: the D-numbers (Plan v3.2) and B-numbers ([backend-decisions.md](../backend-decisions.md)) this records.
+- Decisions: the D-numbers (Plan v3.5) and B-numbers ([backend-decisions.md](../backend-decisions.md)) this records.
 - Specs: the OpenSpec capabilities that state the behaviour, as
   `../../openspec/changes/<change>/specs/<capability>/spec.md`.

@@ -1,8 +1,8 @@
 # Data model
 
-Supabase PostgreSQL 15+. Source: WorkBeat Plan v3.2 §4.4, §5.3, §6 (D43, D44); the agents' wire fields
+Supabase PostgreSQL 15+. Source: WorkBeat Plan v3.5 §4.4, §5.3, §6 (D43, D45–D48); the agents' wire fields
 (`backend-api-integration.md`, `local-store-schema.sql` in both agent repos); the prototype.
-**The schema is [`db/migrations/`](../../../db/migrations/)** (`0001_init.sql`, `0002_spec_gaps.sql`); this page
+**The schema is [`db/migrations/`](../../../db/migrations/)** (`0001_init.sql`, `0002_spec_gaps.sql`, `0003_device_binding.sql`); this page
 explains it. Self-check: [`db/tests/0001_init_test.sql`](../../../db/tests/0001_init_test.sql).
 
 ## Conventions
@@ -48,7 +48,7 @@ erDiagram
   employees ||--o{ monitoring_pauses : has
   licenses ||--o{ enrollment_tokens : "issues (single-use)"
   enrollment_tokens ||--o{ devices : enrolled
-  employees ||--o{ devices : uses
+  employees ||--o{ devices : "bound to (one binding per row)"
   devices ||--o{ notice_acknowledgements : records
   companies ||--o{ block_rules : sets
   companies ||--o{ sensitive_domains : sets
@@ -173,7 +173,7 @@ Webhook idempotency. `id text PK` (Stripe `evt_…`), `type`, `payload jsonb`, `
 | email | citext NULL | unique per company among non-archived |
 | department | text NULL | free text (PRD, prototype filter) |
 | manager_user_id | uuid FK users NULL | one manager per employee (prototype) |
-| archived_at | timestamptz NULL | "remove"; refused while the employee has a device that still holds a seat (D44, 0002) |
+| archived_at | timestamptz NULL | "remove"; refused while the employee has a binding that is not released (D46, D48, 0003) |
 | created_at, updated_at | timestamptz NOT NULL | |
 
 ### employee_monitoring_settings
@@ -225,11 +225,11 @@ Category is resolved at report time, never stored on activity rows (PRD).
   - block rules, sensitive domains, notice, idle threshold, min version, uninstall token →
     `companies.policy_version`;
   - an employee's settings or pauses → `employee_monitoring_settings.policy_version`;
-  - a device reassigned to another employee → `devices.policy_version`.
   - publishing or withdrawing an agent release → every `companies.policy_version`, by the API in
     `staff` scope (agent-releases).
 - A device's `policy_version` = `greatest(company, employee settings, device)`. It only grows,
-  even on reassignment, because every bump takes a new sequence value. The heartbeat compares it
+  because every bump takes a new sequence value. `devices.policy_version` takes a value at insert
+  and is never bumped: a binding's employee never changes (D48, 0003). The heartbeat compares it
   for an early fetch.
 - `ETag` = hash of the resolved policy body. No table needed.
 
@@ -245,30 +245,34 @@ are no install tokens in the portal.
 | company_id | uuid FK NOT NULL | |
 | license_id | uuid FK NOT NULL | key reissue deletes this licence's unused tokens |
 | token_hash | text NOT NULL UNIQUE | |
-| employee_id | uuid FK NOT NULL | the employee picked in the Downloader; required (D44). The seat is filled at enroll, not here |
+| employee_id | uuid FK NOT NULL | the employee picked in WorkBeat Setup; required (D47). The seat is filled at enroll, not here |
 | expires_at | timestamptz NOT NULL | issued + 24 h |
 | used_at | timestamptz NULL | set by `/devices/enroll`; a used token is refused |
 | created_at | timestamptz NOT NULL | |
 
 ### devices
+One row is one **binding**: the device ID the agent produces, the company's licence and one
+employee (D48). The binding's employee never changes; to give the device to someone else it is
+released and the next enrollment makes a new row.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | company_id | uuid FK NOT NULL | |
-| employee_id | uuid FK NOT NULL | every device has an employee; no unassigned queue (D44) |
+| employee_id | uuid FK NOT NULL | the binding's employee, from the enrollment token; fixed for the row's life (D47, D48, 0003) |
 | enrollment_token_id | uuid FK NULL | token of the latest enrollment; NULL if that token was later deleted |
 | key_hash | text NULL UNIQUE | NULL after deactivate; replaced on re-enroll (D2) |
 | key_issued_at | timestamptz NULL | |
 | hostname, os_version, model, serial_number | text | |
 | os | text NOT NULL | `macos` \| `windows` |
 | arch | text NOT NULL | `x64` \| `arm64` |
-| hardware_id | text NOT NULL | device ID the agent produces; format open (Q10); must survive a reinstall (D2) |
+| hardware_id | text NOT NULL | device ID the agent produces; format open (Q10). A new ID after a reinstall is a new binding (D48) |
 | agent_version | text NOT NULL | |
 | enrolled_via | text NOT NULL DEFAULT 'manual' | D40 |
 | enrolled_at | timestamptz NOT NULL | |
 | last_heartbeat_at | timestamptz NULL | |
 | offline_since | timestamptz NULL | set by `/cron/heartbeat-check`, cleared on heartbeat |
-| policy_version | bigint NOT NULL | bumped when the device is reassigned |
+| policy_version | bigint NOT NULL | taken at insert; never bumped (0003 drops `devices_policy_bump`) |
 | reported_policy_version | bigint NULL | |
 | helper_status, browser_access, permissions | jsonb NULL | latest heartbeat (D39, W11) |
 | health | jsonb NULL | store_bytes, oldest_unsent_at, dropped, skips, restarts, upload failures, update_failure, uptime |
@@ -278,8 +282,9 @@ are no install tokens in the portal.
 | released_at | timestamptz NULL | seat freed, key kept → 401 `DEVICE_RELEASED` (D38) |
 | created_at, updated_at | timestamptz NOT NULL | |
 
-- Unique `(company_id, hardware_id) WHERE released_at IS NULL`: re-enroll reuses the row (D2); a
-  released device's next enrollment is a new row (D38).
+- Unique `(company_id, hardware_id) WHERE released_at IS NULL`: one live binding per device ID.
+  Re-enroll for the same employee reuses the row (D2); for another employee it is refused with
+  `409 DEVICE_ASSIGNED` (D48); a released device's next enrollment is a new row (D38).
 - A released device comes back only through a new Downloader install, which always brings a
   fresh single-use token (D38, D43).
 - Status is derived: released → deactivated → tamper (open tamper event) → offline → online;
@@ -311,8 +316,8 @@ Unique `(product, platform, arch, version)`.
 
 `app_sessions`, `url_visits`, `activity_buckets`, `idle_intervals` are **range-partitioned by
 month** on their time column (Plan §6.3). Each row carries `company_id`, `device_id` and
-`employee_id` (the device's employee when ingested), so reports and manager scoping never join
-through devices.
+`employee_id` of the binding whose key uploaded it, so reports and manager scoping never join
+through devices. Nothing is re-credited by time (D48).
 
 ### ingest_batches
 Idempotency for `POST /agents/activity` (D13). PK `(device_id, batch_id)`, `company_id`,
@@ -352,7 +357,7 @@ Index `(company_id, employee_id, captured_at)`.
 Also the alerts feed. `id uuid PK` (agent's; server-made for `offline`), `company_id`,
 `device_id`, `hostname` (snapshot, survives device removal — prototype), `event_type`
 (`process_restart` \| `hosts_modified` \| `config_changed` \| `clock_tampered` \|
-`permission_revoked` \| `offline`), `detail jsonb`, `repeat_count int`, `occurred_at`,
+`permission_revoked` \| `offline` \| `duplicate_device_id`), `detail jsonb`, `repeat_count int`, `occurred_at`,
 `received_at`, `resolved_at NULL` (offline: set when the heartbeat returns), `resolved_by NULL`,
 `emailed_at NULL` (digests). Index `(company_id, occurred_at DESC)`,
 `(device_id) WHERE resolved_at IS NULL`.
@@ -371,13 +376,27 @@ Gaps found while writing the OpenSpec changes:
 - `ingest_batches.body_sha256`, so a reused `Idempotency-Key` with another body answers `409`.
 - `agent_releases.signature` nullable (Windows MSIs are unsigned, W35); `productivity_rules.created_by`.
 - Exclusion constraint: an employee never has two live pauses that overlap.
-- Removing an employee is blocked only by a device that still holds a seat.
+- Removing an employee is blocked only by a device that still holds a seat (replaced by 0003).
 - `auth_enrollment_token` returns `used` and `expired`; `company_by_stripe_customer()` finds a
   webhook's company.
 - Staff helpers that return counts or delete only what they must: `company_seat_counts()`,
   `delete_unused_enrollment_tokens()`. Both refuse outside `staff` or `system` scope.
 - `cron_ensure_month_partitions()` and `cron_drop_old_partitions()` run partition upkeep as the
   owner, only in `system` scope.
+
+## Added by 0003_device_binding.sql
+
+The device binding model (D48):
+
+- Trigger refusing `UPDATE devices SET employee_id`: a binding's employee is fixed for its life.
+  There is no reassign route.
+- `devices_policy_bump` and its trigger are dropped; `devices.policy_version` no longer changes.
+- `auth_device()` also returns `released_at`, so the upload routes can accept a released key for
+  7 days after release (D45).
+- `tamper_events.event_type` adds `duplicate_device_id`, written by the backend when a same-binding
+  re-enroll arrives while the previous key heartbeated in the last 15 minutes (D46).
+- Removing an employee is blocked while they have any binding with `released_at` NULL; a
+  deactivated binding counts again (replaces 0002's rule).
 
 ## Not modelled (on purpose)
 

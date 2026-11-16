@@ -22,7 +22,7 @@ Every calendar, timesheet and dashboard day SHALL run from local midnight to mid
 - **THEN** all of it counts on the day it started
 
 ### Requirement: The calendar returns one row per day
-<!-- source: PRD "Activity levels, productivity, calendar and timesheets" · D1 · Plan-v3.2 §4.4 -->
+<!-- source: PRD "Activity levels, productivity, calendar and timesheets" · D1 · Plan-v3.5 §4.4 -->
 `GET /v1/employees/:id/calendar?view=day|week|month&date=YYYY-MM-DD` SHALL return one row per day of that day, Monday-start week or calendar month, each with `date`, `tracked_seconds`, `activity_percent`, `productive_seconds`, `neutral_seconds`, `unproductive_seconds` and `paused`, computed as `usage-reports` computes them. Days outside retention MUST be omitted.
 
 #### Scenario: A month view
@@ -62,7 +62,7 @@ Every calendar, timesheet and dashboard day SHALL run from local midnight to mid
 - **THEN** Wednesday's `first_activity_at` and `last_activity_at` are `null` and its seconds 0
 
 ### Requirement: The timesheet is generated as a PDF
-<!-- source: PRD "Activity levels, productivity, calendar and timesheets" · Plan-v3.2 §4.4 -->
+<!-- source: PRD "Activity levels, productivity, calendar and timesheets" · Plan-v3.5 §4.4 -->
 `GET /v1/employees/:id/timesheet.pdf?week=YYYY-MM-DD` SHALL return `200` with `Content-Type: application/pdf` and a `Content-Disposition` file name holding the employee and week, generated on request from the same values as the JSON timesheet. The PDF MUST NOT be stored.
 
 #### Scenario: An admin downloads a timesheet

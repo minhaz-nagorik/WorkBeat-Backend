@@ -1,7 +1,8 @@
 ## Purpose
 
 `POST /v1/devices/enroll`: how an agent exchanges its single-use enrollment token for a device key,
-how the seat is taken at that moment, and how the same hardware reuses its row.
+how the seat is taken at that moment, and how an enrollment makes a new binding, keeps the live binding of the same employee, or is refused
+while the device ID is bound to another employee.
 
 ## ADDED Requirements
 
@@ -34,6 +35,18 @@ how the seat is taken at that moment, and how the same hardware reuses its row.
 - **THEN** the retry gets `403` with `code` `ENROLLMENT_TOKEN_EXHAUSTED` and the device key is not returned again
 - **AND** a new token for the same hardware re-enrolls the same row without taking a second seat
 
+### Requirement: Enrollment checks run in a fixed order
+<!-- source: D43 · D48 · Plan-v3.5 §5.3 -->
+`POST /v1/devices/enroll` SHALL check, in this order, and answer with the first that fails: the token (`404`/`403` token codes), the company's standing (`402`), the employee (`404 EMPLOYEE_NOT_FOUND`), the device ID's live binding (`409 DEVICE_ASSIGNED`), then the seat (`403 SEAT_LIMIT_EXCEEDED`).
+
+#### Scenario: A full company and a device bound to someone else
+- **WHEN** the company has no free seat and the device ID's live binding belongs to another employee
+- **THEN** the response is `409 DEVICE_ASSIGNED`, telling IT to release the device first
+
+#### Scenario: A suspended company and a device bound to someone else
+- **WHEN** the company is suspended and the device ID is bound to another employee
+- **THEN** the response is `402 LICENSE_SUSPENDED`
+
 ### Requirement: The company must be able to take a device
 <!-- source: D29 · D30 · D43 · B4 -->
 After the token check the API SHALL return `402 LICENSE_SUSPENDED` when the company is `suspended` and `402 LICENSE_EXPIRED` when it is `expired`. A device that would take a seat beyond `licenses.seat_limit` MUST be refused by the `devices_seat` trigger with `403 SEAT_LIMIT_EXCEEDED`. A refused enrollment MUST leave the token unused and write no device.
@@ -54,7 +67,7 @@ After the token check the API SHALL return `402 LICENSE_SUSPENDED` when the comp
 - **AND** the token keeps `used_at` NULL and works after the company is restored, until it expires
 
 ### Requirement: The device belongs to the token's employee
-<!-- source: D44 · B8 -->
+<!-- source: D47 · B8 -->
 The enrolled device's `employee_id` SHALL be the token's `employee_id`. A body `employee_id` that differs MUST return `422 VALIDATION_FAILED`. When the token's employee has been archived since, the API MUST return `404 EMPLOYEE_NOT_FOUND`.
 
 #### Scenario: A config file edited to another employee
@@ -70,13 +83,13 @@ The enrolled device's `employee_id` SHALL be the token's `employee_id`. A body `
 - **THEN** the response is `404` with `code` `EMPLOYEE_NOT_FOUND`
 - **AND** no device is written and the token keeps `used_at` NULL
 
-### Requirement: A new device gets a new row and key
-<!-- source: D3 · D44 · agent-contract.md "Payload fields" -->
-When the company has no device with the request's `hardware_id` and `released_at` NULL, the API SHALL insert a `devices` row with the request's identity fields, the token's employee, `enrollment_token_id` and a new random device key stored only as `key_hash`, set the token's `used_at` in the same transaction, and return `201` with `device_id` and `device_key`.
+### Requirement: An enrollment with no live binding makes a new binding
+<!-- source: D3 · D44 · D48 · Plan-v3.5 §4.4 "Device binding" · Plan-v3.5 §5.3 · agent-contract.md "Payload fields" -->
+When the company has no device with the request's `hardware_id` and `released_at` NULL (no live binding), the API SHALL insert a `devices` row (a new binding) with the request's identity fields, the token's employee, `enrollment_token_id` and a new random device key stored only as `key_hash`, take a seat, set the token's `used_at` in the same transaction, and return `201` with `device_id`, `device_key`, `outcome` `new_binding` and `notice_required` true.
 
 #### Scenario: First install
 - **WHEN** a Mac enrolls with a valid token and a new `hardware_id`
-- **THEN** the response is `201` with `device_id` and `device_key`
+- **THEN** the response is `201` with `device_id`, `device_key`, `outcome` `new_binding` and `notice_required` true
 - **AND** the company's seats used rises by one and the token's `used_at` is set
 
 #### Scenario: The same token twice at once
@@ -88,33 +101,59 @@ When the company has no device with the request's `hardware_id` and `released_at
 - **THEN** a new row is written in company A
 - **AND** company B's row, key and seat are unchanged
 
-### Requirement: The same hardware reuses its row
-<!-- source: D2 · D43 · Plan-v3.2 §5.3 "Re-enrollment and seats" -->
-When the company has a device with the same `hardware_id` and `released_at` NULL, the API SHALL update that row: new `key_hash` and `key_issued_at` (the old key stops working), `employee_id` from the token, identity fields from the request, `deactivated_at` cleared. A row that held a seat MUST keep it without counting twice; a deactivated row MUST take a seat again.
+#### Scenario: A reinstall produced a new device ID
+- **WHEN** an employee's Mac is reinstalled and the agent enrolls with a `hardware_id` that has no live binding
+- **THEN** the response is `201` with `outcome` `new_binding` and a second seat is taken
+- **AND** the old binding keeps its seat until it is released or deactivated
+
+### Requirement: An enrollment for the live binding's employee keeps the binding
+<!-- source: D2 · D43 · D46 · D48 · Plan-v3.5 §5.3 "Re-enrollment and seats" -->
+When the company has a live binding with the request's `hardware_id` and the token's `employee_id`, the API SHALL update that row: new `key_hash` and `key_issued_at` (the old key stops working), identity fields from the request, `deactivated_at` cleared, and return `201` with the same `device_id`, `outcome` `same_binding` and `notice_required` false. A row that held a seat MUST keep it without counting twice; a deactivated row MUST take a seat again.
 
 #### Scenario: A reinstall
-- **WHEN** an enrolled Mac is reinstalled and enrolls with a new token
-- **THEN** the response carries the same `device_id` and a new `device_key`
+- **WHEN** an enrolled Mac is reinstalled and enrolls for the same employee with a new token
+- **THEN** the response carries the same `device_id`, a new `device_key`, `outcome` `same_binding` and `notice_required` false
 - **AND** the seat count is unchanged and the old key gets `401 DEVICE_REVOKED`
 
 #### Scenario: A deactivated Mac at a full company
-- **WHEN** a deactivated Mac re-enrolls while every seat is used
+- **WHEN** a deactivated Mac re-enrolls for the same employee while every seat is used
 - **THEN** the response is `403` with `code` `SEAT_LIMIT_EXCEEDED`
 - **AND** the row stays deactivated and the token keeps `used_at` NULL
 
 #### Scenario: The same hardware enrolls twice at once
-- **WHEN** two enroll requests with different valid tokens and the same `hardware_id` run concurrently and no row exists yet
+- **WHEN** two enroll requests with different valid tokens for the same employee and the same `hardware_id` run concurrently and no row exists yet
 - **THEN** both get `201` with the same `device_id`, one row exists, and it holds one seat
 - **AND** only the key of the request that committed last authenticates, and both tokens have `used_at` set
 
-#### Scenario: Reinstalled for another employee
-- **WHEN** an enrolled Mac re-enrolls with a token issued for a different employee
-- **THEN** the row's `employee_id` is the new employee and its `policy_version` rises
-- **AND** records stored before keep the previous `employee_id`
+### Requirement: An enrollment for another employee while the binding is live is refused
+<!-- source: D48 · D47 · Plan-v3.5 §5.3 step 6 · Plan-v3.5 §4.4 "Device binding" -->
+When the company has a live binding with the request's `hardware_id` whose `employee_id` is not the token's, the API SHALL return `409 DEVICE_ASSIGNED`. It MUST write and change no `devices` row, MUST leave the old key working and MUST leave the token's `used_at` NULL.
 
-### Requirement: A released device enrolls as a new device
-<!-- source: D38 · Plan-v3.2 §5.3 -->
-A device whose `hardware_id` matches only rows with `released_at` set SHALL be enrolled as a new row with a new `device_id`, taking a seat. The released row MUST stay unchanged.
+#### Scenario: Setup for a new employee before the release
+- **WHEN** a Mac bound to employee A enrolls with a token issued for employee B
+- **THEN** the response is `409` with `code` `DEVICE_ASSIGNED`
+- **AND** the row still names employee A, A's key still authenticates and B's token keeps `used_at` NULL
+
+#### Scenario: The same device after its release
+- **WHEN** the Mac bound to employee A is released and then enrolls with a token for employee B
+- **THEN** the response is `201` with `outcome` `new_binding` for employee B
+
+### Requirement: A re-enrollment while the old key is live raises a duplicate alert
+<!-- source: D46 · D2 · D48 · Plan-v3.5 §4.4 "Duplicate device ID alert" -->
+When an enrollment keeps a binding whose replaced key had a heartbeat in the last 15 minutes, the API SHALL still enroll as above and MUST insert one server-made `tamper_events` row with `event_type` `duplicate_device_id` for that device, handed to `alert-emails` like any unresolved event. Only the backend raises this type.
+
+#### Scenario: Two machines report one device ID
+- **WHEN** a Mac whose current key sent a heartbeat 5 minutes ago re-enrolls for the same employee
+- **THEN** the response is `201` with `outcome` `same_binding`
+- **AND** one unresolved `duplicate_device_id` event exists for that device
+
+#### Scenario: A reinstall after a quiet hour
+- **WHEN** a Mac whose last heartbeat was 40 minutes ago re-enrolls for the same employee
+- **THEN** no `duplicate_device_id` event is written
+
+### Requirement: A released device enrolls as a new binding
+<!-- source: D38 · D48 · Plan-v3.5 §5.3 · Plan-v3.5 §5.3 "Re-enrollment and seats" -->
+A device whose `hardware_id` matches only rows with `released_at` set SHALL be enrolled as a new binding: a new row with a new `device_id` for the token's employee, taking a seat, with `outcome` `new_binding`. The released row MUST stay unchanged.
 
 #### Scenario: A released Mac comes back
 - **WHEN** a released Mac enrolls with a fresh token from a new Downloader run
@@ -122,8 +161,8 @@ A device whose `hardware_id` matches only rows with `released_at` set SHALL be e
 - **AND** the released row keeps its `released_at`
 
 #### Scenario: A returned Mac is reinstalled again
-- **WHEN** hardware has one released row and one later active row, and enrolls once more
-- **THEN** the active row is reused and the released row is untouched
+- **WHEN** hardware has one released row and one later live row, and enrolls once more for the live row's employee
+- **THEN** the live row is kept and the released row is untouched
 
 ### Requirement: A malformed enroll request writes nothing
 <!-- source: B9 · D40 · agent-contract.md "Payload fields" -->

@@ -6,7 +6,7 @@ is accepted, and how a company admin changes a role or removes a user.
 ## ADDED Requirements
 
 ### Requirement: A company admin invites a colleague
-<!-- source: Plan-v3.2 §4.4 "User invitations", §4.5 "Settings" · PRD "Users and roles" -->
+<!-- source: Plan-v3.5 §4.4 "User invitations", §4.5 "Settings" · PRD "Users and roles" -->
 `POST /v1/team/invitations` with `email` and `role` (`company_admin`, `manager` or `it_admin`) SHALL be allowed to `company_admin` only. It MUST insert an `invitations` row with the caller's company, `invited_by` = the caller, a random token stored only as `token_hash` and `expires_at` from `packages/shared`, then email the token link through Resend.
 
 #### Scenario: An admin invites an IT admin
@@ -43,7 +43,7 @@ An invitation for an email that already has an open invitation in the company, o
 - **THEN** one gets `201` and the other `409 CONFLICT`, and one email is sent
 
 ### Requirement: The team list shows users and open invitations
-<!-- source: Plan-v3.2 §4.5 "Settings" -->
+<!-- source: Plan-v3.5 §4.5 "Settings" -->
 `GET /v1/team` SHALL return, for `company_admin` only, the company's `users` (`id`, `name`, `email`, `role`, `created_at`) without disabled ones, and its open invitations (`id`, `email`, `role`, `created_at`, `expires_at`). `POST /v1/team/invitations/:id/resend` MUST replace `token_hash`, renew `expires_at` and send a new email; `DELETE /v1/team/invitations/:id` MUST set `revoked_at`.
 
 #### Scenario: An admin cancels an invitation
@@ -64,7 +64,7 @@ An invitation for an email that already has an open invitation in the company, o
 - **THEN** it gets a new `token_hash` and `expires_at` and a new email is sent
 
 ### Requirement: An invitation is accepted once
-<!-- source: B3 · D41 · Plan-v3.2 §4.4 -->
+<!-- source: B3 · D41 · Plan-v3.5 §4.4 -->
 `POST /v1/invitations/lookup` with `token` SHALL return `email`, `role` and the company `name`. `POST /v1/invitations/accept` with `token`, `name` and `password` SHALL create the Supabase Auth user with `app_metadata` `{ role, company_id }`, insert the `users` row and set `accepted_at`, in one transaction. Both resolve the token only through `auth_invitation`.
 
 #### Scenario: A manager accepts
@@ -102,7 +102,7 @@ An invitation for an email that already has an open invitation in the company, o
 - **THEN** the user is created and can read the company's status
 
 ### Requirement: A company admin changes roles and removes users
-<!-- source: Plan-v3.2 §4.5 "Settings" · PRD "Permission matrix" -->
+<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Permission matrix" -->
 `PATCH /v1/team/users/:id` with `role` and `DELETE /v1/team/users/:id` SHALL be allowed to `company_admin` only, update `app_metadata` with the `users` row, and on removal set `disabled_at` and end the user's sessions. A change that would leave the company with no enabled `company_admin` MUST answer `409 CONFLICT`. A user who stops being a manager MUST have their employees' `manager_user_id` set to NULL.
 
 #### Scenario: The last admin removes themselves
@@ -135,7 +135,7 @@ An invitation for an email that already has an open invitation in the company, o
 - **THEN** the response is `422 VALIDATION_FAILED`
 
 ### Requirement: Only open invitations are resent or revoked
-<!-- source: Plan-v3.2 §4.4 "User invitations" · data-model.md "invitations" -->
+<!-- source: Plan-v3.5 §4.4 "User invitations" · data-model.md "invitations" -->
 Resending an accepted or revoked invitation SHALL answer `409 CONFLICT` and change nothing. Revoking an already revoked invitation MUST return `204` and keep the first `revoked_at`; revoking an accepted one MUST answer `409 CONFLICT`. An acceptance and a revocation of one invitation MUST be serialised so only one of them takes effect.
 
 #### Scenario: Resend after acceptance
@@ -147,7 +147,7 @@ Resending an accepted or revoked invitation SHALL answer `409 CONFLICT` and chan
 - **THEN** either the user exists and the revocation answers `409 CONFLICT`, or the acceptance answers `410 INVITATION_EXPIRED` and no user exists
 
 ### Requirement: A failed acceptance leaves no account
-<!-- source: B3 · D41 · Plan-v3.2 §4.4 -->
+<!-- source: B3 · D41 · Plan-v3.5 §4.4 -->
 When the Supabase Auth user is created but the `users` row or `accepted_at` cannot be written, the API SHALL delete that Auth user before answering `500 INTERNAL`, and the invitation MUST stay open so the same link can be used again. A password the Auth service refuses MUST answer `422 VALIDATION_FAILED` and create nothing.
 
 #### Scenario: The database write fails after the Auth user exists

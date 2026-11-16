@@ -40,7 +40,7 @@ Productivity rules are not in the policy: they are applied when a report is read
   their team's; IT gets `403`.
 - Turning a switch on or shortening the interval changes only the settings row and its version.
   `notice_version` does not move; the agent re-asks for the notice itself.
-- Reassigning a device changes whose settings it receives; past rows keep the old employee.
+- A device always receives its binding's employee's settings; that employee never changes (D48).
 
 ## Tier clamp (B11)
 
@@ -73,18 +73,20 @@ value, so the greatest of the three can never go down.
 |---|---|
 | `companies.policy_version` | Trigger on `notice_text`, `notice_version`, `idle_threshold_seconds`, `min_agent_version`, `uninstall_token_hash`; any insert, update or delete of `block_rules` or `sensitive_domains`; publish or withdraw of an `agent` release (every company) |
 | `employee_monitoring_settings.policy_version` | Every update of the row: settings `PUT`, tier clamp, and any pause insert, update or delete |
-| `devices.policy_version` | `employee_id` changing: reassign, or re-enroll with another employee's token |
+| `devices.policy_version` | Taken at insert; never bumped, since a binding's employee never changes (0003 drops `devices_policy_bump`) |
 
-### Worked example: reassignment
+### Worked example: a settings change
 
-| Moment | Company | Employee A | Employee B | Device | Device's version |
-|---|---|---|---|---|---|
-| Device on A | 105 | 230 | 90 | 40 | 230 |
-| Admin adds a block rule | 231 | 230 | 90 | 40 | 231 |
-| Device reassigned to B (B last changed long ago) | 231 | 230 | 90 | **232** | 232 |
-| Admin pauses B | 231 | 230 | 233 | 232 | 233 |
+| Moment | Company | Employee A | Device | Device's version |
+|---|---|---|---|---|
+| Device bound to A | 105 | 230 | 40 | 230 |
+| Admin turns off A's window titles | 105 | **231** | 40 | 231 |
+| Admin adds a block rule | **232** | 231 | 40 | 232 |
+| Admin pauses A | 232 | **233** | 40 | 233 |
 
-Without the device column, the reassignment would have dropped the version from 231 to 90.
+Each change takes the next sequence value, so the greatest always rises. With a counter per scope,
+the block rule would have moved the company from 105 to 106, still below A's 231, and the agent
+would never have seen it.
 
 ## ETag and 304
 

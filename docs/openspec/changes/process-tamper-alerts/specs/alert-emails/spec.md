@@ -6,7 +6,7 @@ what an alert email can and cannot contain.
 ## ADDED Requirements
 
 ### Requirement: Recipients follow the company's alert settings
-<!-- source: Plan-v3.2 §4.4 "Ingestion and device health" · PRD "Permission matrix" · data-model.md "companies" -->
+<!-- source: Plan-v3.5 §4.4 "Ingestion and device health" · PRD "Permission matrix" · data-model.md "companies" -->
 An event SHALL be emailed only when its `event_type` is in `companies.alert_email.types`, to the company's users whose role is in `alert_email.roles` and who have no `disabled_at`. A `manager` MUST be emailed only for devices whose employee is on their team, and no `super_admin` MUST ever be a recipient.
 
 #### Scenario: Managers are among the roles
@@ -30,7 +30,7 @@ An event SHALL be emailed only when its `event_type` is in `companies.alert_emai
 - **THEN** they receive no alert email
 
 ### Requirement: Instant delivery sends within one minute
-<!-- source: PRD "Success metrics" · Plan-v3.2 §4.4 -->
+<!-- source: PRD "Success metrics" · Plan-v3.5 §4.4 -->
 With `alert_email.delivery` `instant`, the API SHALL send one email per event through Resend within 1 minute of storing it, from `POST /v1/agents/tamper` or `/cron/heartbeat-check`, after the event is committed.
 
 #### Scenario: An offline device
@@ -42,7 +42,7 @@ With `alert_email.delivery` `instant`, the API SHALL send one email per event th
 - **THEN** the event is sent once, in the next daily digest
 
 ### Requirement: Digests are sent by a scheduled job
-<!-- source: Plan-v3.2 §3 "Scheduled jobs", §6.4 · B10 -->
+<!-- source: Plan-v3.5 §3 "Scheduled jobs", §6.4 · B10 -->
 `/cron/alert-digest`, run every hour (authentication owned by `cron-routes`, run-scheduled-jobs), SHALL send one email per recipient listing the unemailed events of the last hour for `hourly` companies, and of the last 24 hours at the run that falls at 09:00 in the company's `timezone` for `daily` companies.
 
 #### Scenario: Hourly digest
@@ -95,7 +95,7 @@ An alert email SHALL contain the event type, the device `hostname`, the employee
 - **THEN** its subject holds only the event type and the hostname
 
 ### Requirement: A missed digest run loses nothing
-<!-- source: Plan-v3.2 §3 "Scheduled jobs" · D13 · B19 -->
+<!-- source: Plan-v3.5 §3 "Scheduled jobs" · D13 · B19 -->
 Each digest SHALL list every unemailed event of the recipient's scope received within 24 hours for an `hourly` company and within 48 hours for a `daily` company, not only those of the last period, so a run the scheduler missed is caught up by the next one. Events MUST be listed once, newest first.
 
 #### Scenario: The scheduler skipped two runs

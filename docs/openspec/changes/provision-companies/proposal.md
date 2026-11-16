@@ -1,6 +1,6 @@
 ## Why
 
-A company exists only because Stripe says it paid or started a trial (Plan-v3.2 §4.4 "Company,
+A company exists only because Stripe says it paid or started a trial (Plan-v3.5 §4.4 "Company,
 subscription and licence", PRD "Purchase, license and install"). From that one event the API
 must create everything an install needs: the licence key that is the only install credential
 (D43, B6), the plan's seat limit, the defaults the policy serves, and the first company admin.

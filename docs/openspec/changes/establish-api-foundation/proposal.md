@@ -1,9 +1,9 @@
 ## Why
 
 Every later change needs the same skeleton: one response envelope the agents already branch on, a
-request transaction that fixes the tenant before the first query (Plan-v3.2 §6.1, B2), logs that
+request transaction that fixes the tenant before the first query (Plan-v3.5 §6.1, B2), logs that
 never hold a secret, and migrations that apply the same way everywhere. Getting the scope wrong is
-the one failure that leaks a company's data to another (Plan-v3.2 §8 "Tenant data leak").
+the one failure that leaks a company's data to another (Plan-v3.5 §8 "Tenant data leak").
 
 ## What Changes
 

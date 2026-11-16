@@ -6,7 +6,7 @@ route, where their role and company come from, and what an unauthenticated call 
 ## ADDED Requirements
 
 ### Requirement: Portal and staff routes need a verified Supabase token
-<!-- source: D41 · Plan-v3.2 §4.4 "Authentication and authorization" -->
+<!-- source: D41 · Plan-v3.5 §4.4 "Authentication and authorization" -->
 Every route outside the agent, Downloader, webhook, cron, invitation, host-resolution (`GET /v1/hosts/resolve`) and health routes SHALL require `Authorization: Bearer <Supabase JWT>` whose signature, issuer and expiry the API verifies. A missing, malformed, expired or forged token MUST get `401 UNAUTHENTICATED` and the route MUST NOT run.
 
 #### Scenario: No token
@@ -31,7 +31,7 @@ Every route outside the agent, Downloader, webhook, cron, invitation, host-resol
 - **THEN** the response is `401 UNAUTHENTICATED`
 
 ### Requirement: Role and company come only from app_metadata
-<!-- source: D41 · Plan-v3.2 §4.4, §6.1 -->
+<!-- source: D41 · Plan-v3.5 §4.4, §6.1 -->
 The API SHALL read the caller's `role` and `company_id` only from the token's `app_metadata`, which only the API writes. It MUST ignore `user_metadata` and any role or company in the request. A `super_admin` MUST have no `company_id`; every other role MUST have one.
 
 #### Scenario: A user edits their own metadata
@@ -71,7 +71,7 @@ The API SHALL load the `users` row with the token's subject. When no row exists,
 - **THEN** the response is `200` with `company.status` `suspended`
 
 ### Requirement: The request scope follows the authenticated user
-<!-- source: B2 · Plan-v3.2 §6.1 -->
+<!-- source: B2 · Plan-v3.5 §6.1 -->
 A company user's request SHALL run in `tenant` scope with `app.company_id` from their `users` row. A `super_admin` request SHALL run in `staff` scope with no `app.company_id`.
 
 #### Scenario: A company admin reads data
@@ -79,7 +79,7 @@ A company user's request SHALL run in `tenant` scope with `app.company_id` from 
 - **THEN** the transaction runs with `app.scope` = `tenant` and `app.company_id` = A
 
 ### Requirement: The signed-in user can read who they are
-<!-- source: Plan-v3.2 §4.5 · D41 -->
+<!-- source: Plan-v3.5 §4.5 · D41 -->
 `GET /v1/me` SHALL return the caller's `id`, `email`, `name`, `role` and, for a company user, `company` with `id`, `name`, `slug` and `status`; for a `super_admin`, `company` MUST be `null`. All four roles SHALL be allowed.
 
 #### Scenario: A staff member signs in

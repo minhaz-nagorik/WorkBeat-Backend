@@ -6,7 +6,7 @@ email recipients — and the onboarding checklist that tracks the first install.
 ## ADDED Requirements
 
 ### Requirement: A company admin reads and edits company settings
-<!-- source: Plan-v3.2 §4.5 "Settings" · PRD "Permission matrix" -->
+<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Permission matrix" -->
 `GET /v1/company/settings` and `PATCH /v1/company/settings` SHALL be allowed to `company_admin` only and read or write the caller's `companies` row: `name` (1–100 characters), `data_retention_days`, `idle_threshold_seconds` and `alert_email`. `slug` MUST be returned and MUST NOT be writable. Other roles MUST get `403 FORBIDDEN`.
 
 #### Scenario: An admin renames the company
@@ -42,7 +42,7 @@ email recipients — and the onboarding checklist that tracks the first install.
 - **THEN** the response is `200` at once and no activity row is deleted by the request
 
 ### Requirement: The idle threshold reaches every device
-<!-- source: Plan-v3.2 §4.4 "Policy versioning" · agent-contract.md "Policy response" -->
+<!-- source: Plan-v3.5 §4.4 "Policy versioning" · agent-contract.md "Policy response" -->
 `idle_threshold_seconds` SHALL accept 60 to 3600 and MUST refuse other values with `422 VALIDATION_FAILED`. A change MUST raise the company's `policy_version` so devices fetch it (`serve-agent-policy`).
 
 #### Scenario: The threshold changes
@@ -58,7 +58,7 @@ email recipients — and the onboarding checklist that tracks the first install.
 - **THEN** `companies.policy_version` is unchanged
 
 ### Requirement: Alert email recipients are configurable
-<!-- source: Plan-v3.2 §4.4 "Tamper event processing" · data-model.md "companies" -->
+<!-- source: Plan-v3.5 §4.4 "Tamper event processing" · data-model.md "companies" -->
 `alert_email` SHALL be `{ roles, types, delivery }` where `roles` is a subset of `company_admin`, `manager` and `it_admin`, `types` a subset of the tamper `event_type` values including `offline`, and `delivery` one of `instant`, `hourly`, `daily`. Any other value MUST get `422 VALIDATION_FAILED`.
 
 #### Scenario: Daily digest for IT
@@ -74,7 +74,7 @@ email recipients — and the onboarding checklist that tracks the first install.
 - **THEN** the response is `422 VALIDATION_FAILED`
 
 ### Requirement: The setup checklist tracks the first install
-<!-- source: Plan-v3.2 §4.5 "Onboarding" -->
+<!-- source: Plan-v3.5 §4.5 "Onboarding" -->
 `GET /v1/company/setup` SHALL return, to `company_admin` and `it_admin`, the steps `download_downloader`, `copy_license_key`, `install_first_device` and `first_device_seen` with `done` for each. The first two MUST come from `setup_completed_steps`, marked by `POST /v1/company/setup/steps` with `step`; `install_first_device` MUST be true once the company has a device row and `first_device_seen` once one has `last_heartbeat_at`.
 
 #### Scenario: IT marks the download step

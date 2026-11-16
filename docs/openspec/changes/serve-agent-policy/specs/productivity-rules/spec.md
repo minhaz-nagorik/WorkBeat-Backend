@@ -51,7 +51,7 @@ A productivity-rule change SHALL NOT change any `policy_version` or the policy b
 - **AND** no `app_sessions` or `url_visits` row is written
 
 ### Requirement: Productivity-rule IDs stay inside the company
-<!-- source: B2 · Plan-v3.2 §6.1 -->
+<!-- source: B2 · Plan-v3.5 §6.1 -->
 `PATCH` and `DELETE /v1/productivity-rules/:id` on an ID that is not a rule of the caller's company, including one already deleted, SHALL return `404 NOT_FOUND` and change nothing.
 
 #### Scenario: Another company's rule

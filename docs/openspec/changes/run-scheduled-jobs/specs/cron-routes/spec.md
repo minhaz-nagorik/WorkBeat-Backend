@@ -6,7 +6,7 @@ one run per job at a time, safe to repeat, each run logged.
 ## ADDED Requirements
 
 ### Requirement: Scheduled work runs only through cron routes
-<!-- source: B10 · Plan-v3.2 §3 "Scheduled jobs" · Plan-v3.2 §6.4 -->
+<!-- source: B10 · Plan-v3.5 §3 "Scheduled jobs" · Plan-v3.5 §6.4 -->
 Every scheduled job SHALL be a `POST /cron/<job>` route called by Supabase pg_cron or Cloud Scheduler: `heartbeat-check` and `domain-verify` every 5 minutes, `token-expiry` hourly, `cleanup` daily at 02:00 UTC, and the digest jobs of `alert-emails`. The API MUST NOT run a job from an in-process timer.
 
 #### Scenario: Three API instances are running
@@ -18,7 +18,7 @@ Every scheduled job SHALL be a `POST /cron/<job>` route called by Supabase pg_cr
 - **THEN** the response is `404` with `code` `NOT_FOUND` and nothing runs
 
 ### Requirement: Cron routes need the shared secret
-<!-- source: B10 · PRD "Security controls" · Plan-v3.2 §5.3 "Secret" -->
+<!-- source: B10 · PRD "Security controls" · Plan-v3.5 §5.3 "Secret" -->
 A cron route SHALL accept only an `X-Cron-Secret` header equal to the configured secret, compared in constant time. A missing or wrong secret MUST get `401 UNAUTHENTICATED` and run nothing; a user JWT, device key or licence key MUST NOT be accepted. The secret MUST NOT be logged.
 
 #### Scenario: A company admin calls a cron route
@@ -51,7 +51,7 @@ A cron route SHALL set `app.scope` = `system` and no `app.company_id` before its
 - **THEN** that transaction sets `app.scope` = `system` before its first query and carries no `app.company_id`
 
 ### Requirement: A job runs once at a time and is safe to repeat
-<!-- source: Plan-v3.2 §6.4 · D13 -->
+<!-- source: Plan-v3.5 §6.4 · D13 -->
 Every transaction of a job run SHALL first take `pg_try_advisory_xact_lock` for that job. When the lock is held the run MUST stop and return `200` with `skipped` = `true`. Running a job twice in a row MUST leave the same state as running it once.
 
 #### Scenario: The scheduler retries during a run
@@ -75,7 +75,7 @@ Every transaction of a job run SHALL first take `pg_try_advisory_xact_lock` for 
 - **THEN** the new call answers `skipped` = `true` and the job runs again at the following call
 
 ### Requirement: Each run is reported and logged
-<!-- source: Plan-v3.2 §3 · establish-api-foundation `api-logging` -->
+<!-- source: Plan-v3.5 §3 · establish-api-foundation `api-logging` -->
 A cron route SHALL return `200` with `{ data: { job, started_at, duration_ms, rows_affected, skipped, more } }` and write one log line with the job name, duration, rows affected per table and whether it was skipped. A failed run MUST return `500 INTERNAL` and log the job name and error class, never row values.
 
 #### Scenario: A cleanup run finishes
@@ -87,7 +87,7 @@ A cron route SHALL return `200` with `{ data: { job, started_at, duration_ms, ro
 - **THEN** the response has `skipped` = `true`, `rows_affected` empty and `more` = `false`, and one log line says it was skipped
 
 ### Requirement: Expired enrollment tokens are deleted hourly
-<!-- source: D43 · Plan-v3.2 §6.4 · data-model.md "enrollment_tokens" -->
+<!-- source: D43 · Plan-v3.5 §6.4 · data-model.md "enrollment_tokens" -->
 `POST /cron/token-expiry` SHALL delete every `enrollment_tokens` row with `used_at` NULL and `expires_at` before now. A used token MUST NOT be deleted, because `devices.enrollment_token_id` references it.
 
 #### Scenario: An unused token is 25 hours old

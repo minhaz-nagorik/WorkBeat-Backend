@@ -2,9 +2,9 @@
 
 After signup a company admin tunes the company: its name, how long data is kept (B13, PRD
 "Retention and suspension"), who gets alert emails, the idle threshold every device uses, and the
-onboarding checklist that walks IT to the first device (Plan-v3.2 §4.5 "Onboarding",
+onboarding checklist that walks IT to the first device (Plan-v3.5 §4.5 "Onboarding",
 "Settings"). A company may also open the dashboard at its own domain, proven by a DNS TXT record
-and checked every five minutes (Plan-v3.2 §4.4, §6.4, PRD "Tenants and custom domains").
+and checked every five minutes (Plan-v3.5 §4.4, §6.4, PRD "Tenants and custom domains").
 
 ## What Changes
 

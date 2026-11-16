@@ -1,7 +1,8 @@
 # Device lifecycle and seats
 
 A device's life as the backend sees it, from the Downloader's first call to release, and how the
-seats it holds are counted. The agent's view is in each agent repository's
+seats it holds are counted. Each `devices` row is one **binding**: the device ID the agent
+produces, the company's licence and one employee, fixed for the row's life (D48). The agent's view is in each agent repository's
 `docs/domain/device-lifecycle.md`. Requirements:
 [`license-validation`](../openspec/changes/enroll-devices/specs/license-validation/spec.md),
 [`device-enrollment`](../openspec/changes/enroll-devices/specs/device-enrollment/spec.md),
@@ -12,16 +13,16 @@ seats it holds are counted. The agent's view is in each agent repository's
 ```mermaid
 stateDiagram-v2
     [*] --> validated: /license/validate step 1, then step 2 (token)
-    validated --> enrolled: POST /devices/enroll (new hardware_id, seat taken)
+    validated --> enrolled: POST /devices/enroll (no live binding, seat taken)
+    validated --> [*]: 409 DEVICE_ASSIGNED (live binding for another employee, nothing written)
     validated --> [*]: token expires (24 h) or reissue deletes it
-    enrolled --> enrolled: reassign (policy_version up)
-    enrolled --> enrolled: re-enroll same hardware (new key, same row, same seat)
+    enrolled --> enrolled: re-enroll, same employee (new key, same row, same seat)
     enrolled --> deactivated: portal or uninstaller deactivate (seat freed)
-    deactivated --> enrolled: re-enroll same hardware (seat taken again)
+    deactivated --> enrolled: re-enroll, same employee (seat taken again)
     enrolled --> released: portal release (seat freed)
     deactivated --> released: portal release
     released --> [*]: row is final
-    note right of released: same hardware enrolls again as a NEW row (D38)
+    note right of released: same device ID enrolls again as a NEW binding (D38, D48)
     note left of validated: no devices row yet, nothing reserved (B8)
 ```
 
@@ -31,16 +32,19 @@ stateDiagram-v2
 |---|---|---|---|
 | Validate, step 1 | `POST /v1/license/validate`, `X-License-Key`, no `employee_id` | Nothing. Returns `company_name`, non-archived `employees[]` | Checked, not reserved |
 | Validate, step 2 | Same, with `employee_id`, `os`, `arch` | One `enrollment_tokens` row (hash, employee, 24 h). Returns token, `package_url`, `package_sha256` | Checked, not reserved |
-| Enroll, new hardware | `POST /v1/devices/enroll`, `Bearer <token>` | New `devices` row for the token's employee, `key_hash`, token `used_at`. `201` with `device_id`, `device_key` | Taken by trigger `devices_seat` |
-| Re-enroll, same hardware (D2) | Same route, a known `hardware_id` with `released_at` NULL | Same row: new `key_hash`, employee from token, identity refreshed, `deactivated_at` cleared | Kept if held; taken again if deactivated |
-| Reassign | `POST /v1/devices/:id/reassign`, `company_admin` / `it_admin` | `employee_id`; trigger raises `devices.policy_version` (B5) | Unchanged |
+| Enroll, new binding | `POST /v1/devices/enroll`, `Bearer <token>`; no live binding for the `hardware_id` | New `devices` row for the token's employee, `key_hash`, token `used_at`. `201` with `device_id`, `device_key`, `outcome: new_binding`, `notice_required: true` | Taken by trigger `devices_seat` |
+| Re-enroll, same binding (D2) | Same route; live binding for the token's employee | Same row: new `key_hash`, identity refreshed, `deactivated_at` cleared. `outcome: same_binding`, `notice_required: false`. A previous key that heartbeated in the last 15 min also raises `duplicate_device_id` (D46) | Kept if held; taken again if deactivated |
+| Enroll, other employee | Same route; live binding for another employee | Nothing; token stays unused. `409 DEVICE_ASSIGNED` (D48) | Unchanged |
 | Deactivate, portal | `POST /v1/devices/:id/deactivate`, user token | `deactivated_at`, `key_hash` NULL (D6) | Freed |
 | Deactivate, uninstaller | Same route, `X-Device-Key` of that device | As above; `204` (D19) | Freed, even when suspended or expired (B17) |
-| Release | `POST /v1/devices/:id/release`, `company_admin` / `it_admin` | `released_at`; `key_hash` kept so the agent can be told (D38) | Freed |
-| After release | Enroll with a fresh token | New row, new `device_id`; the released row is left as it was | Taken |
+| Release | `POST /v1/devices/:id/release`, `company_admin` / `it_admin` | `released_at`; `key_hash` kept so the agent can be told, and accepted on the upload routes for 7 days (D38, D45) | Freed |
+| After release | WorkBeat Setup for any employee, fresh token | New row (new binding), new `device_id`; the released row is left as it was | Taken |
 
 The unique index `devices_hardware (company_id, hardware_id) WHERE released_at IS NULL` is what
-makes re-enrollment reuse the row and makes a released device's return a new row.
+makes re-enrollment reuse the row and makes a released device's return a new row. A trigger
+refuses any change to `devices.employee_id` (0003), so there is no reassign: a device goes to
+someone else only by release and a new WorkBeat Setup, and every record stays with the binding
+whose key uploaded it.
 
 ## Seats
 
@@ -53,9 +57,9 @@ makes re-enrollment reuse the row and makes a released device's return a new row
   enrollment gets `403 SEAT_LIMIT_EXCEEDED` and its token stays unused.
 - **Freed by deactivate or release** at once; the same key can install another device next.
 - **Belong to the company, not the key.** A reissue changes only the key.
-- **Employee required (D44).** Every token, and so every device, names a non-archived employee.
-  There is no unassigned queue. An employee with a seat-holding device cannot be archived
-  (`409 EMPLOYEE_HAS_DEVICES`).
+- **Employee required (D47).** Every token, and so every binding, names a non-archived employee.
+  There is no unassigned queue. An employee with a binding that is not released, deactivated or
+  not, cannot be archived (`409 EMPLOYEE_HAS_DEVICES`, 0003).
 
 ### Worked example: reissue at 50/50
 
@@ -85,8 +89,9 @@ makes re-enrollment reuse the row and makes a released device's return a new row
 | enroll | `422 VALIDATION_FAILED` | Body `employee_id` differs from the token's |
 | enroll | `404 EMPLOYEE_NOT_FOUND` | Token's employee archived since validation |
 | enroll | `403 SEAT_LIMIT_EXCEEDED` | Trigger refused the seat (new row or deactivated row) |
+| enroll | `409 DEVICE_ASSIGNED` | The `hardware_id` has a live binding for another employee; release it first (D48) |
 | agent routes, deactivate | `401 DEVICE_REVOKED` | Missing, unknown, replaced (re-enrolled) or deactivated key |
-| agent routes, deactivate | `401 DEVICE_RELEASED` | Key of a released device; nothing is written |
+| agent routes, deactivate | `401 DEVICE_RELEASED` + `released_at`, `upload_until` | Key of a released device; nothing is written. The upload routes accept it for 7 days after `released_at` and store under the released binding (D45) |
 | agent routes | `402 COMPANY_SUSPENDED` | Company suspended; heartbeat still recorded |
 | agent routes | `402 LICENSE_EXPIRED` + `blocking_ends_at` | Company expired; heartbeat still recorded |
 | deactivate (device key) | `403 FORBIDDEN` | `:id` is not the key's own device |
@@ -105,6 +110,6 @@ Order on agent routes: key lookup (`auth_device`) → released → company statu
   `0002_spec_gaps.sql` already returns `used` and `expired`.
 - **`devices.enrollment_token_id`** is `NOT NULL` in data-model.md but nullable (`ON DELETE SET
   NULL`) in `0001_init.sql`.
-- **Archive rule wording.** data-model.md and the manage-employees proposal say "an unreleased
-  device" blocks archive; `employee-directory` and `0002` say a device that is neither released
-  nor deactivated.
+- **Archive rule wording.** `0003` counts every binding with `released_at` NULL, deactivated or
+  not, replacing `0002`'s rule that skipped deactivated devices. Specs written against `0002` need
+  the same change.

@@ -1,9 +1,9 @@
 ## Context
 
-The agent repositories were written before Plan v3.2 D43 and D44. They still describe portal-made
+The agent repositories were written before Plan v3.5 D43 to D48. They still describe portal-made
 enrollment tokens (`wbe_…` entered in the Downloader, `ENROLLMENT_TOKEN_REVOKED`), an optional
 `employee_id` with an *Unassigned* option and an unassigned queue, and a `/license/validate` that
-returns a token in one call. Plan v3.2 is the source of truth (config.yaml "Source authority"); the
+returns a token in one call. Plan v3.5 is the source of truth (config.yaml "Source authority"); the
 backend follows it and the agent repositories are behind.
 
 ## Decisions
@@ -11,12 +11,12 @@ backend follows it and the agent repositories are behind.
 ### 1. The employee is required and comes from the token (amends Mac `enroll-device` "Enrollment sends a stable device identity", `downloader` "IT confirms the company and picks the employee", "A silent mode supports scripted installs")
 
 The enrollment token is issued only for an `employee_id` (B8) and stores it
-(`enrollment_tokens.employee_id NOT NULL`). `POST /v1/devices/enroll` assigns the device to the
-token's employee. An `employee_id` in the body is accepted only when it equals the token's;
+(`enrollment_tokens.employee_id NOT NULL`). `POST /v1/devices/enroll` binds the device to the
+token's employee for the binding's life (D48). An `employee_id` in the body is accepted only when it equals the token's;
 otherwise `422 VALIDATION_FAILED`. There is no unassigned queue and no *Unassigned* path: a
 Downloader that offers one gets no token without an `employee_id`.
 
-**Why the newer rule wins:** D44 — every device is installed for a picked employee, the seat is
+**Why the newer rule wins:** D47 — every device is installed for a picked employee, the seat is
 filled at enrollment for that employee. Taking the employee from the token means a tampered
 config file cannot move a device to someone else.
 
@@ -36,7 +36,7 @@ picker (D42). Step 2 (`employee_id`) also returns the token. Both check suspensi
 free seat, and neither holds a seat: the seat is taken by `devices_seat` at enrollment. Extra
 fields the Downloader sends today (`hostname`, `os_version`, `hardware_id`) are ignored.
 
-**Why:** B8, D44 and Plan-v3.2 §5.3 step 6 — "checking the key in the Downloader reserves nothing,
+**Why:** B8, D47 and Plan-v3.5 §5.3 step 6 — "checking the key in the Downloader reserves nothing,
 and a failed install takes no seat". Two devices may therefore both pass validation for the last
 seat; the second enrollment gets `403 SEAT_LIMIT_EXCEEDED`, which the agent already retries.
 

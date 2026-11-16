@@ -3,14 +3,14 @@
 **Status:** Accepted
 **Date:** 2026-11-15
 **Amends:** the agent repositories' portal-made enrollment tokens and single-call validation
-(see the enroll-devices design); Plan v3.2 D43 and D44 are newer and win.
+(see the enroll-devices design); Plan v3.5 D43 and D47 are newer and win.
 
 ## Context
 
-Before Plan v3.2, IT created enrollment tokens in the portal (name, expiry, use limit), the
+Before Plan v3.5, IT created enrollment tokens in the portal (name, expiry, use limit), the
 Downloader accepted a token or a key, and a device could enroll with no employee. D43 removes
 install tokens: IT installs every device with the company's licence key, and the Downloader
-exchanges it for a token only the agent sees. D44 makes the employee required: the Downloader will
+exchanges it for a token only the agent sees. D47 makes the employee required: the Downloader will
 not install until one is picked, and there is no unassigned queue. The portal must still show and
 copy the licence key and the uninstall token (prototype), while every other secret must be
 unrecoverable from a database read.
@@ -45,14 +45,14 @@ last seat, so the second learns of it only at enrollment (`403 SEAT_LIMIT_EXCEED
 | Option | Why not |
 |---|---|
 | Keep portal tokens beside the key | D43 removed them; two install credentials to revoke and support |
-| One-call validate returning a token | Cannot bind the token to an employee the user has not picked yet (D44) |
-| Optional employee with an unassigned queue | D44: every device has an employee; the seat is filled for that employee |
+| One-call validate returning a token | Cannot bind the token to an employee the user has not picked yet (D47) |
+| Optional employee with an unassigned queue | D47: every device has an employee; the seat is filled for that employee |
 | Licence key hash-only | The portal must show and copy it (B6) |
 | Licence key in plaintext | A database read would leak a working install credential |
 
 ## Links
 
-- Decisions: [B6, B8](../backend-decisions.md), D26, D43, D44, Plan-v3.2 §5.3, Q16.
+- Decisions: [B6, B8](../backend-decisions.md), D26, D43, D47, Plan-v3.5 §5.3, Q16.
 - Design: [enroll-devices design](../../openspec/changes/enroll-devices/design.md).
 - Specs: [license-validation](../../openspec/changes/enroll-devices/specs/license-validation/spec.md),
   [device-enrollment](../../openspec/changes/enroll-devices/specs/device-enrollment/spec.md),

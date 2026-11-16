@@ -2,15 +2,16 @@
 
 Tampering is only worth detecting if someone hears about it. The agents report five event types
 within 10 seconds, de-duplicated with a repeat count, and never drop one (D24); the backend raises
-`offline` itself (D24, Plan-v3.2 §6.4). The PRD wants a tamper event on the dashboard within a
+`offline` itself (D24, Plan-v3.5 §6.4) and, on a re-enrollment while the old key is live,
+`duplicate_device_id` (D46, Plan-v3.5 §4.4). The PRD wants a tamper event on the dashboard within a
 minute (PRD "Success metrics"), visible to the admin, IT and the employee's manager (PRD
-"Permission matrix"), and emailed to the roles the company picked (Plan-v3.2 §4.4 "Tamper event
+"Permission matrix"), and emailed to the roles the company picked (Plan-v3.5 §4.4 "Tamper event
 processing and alerting").
 
 ## What Changes
 
 - **`POST /v1/agents/tamper`** stores one event, idempotent on `id`, with a hostname snapshot; refuses
-  `offline` and unknown types with `422`. An unresolved event makes the device's status `tamper`.
+  `offline`, `duplicate_device_id` and unknown types with `422`. An unresolved event makes the device's status `tamper`.
 - **`GET /v1/alerts`** lists tamper and offline events for the admin and IT (all devices) and managers
   (their team's devices), filterable by type and state; **`POST /v1/alerts/:id/resolve`** closes one.
   Offline alerts close on the next heartbeat (receive-device-health).

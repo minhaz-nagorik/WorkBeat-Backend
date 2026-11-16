@@ -105,7 +105,7 @@ One catalog for all clients, owned by this repository (B9, `packages/shared`).
 | 400 | `WEBHOOK_SIGNATURE_INVALID` | Stripe | `Stripe-Signature` missing or wrong |
 | 401 | `UNAUTHENTICATED` | portal, staff, cron | Missing, malformed, expired or forged JWT; disabled or mismatched user; wrong `X-Cron-Secret` |
 | 401 | `DEVICE_REVOKED` | agent | Unknown, replaced or deactivated device key |
-| 401 | `DEVICE_RELEASED` | agent | Device released by its company |
+| 401 | `DEVICE_RELEASED` | agent | Device released by its company; body carries `released_at` and `upload_until`. The upload routes still accept the key for 7 days (D45) |
 | 402 | `COMPANY_SUSPENDED` | agent | Company suspended (device-key routes) |
 | 402 | `LICENSE_SUSPENDED` | Downloader, agent | Company suspended (validate, enroll) |
 | 402 | `LICENSE_EXPIRED` | Downloader, agent | Company expired; body carries `blocking_ends_at` |
@@ -117,10 +117,11 @@ One catalog for all clients, owned by this repository (B9, `packages/shared`).
 | 404 | `NOT_FOUND` | portal, staff, agent | Unknown ID, another company's ID, an employee outside a manager's team; unknown screenshot `id` at confirm; unresolvable host |
 | 404 | `LICENSE_NOT_FOUND` | Downloader | Unknown licence key, including one replaced by a reissue |
 | 404 | `ENROLLMENT_TOKEN_INVALID` | agent | Unknown token, including unused tokens deleted by a reissue or by `/cron/token-expiry` |
-| 404 | `EMPLOYEE_NOT_FOUND` | Downloader, agent, portal | Employee not active in the company (validate, enroll, reassign); employee out of reach on reports, calendar, timesheet |
+| 404 | `EMPLOYEE_NOT_FOUND` | Downloader, agent, portal | Employee not active in the company (validate, enroll); employee out of reach on reports, calendar, timesheet |
 | 404 | `INVITATION_INVALID` | portal | Invitation token matches nothing |
 | 409 | `CONFLICT` | portal, staff | Duplicate or state conflict (see each route) |
-| 409 | `EMPLOYEE_HAS_DEVICES` | portal | Employee still has a device neither released nor deactivated |
+| 409 | `DEVICE_ASSIGNED` | agent | Enroll: the device ID has a live binding for another employee; release it first (D48) |
+| 409 | `EMPLOYEE_HAS_DEVICES` | portal | Employee still has a binding that is not released (deactivated ones count) |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | agent | Same idempotency key or ID, different content |
 | 410 | `INVITATION_EXPIRED` | portal | Invitation accepted, revoked or past `expires_at` |
 | 413 | `PAYLOAD_TOO_LARGE` | all | Body over the route's limit; CSV import over its limit |

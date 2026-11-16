@@ -1,8 +1,8 @@
 ## Why
 
 The API runs on several instances, so an in-process timer would run every job once per instance
-(Plan-v3.2 §3 "Scheduled jobs"). All scheduled work is a `/cron/*` route called by the scheduler
-with a shared secret, in `system` scope (B10, Plan-v3.2 §6.4). Data must also leave on time: each
+(Plan-v3.5 §3 "Scheduled jobs"). All scheduled work is a `/cron/*` route called by the scheduler
+with a shared secret, in `system` scope (B10, Plan-v3.5 §6.4). Data must also leave on time: each
 company keeps activity and screenshots for its own `data_retention_days`, at most 365 (B13, PRD
 "Retention and suspension").
 

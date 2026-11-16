@@ -33,7 +33,7 @@ Every 5 minutes. Only the latest values are kept; there is no heartbeat history.
 | `400` / `422` | Nothing, not even `last_heartbeat_at` |
 
 Acknowledgements are append-only legal evidence (D25). A version above the company's is ignored
-without failing the heartbeat. A reassigned device's old rows keep the employee who acknowledged.
+without failing the heartbeat. Each row belongs to the binding that sent it; a new binding on the same device asks again.
 
 ## Derived status
 
@@ -47,7 +47,7 @@ Computed on every read, never stored. The first row that applies wins.
 | 4 | `offline` | `offline_since` set |
 | 5 | `online` | Otherwise |
 
-There is no `unassigned` status (D44).
+There is no `unassigned` status (D47).
 
 | Badge | When |
 |---|---|
@@ -126,4 +126,4 @@ cursor. An event is listed as soon as it commits; the portal polls.
   `0002` use the company `timezone`.
 - **Old unsent emails.** An instant email still failing after 24 hours is never sent and its
   `emailed_at` stays NULL; the spec does not say whether that is intended.
-- **`cron-routes`** lists the digest job but Plan v3.2 §6.4 does not; the design amends it.
+- **`cron-routes`** lists the digest job but Plan v3.5 §6.4 does not; the design amends it.

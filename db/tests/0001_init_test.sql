@@ -81,7 +81,7 @@ SELECT pg_temp.ok((SELECT count(*) FROM devices WHERE company_id = 'aaaaaaaa-000
 SELECT pg_temp.ok((SELECT count(*) FROM auth_license('keyA')) = 0 AND (SELECT count(*) FROM auth_license('keyA2')) = 1, 'old key refused, new key accepted');
 SELECT pg_temp.ok((SELECT released FROM auth_device('dk1')), 'released device key resolves as released (401 DEVICE_RELEASED)');
 
--- ---------------------------------------------------------------- every device has an employee (D44)
+-- ---------------------------------------------------------------- every device has an employee (D47)
 SELECT pg_temp.raises($$INSERT INTO devices (company_id, key_hash, hostname, os, os_version, arch, hardware_id, agent_version, deactivated_at)
   VALUES ('aaaaaaaa-0000-0000-0000-000000000001', NULL, 'h9', 'macos', '14', 'arm64', 'HW9', '1.0.0', now())$$,
   'employee_id', 'a device without an employee is refused');
@@ -97,10 +97,10 @@ ROLLBACK TO SAVEPOINT s1;
 CREATE TEMP TABLE v AS SELECT greatest(c.policy_version, s.policy_version, d.policy_version) AS before
   FROM devices d JOIN companies c ON c.id = d.company_id JOIN employee_monitoring_settings s ON s.employee_id = d.employee_id
  WHERE d.id = 'aaaaaaaa-0000-0000-0000-0000000000d2';
-UPDATE devices SET employee_id = 'aaaaaaaa-0000-0000-0000-0000000000e1' WHERE id = 'aaaaaaaa-0000-0000-0000-0000000000d2';
+UPDATE employee_monitoring_settings SET window_titles = false WHERE employee_id = 'aaaaaaaa-0000-0000-0000-0000000000e2';
 SELECT pg_temp.ok((SELECT greatest(c.policy_version, s.policy_version, d.policy_version)
   FROM devices d JOIN companies c ON c.id = d.company_id JOIN employee_monitoring_settings s ON s.employee_id = d.employee_id
- WHERE d.id = 'aaaaaaaa-0000-0000-0000-0000000000d2') > (SELECT before FROM v), 'reassigning a device raises its policy version');
+ WHERE d.id = 'aaaaaaaa-0000-0000-0000-0000000000d2') > (SELECT before FROM v), 'a settings change raises the device''s policy version');
 
 UPDATE v SET before = (SELECT policy_version FROM employee_monitoring_settings WHERE employee_id = 'aaaaaaaa-0000-0000-0000-0000000000e1');
 INSERT INTO monitoring_pauses (company_id, employee_id, starts_at, ends_at, reason, created_by) VALUES

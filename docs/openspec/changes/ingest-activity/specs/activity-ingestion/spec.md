@@ -6,7 +6,7 @@ keeps, and how it answers a repeat, a reused key and a malformed batch.
 ## ADDED Requirements
 
 ### Requirement: A batch is written once, in one transaction
-<!-- source: D13 · Plan-v3.2 §2.2, §4.4 "Ingestion and device health" · buffer-and-sync/activity-sync -->
+<!-- source: D13 · Plan-v3.5 §2.2, §4.4 "Ingestion and device health" · buffer-and-sync/activity-sync -->
 On the first sight of a `batch_id` for a device, the API SHALL insert the `ingest_batches` row and every accepted record in one transaction and return `200` with `batch_id`, the accepted count per array and `dropped_out_of_window`. Any failure MUST write nothing. `Idempotency-Key` MUST equal `batch_id`, or the request gets `400 VALIDATION_FAILED`.
 
 #### Scenario: The response is lost and the batch is resent
@@ -42,12 +42,16 @@ The API SHALL store the SHA-256 of each accepted batch body with its `ingest_bat
 - **AND** the other device's batch and counts are untouched
 
 ### Requirement: Records are stamped from the credential
-<!-- source: Plan-v3.2 §6.1 · D44 · B2 · data-model.md "Ingested data" -->
-Every stored record SHALL carry the device's `company_id`, `device_id` and current `employee_id` from the device key, never from the body, and the record's `batch_id` where its table has one. The agent's `session_user` MUST be stored as `os_user`, and Unix-millisecond times MUST be stored as `timestamptz`.
+<!-- source: Plan-v3.5 §6.1 · D44 · D48 · B2 · Plan-v3.5 §4.4 "Binding history" · data-model.md "Ingested data" -->
+Every stored record SHALL carry the `company_id`, `device_id` and `employee_id` of the binding whose device key uploaded it, never from the body and never re-credited by timestamp, and the record's `batch_id` where its table has one. The agent's `session_user` MUST be stored as `os_user`, and Unix-millisecond times MUST be stored as `timestamptz`.
 
-#### Scenario: A device was reassigned before the upload
-- **WHEN** a device moves from employee A to employee B and then uploads a batch
-- **THEN** the batch's records carry employee B
+#### Scenario: A released binding uploads its buffer
+- **WHEN** a device bound to employee A is released, enrolled again for employee B, and A's released key uploads a batch inside its 7-day window
+- **THEN** the batch's records carry the released binding's `device_id` and employee A, never B's binding
+
+#### Scenario: A device clock is skewed
+- **WHEN** a batch's records carry times from before the binding's `enrolled_at`
+- **THEN** they are still stored under the uploading binding and its employee
 
 #### Scenario: A body names another company
 - **WHEN** a batch's records carry `company_id`, `device_id` or `employee_id` of another company
@@ -131,13 +135,13 @@ When one batch carries two or more `activity_buckets` rows with the same `bucket
 - **AND** the response's `activity_buckets` count is 1
 
 ### Requirement: A batch refused by the device guard leaves no trace
-<!-- source: D5 · D13 · enroll-devices/device-authentication · buffer-and-sync/activity-sync -->
+<!-- source: D5 · D13 · D45 · enroll-devices/device-authentication · buffer-and-sync/activity-sync · Plan-v3.5 §4.4 "Device release" -->
 A batch answered `401` or `402` by `device-authentication` SHALL write no `ingest_batches` row and no record, so the same batch sent after the company is restored MUST be accepted as a first sight.
 
 #### Scenario: Sent during a suspension, resent after it
 - **WHEN** a batch got `402 COMPANY_SUSPENDED` and is sent again after the company returns to `active`
 - **THEN** the second answer is `200` and its records are stored once
 
-#### Scenario: A released device uploads
-- **WHEN** a released device posts a batch
+#### Scenario: A released device uploads after its window
+- **WHEN** a device released more than 7 days ago posts a batch
 - **THEN** the response is `401 DEVICE_RELEASED` and no row is written

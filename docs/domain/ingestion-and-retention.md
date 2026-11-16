@@ -13,6 +13,8 @@ repository's `docs/domain/activity-model.md`. Requirements:
 
 `POST /v1/agents/activity` carries one sealed batch: `app_sessions[]`, `url_visits[]`,
 `activity_buckets[]`, `idle_intervals[]`. Any array may be empty (a feature switched off, D37).
+This route and the two screenshot routes also accept a released device's key for 7 days after
+`released_at`, so the agent can upload what it held at release (D45, B21).
 
 ### Idempotency (D13)
 
@@ -42,9 +44,10 @@ server now + 1 day is dropped and counted. The rest of the batch is stored with 
 
 ### Stamping and storage
 
-- `company_id`, `device_id` and the device's **current** `employee_id` come from the device key,
-  never the body. A device reassigned before upload stamps the new employee; reports never join
-  through `devices`.
+- `company_id`, `device_id` and `employee_id` come from the binding of the device key that
+  uploaded the record, never the body. A binding's employee never changes, and nothing is
+  re-credited by time (D48). A released key uploading in its 7-day window stores under the
+  released binding (D45). Reports never join through `devices`.
 - Wire `session_user` is stored as `os_user`; Unix ms become `timestamptz`.
 - Records are stored as sent. The agent filters sensitive domains and switched-off features; the
   API adds nothing. An empty `window_title` is valid.

@@ -5,7 +5,7 @@ type `domain` or `url` only (D39), sensitive domains (D4), the idle threshold (D
 token hash (D19), the collection notice (D25), and, per device's employee, the feature switches,
 screenshot interval and pauses (D37, D31). The version is the greatest of company, employee and
 device (B5) and is fetched with an ETag every 30 minutes. Admins need the rules behind it:
-block list and productivity rules (Plan-v3.2 §4.4 "Monitoring policy", PRD "Permission matrix").
+block list and productivity rules (Plan-v3.5 §4.4 "Monitoring policy", PRD "Permission matrix").
 
 ## What Changes
 

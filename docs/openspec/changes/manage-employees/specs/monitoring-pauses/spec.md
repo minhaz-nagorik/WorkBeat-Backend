@@ -7,7 +7,7 @@ reaches the devices.
 ## ADDED Requirements
 
 ### Requirement: A company admin schedules a pause for one employee
-<!-- source: D31 · Plan-v3.2 §4.4 "Monitoring policy" -->
+<!-- source: D31 · Plan-v3.5 §4.4 "Monitoring policy" -->
 `POST /v1/employees/:id/pauses` SHALL accept from a `company_admin` `starts_at` (omitted means the server's now), `ends_at`, `reason` (`annual_leave`, `sick_leave`, `personal`, `offsite_training`, `other`) and `note`, and write a `monitoring_pauses` row with `created_by`. A `starts_at` before now by more than the clock tolerance in `packages/shared`, or an `ends_at` not after `starts_at`, MUST return `422 VALIDATION_FAILED`.
 
 #### Scenario: Pause now until Friday

@@ -6,8 +6,8 @@
 ## Context
 
 One server serves the web platform (WorkBeat Admin, every role), both agents and the Downloader
-(Plan-v3.2 §2.1). It owns tenancy, RBAC, seats, ingestion, reports, Stripe and cron routes. Plan
-v2 and v3 fix the stack (Plan-v3.2 §3): NestJS on Node 20 with the Fastify adapter, Supabase
+(Plan-v3.5 §2.1). It owns tenancy, RBAC, seats, ingestion, reports, Stripe and cron routes. Plan
+v2 and v3 fix the stack (Plan-v3.5 §3): NestJS on Node 20 with the Fastify adapter, Supabase
 PostgreSQL through the Supavisor pooler in transaction mode, Supabase Auth (one project for
 company users and staff, D41), Supabase Storage with private buckets, Resend, Stripe. The web
 platform is Next.js on Vercel. Plan §6.5 draws one monorepo with `apps/api` and `apps/admin`,
@@ -45,7 +45,7 @@ An in-process NestJS scheduler: it runs once per instance (Plan §3; ADR 0009).
 
 ## Links
 
-- Decisions: [B1](../backend-decisions.md), D41, Plan-v3.2 §2.1, §3, §6.3, §6.5.
+- Decisions: [B1](../backend-decisions.md), D41, Plan-v3.5 §2.1, §3, §6.3, §6.5.
 - Specs: [api-envelope](../../openspec/changes/establish-api-foundation/specs/api-envelope/spec.md),
   [request-scope](../../openspec/changes/establish-api-foundation/specs/request-scope/spec.md),
   [user-authentication](../../openspec/changes/authenticate-users/specs/user-authentication/spec.md).

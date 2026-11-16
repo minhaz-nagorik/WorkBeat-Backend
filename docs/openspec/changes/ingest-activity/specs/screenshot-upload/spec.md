@@ -89,7 +89,7 @@ The `screenshots` bucket SHALL accept only `image/jpeg` objects up to the size l
 - **THEN** the response is `422 VALIDATION_FAILED` and no row is written
 
 ### Requirement: A screenshot is accepted whatever the current setting
-<!-- source: D37 · PRD "Screenshots" · Plan-v3.2 §2.2 -->
+<!-- source: D37 · PRD "Screenshots" · Plan-v3.5 §2.2 -->
 The API SHALL accept a valid screenshot even when the employee's `screenshot_interval_seconds` is 0 or the company's `screenshot_tier` is `off` at receipt, because the agent follows a policy up to 30 minutes old.
 
 #### Scenario: Screenshots were switched off ten minutes ago
@@ -101,20 +101,20 @@ The API SHALL accept a valid screenshot even when the employee's `screenshot_int
 - **THEN** the second request is answered `201` as the first sight
 
 ### Requirement: Storage paths and signed URLs stay private
-<!-- source: Plan-v3.2 §5.3 "Secret" · PRD "Tenant isolation" -->
+<!-- source: Plan-v3.5 §5.3 "Secret" · PRD "Tenant isolation" -->
 The `screenshots` bucket SHALL be private, every object MUST sit under its company's prefix, and no signed URL or storage path MUST be logged.
 
 #### Scenario: An upload is logged
 - **WHEN** an upload request is served
 - **THEN** its log line carries neither `upload_url` nor `storage_path`
 
-### Requirement: A screenshot belongs to the device's employee at the upload request
-<!-- source: D44 · Plan-v3.2 §6.1 · data-model.md "Ingested data" -->
-The `screenshots` row SHALL take `company_id`, `device_id` and `employee_id` from the device key when it is first written, never from the body. A reassignment before confirmation MUST NOT change the row's `employee_id`.
+### Requirement: A screenshot belongs to the binding that requested its upload
+<!-- source: D44 · D45 · D48 · Plan-v3.5 §6.1 · Plan-v3.5 §4.4 "Binding history" · data-model.md "Ingested data" -->
+The `screenshots` row SHALL take `company_id`, `device_id` and `employee_id` from the binding of the device key when it is first written, never from the body, and no later event MUST change them.
 
-#### Scenario: Reassigned between request and confirm
-- **WHEN** a device requests an upload for employee A, is reassigned to employee B and then confirms
-- **THEN** the screenshot is `uploaded` with `employee_id` A
+#### Scenario: Released between request and confirm
+- **WHEN** a device of employee A requests an upload, is released, and confirms with its released key inside the 7-day window
+- **THEN** the screenshot is `uploaded` with the released binding's `device_id` and `employee_id` A
 
 #### Scenario: A body names another employee
 - **WHEN** an upload request carries an `employee_id` other than the device's

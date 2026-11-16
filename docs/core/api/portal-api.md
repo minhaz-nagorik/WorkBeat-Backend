@@ -240,7 +240,7 @@ Response `200`:
 | slug | string | read-only |
 | data_retention_days | int | 1–365 |
 | idle_threshold_seconds | int | 60–3600 |
-| alert_email | object | `{ roles: array<enum(company_admin\|manager\|it_admin)>, types: array<enum(process_restart\|hosts_modified\|config_changed\|clock_tampered\|permission_revoked\|offline)>, delivery: enum(instant\|hourly\|daily) }` |
+| alert_email | object | `{ roles: array<enum(company_admin\|manager\|it_admin)>, types: array<enum(process_restart\|hosts_modified\|config_changed\|clock_tampered\|permission_revoked\|offline\|duplicate_device_id)>, delivery: enum(instant\|hourly\|daily) }` |
 | timezone | string | IANA name, default `UTC` |
 
 Errors: `403 FORBIDDEN` (manager, it_admin).
@@ -486,9 +486,9 @@ Errors:
 |---|---|---|
 | 403 | `FORBIDDEN` | not company_admin |
 | 404 | `NOT_FOUND` | unknown or other company |
-| 409 | `EMPLOYEE_HAS_DEVICES` | a device has `released_at` and `deactivated_at` both NULL |
+| 409 | `EMPLOYEE_HAS_DEVICES` | a binding (device row) of the employee has `released_at` NULL, deactivated or not (0003) |
 
-Notes: sets `archived_at`; rows and history kept. Archived employees leave `/license/validate` and cannot be assigned a device; their email is free again.
+Notes: sets `archived_at`; rows and history kept. Archived employees leave `/license/validate` and cannot be picked in WorkBeat Setup; their email is free again.
 
 ### `POST /v1/employees/import`
 Roles: company_admin · Spec: [`employee-directory`][employee-directory]
@@ -527,7 +527,7 @@ Response `200`: array<object>, newest first:
 | received_at | ISO-8601 datetime | server time |
 
 Errors: `403 FORBIDDEN` (manager, it_admin); `404 NOT_FOUND`.
-Notes: append-only; rows keep the employee who acknowledged after a reassignment.
+Notes: append-only; each row belongs to the binding (device row) that sent it.
 
 ---
 
@@ -674,29 +674,7 @@ Release a device from monitoring.
 Request: none.
 Response: status and fields not specified.
 Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`; `409 CONFLICT` (already released).
-Notes: sets `released_at`, keeps `key_hash`, frees the seat. The device then gets `401 DEVICE_RELEASED`, raises no offline alert and stays listed as `released`. Allowed on a deactivated device.
-
-### `POST /v1/devices/:id/reassign`
-Roles: company_admin, it_admin · Spec: [`device-lifecycle`][device-lifecycle]
-Move a device to another employee.
-Request:
-
-| field | type | required | notes |
-|---|---|---|---|
-| employee_id | uuid | yes | non-archived employee of the company |
-
-Response: status and fields not specified.
-Errors:
-
-| status | code | when |
-|---|---|---|
-| 400 | `VALIDATION_FAILED` | `employee_id` missing or null |
-| 403 | `FORBIDDEN` | manager |
-| 404 | `NOT_FOUND` | device unknown or other company |
-| 404 | `EMPLOYEE_NOT_FOUND` | employee archived, unknown or other company |
-| 409 | `CONFLICT` | device is released |
-
-Notes: raises `devices.policy_version`. Earlier activity and acknowledgements keep the previous employee.
+Notes: sets `released_at`, keeps `key_hash`, frees the seat and ends the binding. The device then gets `401 DEVICE_RELEASED` with `released_at` and `upload_until` (+24 h); its key is still accepted on the upload routes for 7 days ([agent-contract.md](agent-contract.md), D45). It raises no offline alert and stays listed as `released`. Allowed on a deactivated device. There is no reassign route: a binding's employee never changes. To give the device to someone else, release it, then run WorkBeat Setup for the new employee, which makes a new binding and takes a seat (D48).
 
 ---
 
@@ -836,7 +814,7 @@ Query (all optional):
 
 | field | type | required | notes |
 |---|---|---|---|
-| type | array<enum(process_restart\|hosts_modified\|config_changed\|clock_tampered\|permission_revoked\|offline)> | no | one or more; encoding not specified |
+| type | array<enum(process_restart\|hosts_modified\|config_changed\|clock_tampered\|permission_revoked\|offline\|duplicate_device_id)> | no | one or more; encoding not specified |
 | state | enum(open\|resolved) | no | |
 | device_id | uuid | no | |
 | from | ISO-8601 datetime | no | type (derived) |
@@ -1064,7 +1042,7 @@ Notes: `it_admin` gets `devices` and `alerts` only.
 - **Write responses.** These now follow the success convention in [`api-envelope`](../../openspec/changes/establish-api-foundation/specs/api-envelope/spec.md) (`201` create, `200` read/update/action with the record, `204` delete); the uninstaller's deactivate is `204`. The exact record shape is still unspecified for: team resend, user role change and
   removal, billing tier and portal session, setup step, custom-domain PUT/DELETE, licence and
   uninstall-token reveal, min-agent-version, employee PATCH/DELETE/import, monitoring-settings PUT,
-  pause PATCH/cancel, device deactivate/release/reassign, block-rule PATCH/DELETE, sensitive-domain
+  pause PATCH/cancel, device deactivate/release, block-rule PATCH/DELETE, sensitive-domain
   and productivity-rule DELETE/PATCH, notice PUT, alert resolve, `POST /v1/invitations/accept`'s body.
 - **Field names not specified:** the invitation lookup's company name, billing's scheduled tier and
   date, the portal-session URL, the uninstall token, the setup-step shape, rollout counts shape, the

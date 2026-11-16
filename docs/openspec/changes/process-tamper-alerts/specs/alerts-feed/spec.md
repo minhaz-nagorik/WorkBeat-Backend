@@ -6,15 +6,15 @@ resolved, and how fresh the feed is.
 ## ADDED Requirements
 
 ### Requirement: The feed lists the company's events by role
-<!-- source: PRD "Permission matrix" · Plan-v3.2 §4.5 "Dashboard" -->
-`GET /v1/alerts` SHALL return the company's `tamper_events`, newest `occurred_at` first, each with `id`, `event_type`, `device_id`, `hostname`, the device's employee `id` and `name`, `detail`, `repeat_count`, `occurred_at`, `received_at`, `resolved_at` and `resolved_by`. A `company_admin` or `it_admin` MUST see every device; a `manager` MUST see only devices whose employee is on their team.
+<!-- source: PRD "Permission matrix" · Plan-v3.5 §4.5 "Dashboard" · D48 · Plan-v3.5 §4.4 "Binding history" -->
+`GET /v1/alerts` SHALL return the company's `tamper_events`, newest `occurred_at` first, each with `id`, `event_type`, `device_id`, `hostname`, the binding's employee `id` and `name`, `detail`, `repeat_count`, `occurred_at`, `received_at`, `resolved_at` and `resolved_by`. A `company_admin` or `it_admin` MUST see every binding; a `manager` MUST see only bindings whose employee is on their team.
 
 #### Scenario: A manager opens the feed
 - **WHEN** a manager calls `GET /v1/alerts`
 - **THEN** only events of devices whose employee they manage are returned
 
 #### Scenario: An employee moves to another manager
-- **WHEN** a device's employee is reassigned from manager M1 to M2
+- **WHEN** a binding's employee moves from manager M1 to M2
 - **THEN** that device's past and new events appear in M2's feed and no longer in M1's
 
 #### Scenario: A company with no events
@@ -25,8 +25,12 @@ resolved, and how fresh the feed is.
 - **WHEN** a device with an event was released
 - **THEN** the event is still listed with its snapshot `hostname`
 
+#### Scenario: A used device set up for another employee
+- **WHEN** a binding of employee A with an event is released and the device is set up for employee B on M2's team
+- **THEN** the event still names employee A and is not in M2's feed unless A is on M2's team
+
 ### Requirement: The feed is filtered and paged
-<!-- source: Plan-v3.2 §4.5 "Dashboard" · B9 -->
+<!-- source: Plan-v3.5 §4.5 "Dashboard" · B9 -->
 `GET /v1/alerts` SHALL accept `type` (one or more event types), `state` (`open` or `resolved`), `device_id`, `from`, `to` and a cursor, and MUST return at most the page size in `packages/shared` with the next cursor.
 
 #### Scenario: IT reviews open offline alerts
@@ -50,7 +54,7 @@ resolved, and how fresh the feed is.
 - **THEN** the response is `200` with an empty list
 
 ### Requirement: Admins and IT resolve an alert
-<!-- source: Plan-v3.2 §5.9 "Tamper: review the event details" -->
+<!-- source: Plan-v3.5 §5.9 "Tamper: review the event details" -->
 `POST /v1/alerts/:id/resolve` SHALL set `resolved_at` and `resolved_by` for a `company_admin` or `it_admin` and return the event. Resolving a resolved event MUST return it unchanged. A `manager` MUST get `403 FORBIDDEN`; another company's event MUST get `404 NOT_FOUND`.
 
 #### Scenario: IT closes a reviewed event
@@ -79,7 +83,7 @@ An event SHALL appear in `GET /v1/alerts` as soon as the request or job that sto
 - **THEN** the next `GET /v1/alerts` includes the event
 
 ### Requirement: Alerts never cross a company or reach staff
-<!-- source: D41 · Plan-v3.2 §6.1 · B2 -->
+<!-- source: D41 · Plan-v3.5 §6.1 · B2 -->
 `GET /v1/alerts` and `POST /v1/alerts/:id/resolve` SHALL read only the caller's company. A `super_admin` MUST get `403 FORBIDDEN`.
 
 #### Scenario: Staff ask for alerts

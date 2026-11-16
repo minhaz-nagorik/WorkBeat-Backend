@@ -6,7 +6,7 @@ never write.
 ## ADDED Requirements
 
 ### Requirement: Each request is logged once as structured JSON
-<!-- source: Plan-v3.2 §3 · B9 -->
+<!-- source: Plan-v3.5 §3 · B9 -->
 The API SHALL write one JSON log line per request with the request ID, method, route pattern, status, `code`, duration, scope and, when known, the company ID and device ID.
 
 #### Scenario: A heartbeat is served
@@ -14,7 +14,7 @@ The API SHALL write one JSON log line per request with the request ID, method, r
 - **THEN** one log line records the request ID, `POST /v1/agents/heartbeat`, `200`, the duration and the device ID
 
 ### Requirement: Secrets are never logged
-<!-- source: Plan-v3.2 §5.3 "Secret" · B6 -->
+<!-- source: Plan-v3.5 §5.3 "Secret" · B6 -->
 The API MUST NOT log a licence key, enrollment token, device key, uninstall token, invitation token, JWT, cookie, `Authorization` or `X-*-Key` header, signed URL, Stripe secret or webhook signature, at any level, including in error logs.
 
 #### Scenario: Enrollment fails with a bad token

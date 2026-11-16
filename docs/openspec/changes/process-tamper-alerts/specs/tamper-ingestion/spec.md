@@ -40,13 +40,17 @@ A stored `id` sent with another `event_type`, or by another device, SHALL get `4
 - **THEN** device B gets `409 IDEMPOTENCY_KEY_REUSED` and learns nothing of company A's event
 
 ### Requirement: Only the five agent event types are accepted
-<!-- source: D24 · W11 · W14 · Plan-v3.2 §4.1 "Tamper detection" -->
-`event_type` SHALL be one of `process_restart`, `hosts_modified`, `config_changed`, `clock_tampered` or `permission_revoked`. `offline` or any other value MUST get `422 VALIDATION_FAILED`; `repeat_count` MUST be at least 1 and `detail` a JSON object within the size limit in `packages/shared`.
+<!-- source: D24 · D46 · D48 · W11 · W14 · Plan-v3.5 §4.1 "Tamper detection" · Plan-v3.5 §4.4 "Duplicate device ID alert" -->
+`event_type` SHALL be one of `process_restart`, `hosts_modified`, `config_changed`, `clock_tampered` or `permission_revoked`. `offline` and `duplicate_device_id`, which only the backend raises, or any other value MUST get `422 VALIDATION_FAILED`; `repeat_count` MUST be at least 1 and `detail` a JSON object within the size limit in `packages/shared`.
 
 #### Scenario: An agent sends offline
 - **WHEN** a request carries `event_type` `offline`
 - **THEN** the response is `422 VALIDATION_FAILED`
 - **AND** no row is written
+
+#### Scenario: An agent sends duplicate_device_id
+- **WHEN** a request carries `event_type` `duplicate_device_id`
+- **THEN** the response is `422 VALIDATION_FAILED` and no row is written
 
 #### Scenario: repeat_count zero
 - **WHEN** a request carries `repeat_count` 0
@@ -61,8 +65,8 @@ A stored `id` sent with another `event_type`, or by another device, SHALL get `4
 - **THEN** the response is `422 VALIDATION_FAILED`
 
 ### Requirement: The event records the device as it was
-<!-- source: D24 · D38 · data-model.md "tamper_events" · domain/tamper-events.md -->
-The row SHALL carry the device's `company_id`, `device_id` and current `hostname` from the device key, `detail` as sent (facts only), `repeat_count` as sent and `received_at` from the server. An `occurred_at` later than the server time MUST be stored as the server time.
+<!-- source: D24 · D38 · D48 · data-model.md "tamper_events" · domain/tamper-events.md · Plan-v3.5 §4.4 "Binding history" -->
+The row SHALL carry the binding's `company_id` and `device_id` and its current `hostname` from the device key, `detail` as sent (facts only), `repeat_count` as sent and `received_at` from the server. An `occurred_at` later than the server time MUST be stored as the server time.
 
 #### Scenario: The device is renamed later
 - **WHEN** a device named `mac-17` reports an event and is later renamed
@@ -85,7 +89,7 @@ An event SHALL be stored whatever the age of its `occurred_at`; the B7 window MU
 - **THEN** the event is stored and raises an alert like any other
 
 ### Requirement: An unresolved event makes the device tampered and raises an alert
-<!-- source: PRD "Online status and tamper detection" · Plan-v3.2 §5.9 -->
+<!-- source: PRD "Online status and tamper detection" · Plan-v3.5 §5.9 -->
 A stored event SHALL stay unresolved until `resolved_at` is set; while it is, the device's derived status MUST be `tamper` (`device-status`, receive-device-health), and its first insertion MUST be handed to `alert-emails`.
 
 #### Scenario: Hosts file edited

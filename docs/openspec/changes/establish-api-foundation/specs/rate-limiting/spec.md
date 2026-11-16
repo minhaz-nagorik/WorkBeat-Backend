@@ -6,7 +6,7 @@ licence key or a runaway client, answered in a way every client already handles.
 ## ADDED Requirements
 
 ### Requirement: Limits apply per credential
-<!-- source: Plan-v3.2 §6.3 · agent-contract.md -->
+<!-- source: Plan-v3.5 §6.3 · agent-contract.md -->
 The API SHALL limit requests per device key, per licence key, per user and per client IP for unauthenticated routes, with the limits in `packages/shared`. Agent limits MUST allow at least three times the normal cadence of each agent route.
 
 #### Scenario: A healthy agent never hits the limit

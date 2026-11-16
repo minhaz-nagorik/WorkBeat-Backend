@@ -22,7 +22,7 @@ Each company SHALL have one `licenses` row whose key has the form `WB-XXXX-XXXX-
 - **THEN** a new key is generated and the transaction still creates one `licenses` row
 
 ### Requirement: Admins and IT admins see the masked key
-<!-- source: D43 · Plan-v3.2 §4.5 "Deployment", §5.3 step 1 -->
+<!-- source: D43 · Plan-v3.5 §4.5 "Deployment", §5.3 step 1 -->
 `GET /v1/license` SHALL return, to `company_admin` and `it_admin` only, `key_masked` (`WB-••••-••••-••••-` and `key_last4`), `plan`, `seat_limit`, `seats_used` and `key_reset_at`. A `manager` MUST get `403 FORBIDDEN`.
 
 #### Scenario: An IT admin opens Deployment
@@ -54,7 +54,7 @@ Each company SHALL have one `licenses` row whose key has the form `WB-XXXX-XXXX-
 - **THEN** the response is `403` with `code` `FORBIDDEN` and nothing is decrypted
 
 ### Requirement: Seats are counted from devices, never stored
-<!-- source: D43 · B4 · Plan-v3.2 §5.3 "Re-enrollment and seats" -->
+<!-- source: D43 · B4 · Plan-v3.5 §5.3 "Re-enrollment and seats" -->
 `seats_used` SHALL be the number of the company's `devices` with `deactivated_at` and `released_at` both NULL, counted on read. Seats MUST belong to the company, not the key, and no column MUST hold a seat count.
 
 #### Scenario: A released device frees its seat
@@ -70,7 +70,7 @@ Each company SHALL have one `licenses` row whose key has the form `WB-XXXX-XXXX-
 - **THEN** `seats_used` is 30 and `seat_limit` is 10
 
 ### Requirement: Only staff reissue the key
-<!-- source: D43 · Plan-v3.2 §4.4 "Licence key" -->
+<!-- source: D43 · Plan-v3.5 §4.4 "Licence key" -->
 No company route SHALL change `key_hash`, `key_ciphertext` or `key_last4`. Reissue is the staff action specified by `administer-platform` (`staff-license-reissue`).
 
 #### Scenario: A company admin asks for a new key
@@ -78,7 +78,7 @@ No company route SHALL change `key_hash`, `key_ciphertext` or `key_last4`. Reiss
 - **THEN** no route exists for it and the key is unchanged
 
 ### Requirement: IT can read the uninstall token
-<!-- source: D19 · D40 · B6 · Plan-v3.2 §5.3 "Uninstall token" -->
+<!-- source: D19 · D40 · B6 · Plan-v3.5 §5.3 "Uninstall token" -->
 `POST /v1/license/uninstall-token/reveal` SHALL return the company's uninstall token, decrypted from `companies.uninstall_token_ciphertext`, to a `company_admin` or `it_admin` only. Every other role MUST get `403 FORBIDDEN`, and the token MUST NOT be logged.
 
 #### Scenario: IT prepares an uninstall

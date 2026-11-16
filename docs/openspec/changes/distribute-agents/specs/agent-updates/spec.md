@@ -6,7 +6,7 @@ itself, and how a company sets its own minimum version.
 ## ADDED Requirements
 
 ### Requirement: The policy points at the newest package for the device
-<!-- source: D40 · W31 · Plan-v3.2 §5.7 · serve-agent-policy/agent-policy -->
+<!-- source: D40 · W31 · Plan-v3.5 §5.7 · serve-agent-policy/agent-policy -->
 In `GET /v1/agents/policy` (route owned by `agent-policy`), `update_package_url` and `update_package_sha256` SHALL name the newest non-withdrawn `agent` release for the device's `os` and architecture: `universal` for `macos`, the device's `arch` for `windows`. With no such release both MUST be null.
 
 #### Scenario: An ARM64 PC
@@ -23,7 +23,7 @@ In `GET /v1/agents/policy` (route owned by `agent-policy`), `update_package_url`
 - **THEN** `update_package_url` points at the older live release
 
 ### Requirement: The update URL is signed and outlives a cached policy
-<!-- source: D40 · D8 · Plan-v3.2 §5.3 "Secret" -->
+<!-- source: D40 · D8 · Plan-v3.5 §5.3 "Secret" -->
 `update_package_url` SHALL be a signed URL to the private `agents` bucket, signed once per release per UTC day and valid until the end of the next UTC day, so it is identical all day and the body-hash ETag of `agent-policy` changes daily. A `304` MUST therefore never confirm an expired URL, and the URL MUST NOT be logged.
 
 #### Scenario: Policy unchanged for two days
@@ -39,7 +39,7 @@ In `GET /v1/agents/policy` (route owned by `agent-policy`), `update_package_url`
 - **THEN** both return the same `update_package_url` and ETag
 
 ### Requirement: The policy minimum is the effective minimum
-<!-- source: Plan-v3.2 §4.4 "Deployment", §5.7 · package-and-deploy-macos/agent-updates -->
+<!-- source: Plan-v3.5 §4.4 "Deployment", §5.7 · package-and-deploy-macos/agent-updates -->
 `min_agent_version` in each policy SHALL be the company's effective minimum for the device's platform as `agent-releases` defines it.
 
 #### Scenario: A company floor above the global
@@ -47,7 +47,7 @@ In `GET /v1/agents/policy` (route owned by `agent-policy`), `update_package_url`
 - **THEN** its Macs' policy carries `min_agent_version` 1.0.10
 
 ### Requirement: Admins and IT set the company minimum
-<!-- source: Plan-v3.2 §4.4 "Minimum agent version per company", §4.5 "Deployment" -->
+<!-- source: Plan-v3.5 §4.4 "Minimum agent version per company", §4.5 "Deployment" -->
 `PUT /v1/deployment/min-agent-version` with `min_agent_version` (`x.y.z` or null) SHALL set `companies.min_agent_version` for a `company_admin` or `it_admin` and bump the company's `policy_version`. A `manager` MUST get `403 FORBIDDEN`; a malformed version, or one above the newest live `agent` release of any platform that has one, MUST get `422 VALIDATION_FAILED`.
 
 #### Scenario: IT raises the floor
@@ -67,7 +67,7 @@ In `GET /v1/agents/policy` (route owned by `agent-policy`), `update_package_url`
 - **THEN** company B's policies and `policy_version` are unchanged
 
 ### Requirement: A released device gets no update
-<!-- source: D38 · Plan-v3.2 §5.7 -->
+<!-- source: D38 · Plan-v3.5 §5.7 -->
 A released or deactivated device SHALL receive no policy and no update URL, because `device-authentication` answers it with `401`.
 
 #### Scenario: A released Mac

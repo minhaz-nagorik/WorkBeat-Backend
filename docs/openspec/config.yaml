@@ -37,13 +37,14 @@ context: |
     custom domain every 5 min                 /cron/domain-verify
 
   SOURCE AUTHORITY. Precedence, highest first:
-    1. WorkBeat Plan v3.2 (15 Nov 2026)          The source of truth. D1–D44 are its rulings.
-    2. docs/decisions/backend-decisions.md       B1–B19, this repository's rulings.
+    1. WorkBeat Plan v3.5 (16 Nov 2026)          The source of truth. D1–D48 are its rulings.
+    2. docs/decisions/backend-decisions.md       B1–B21, this repository's rulings.
     3. WorkBeat PRD (9 Nov 2026)                 Product logic. Amended by 1 and 2.
-    4. The agent repositories' specs             The consumer contract. Where Plan v3.2 changed it
-                                                 (D43 no install tokens, D44 employee required),
+    4. The agent repositories' specs             The consumer contract. Where Plan v3.5 changed it
+                                                 (D43 no install tokens, D47 employee required,
+                                                 D48 fixed device binding),
                                                  the plan wins and the agent repos are behind.
-  Cite "D<n>", "B<n>", "Plan-v3.2 §n" and "PRD <section name>".
+  Cite "D<n>", "B<n>", "Plan-v3.5 §n" and "PRD <section name>".
 
   THE FIVE RULES MOST OFTEN GOT WRONG
   1. company_id comes from the credential or the host, never from a request body (Plan §6.1).
@@ -57,7 +58,7 @@ rules:
   specs:
     - >-
       Every requirement MUST carry an HTML comment immediately under its heading naming its
-      sources, in the form: <!-- source: D43 · B4 · Plan-v3.2 §5.3 · PRD "Data model" -->.
+      sources, in the form: <!-- source: D43 · B4 · Plan-v3.5 §5.3 · PRD "Data model" -->.
     - Use SHALL or MUST in every requirement statement. Never "should" or "may".
     - Every requirement needs at least one "#### Scenario:" heading, with exactly four hashtags.
     - Keep each requirement statement under 500 characters; split it rather than run over.
@@ -69,7 +70,7 @@ rules:
       Agent and web platform behaviour is never this repository's work. Where a requirement exists
       because a client relies on it, cite the client's spec or agent-contract.md.
   proposal:
-    - The Why section must name the D-number, B-number, Plan-v3.2 section or PRD section that motivates it.
+    - The Why section must name the D-number, B-number, Plan-v3.5 section or PRD section that motivates it.
   design:
     - Record which upstream clause each decision amends, and why the newer rule wins.
   tasks:

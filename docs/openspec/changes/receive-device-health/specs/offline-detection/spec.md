@@ -6,7 +6,7 @@ event for it, without flagging released, deactivated or ended devices.
 ## ADDED Requirements
 
 ### Requirement: A silent device is marked offline every 5 minutes
-<!-- source: Plan-v3.2 §6.4 · PRD "Online status and tamper detection" -->
+<!-- source: Plan-v3.5 §6.4 · PRD "Online status and tamper detection" -->
 Each run of `/cron/heartbeat-check` (scheduled every 5 minutes; route and authentication owned by `cron-routes` in run-scheduled-jobs) SHALL set `offline_since` on every device whose `last_heartbeat_at`, or `enrolled_at` when it never sent one, is more than 15 minutes old and whose `offline_since` is null. The threshold MUST come from `packages/shared`.
 
 #### Scenario: A laptop is shut for an hour
@@ -30,7 +30,7 @@ Each run of `/cron/heartbeat-check` (scheduled every 5 minutes; route and authen
 - **THEN** the run marks it offline like any other device
 
 ### Requirement: One offline event per offline period
-<!-- source: D24 · Plan-v3.2 §4.1 "Tamper detection" -->
+<!-- source: D24 · Plan-v3.5 §4.1 "Tamper detection" -->
 Marking a device offline SHALL insert exactly one `tamper_events` row with a server-made `id`, `event_type` `offline`, the device's current `hostname`, `occurred_at` = the time of the run and `detail` holding `last_heartbeat_at`. Later runs, including concurrent ones, MUST NOT insert another until a heartbeat has cleared `offline_since`.
 
 #### Scenario: A device stays silent for a day
@@ -46,7 +46,7 @@ Marking a device offline SHALL insert exactly one `tamper_events` row with a ser
 - **THEN** a second `offline` event is raised and the first stays resolved
 
 ### Requirement: Released, deactivated and ended devices are never flagged
-<!-- source: D36 · D38 · Plan-v3.2 §4.4 "Employees and devices", §6.3 -->
+<!-- source: D36 · D38 · Plan-v3.5 §4.4 "Employees and devices", §6.3 -->
 The job MUST skip devices with `released_at` or `deactivated_at` set, and devices of a company whose licence expired and whose `blocking_ends_at` has passed, because those devices heartbeat only hourly.
 
 #### Scenario: A device is released
@@ -74,7 +74,7 @@ An `offline` event SHALL be created only by `/cron/heartbeat-check`. `POST /v1/a
 - **THEN** every one has a server-made `id` written by the job
 
 ### Requirement: A device that returns during the run is not left offline
-<!-- source: Plan-v3.2 §6.4 · D24 · PRD "Online status and tamper detection" -->
+<!-- source: Plan-v3.5 §6.4 · D24 · PRD "Online status and tamper detection" -->
 The job SHALL set `offline_since` and insert the `offline` event in one transaction, re-checking `last_heartbeat_at` and `offline_since` on the locked row. A heartbeat committed before that row is marked MUST keep the device online; one arriving after MUST clear `offline_since` and resolve the event.
 
 #### Scenario: The heartbeat commits first

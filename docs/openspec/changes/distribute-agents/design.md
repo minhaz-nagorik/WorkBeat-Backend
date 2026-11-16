@@ -3,12 +3,12 @@
 ### Installers are served from a private bucket through signed links
 
 **Amends:** PRD "Data model" (Storage: the `agents` bucket "is publicly readable").
-**Why:** Plan-v3.2 §4.4 "Installer distribution" requires signed, short-lived download links. The
+**Why:** Plan-v3.5 §4.4 "Installer distribution" requires signed, short-lived download links. The
 plan outranks the PRD.
 
 ### Windows releases carry no code signature
 
-**Amends:** Plan-v3.2 §5.2 ("EV-signed" MSIs) as applied by W35 ("No MSI … Authenticode-signed").
+**Amends:** Plan-v3.5 §5.2 ("EV-signed" MSIs) as applied by W35 ("No MSI … Authenticode-signed").
 **Why:** W35 is the newer Windows ruling, and the agent identifies a package by SHA-256. `0002_spec_gaps.sql` made
 `agent_releases.signature` nullable, so a Windows release stores no signature and is identified
 by `sha256`.

@@ -6,7 +6,7 @@ their own team, and what a caller gets for a route or a record outside their rea
 ## ADDED Requirements
 
 ### Requirement: Every route checks the caller's role
-<!-- source: Plan-v3.2 §4.4 "Role guard", §4.5 · PRD "Permission matrix" -->
+<!-- source: Plan-v3.5 §4.4 "Role guard", §4.5 · PRD "Permission matrix" -->
 Every portal and staff route SHALL declare the roles it allows, and the API MUST refuse every other role with `403 FORBIDDEN` before the route reads data. Hiding a page in the web platform MUST NOT be the control.
 
 #### Scenario: A manager opens the block list editor
@@ -23,7 +23,7 @@ Every portal and staff route SHALL declare the roles it allows, and the API MUST
 - **THEN** the response is `403 FORBIDDEN`, because the role is checked before any data is read
 
 ### Requirement: Areas follow the permission matrix
-<!-- source: Plan-v3.2 §4.5 · PRD "Permission matrix", "Users and roles" -->
+<!-- source: Plan-v3.5 §4.5 · PRD "Permission matrix", "Users and roles" -->
 Routes SHALL allow: onboarding, deployment and devices to `company_admin` and `it_admin`; the block list to `company_admin` and `it_admin`, read by `manager`; employees, reports and screenshots to `company_admin` and to `manager` (own team, read only); productivity rules and sensitive domains to `company_admin`, read by `manager`; alerts to all three company roles (manager: own team).
 
 #### Scenario: An IT admin asks for a report
@@ -43,19 +43,19 @@ Routes SHALL allow: onboarding, deployment and devices to `company_admin` and `i
 - **THEN** the read is `200` and the change is `403 FORBIDDEN`
 
 ### Requirement: Company-admin-only areas and the IT admin's limits
-<!-- source: Plan-v3.2 §4.5 · PRD "Roles" · B18 -->
-Settings, billing, team and custom domain SHALL be reachable by `company_admin` only. `it_admin` SHALL be able to list employees (`id`, `name`, `email`, `department` only) to assign devices, and MUST reach no report, timesheet, screenshot, pause or monitoring setting.
+<!-- source: Plan-v3.5 §4.5 · PRD "Roles" · B18 · D48 · Plan-v3.5 §4.4 "Device binding" -->
+Settings, billing, team and custom domain SHALL be reachable by `company_admin` only. `it_admin` SHALL be able to list employees (`id`, `name`, `email`, `department` only) to see whom a device is bound to, and MUST reach no report, timesheet, screenshot, pause or monitoring setting.
 
 #### Scenario: An IT admin opens billing
 - **WHEN** an `it_admin` calls `GET /v1/billing`
 - **THEN** the response is `403 FORBIDDEN`
 
-#### Scenario: An IT admin lists employees for a reassignment
+#### Scenario: An IT admin lists employees to see a device's binding
 - **WHEN** an `it_admin` calls `GET /v1/employees`
 - **THEN** each employee carries `id`, `name`, `email` and `department` and nothing else
 
 ### Requirement: Company routes and staff routes never cross
-<!-- source: D41 · Plan-v3.2 §4.5, §4.6 -->
+<!-- source: D41 · Plan-v3.5 §4.5, §4.6 -->
 A `super_admin` SHALL get `403 FORBIDDEN` on every company route, and every company role SHALL get `403 FORBIDDEN` on every `/v1/staff/*` route.
 
 #### Scenario: A company admin calls the staff area
@@ -67,7 +67,7 @@ A `super_admin` SHALL get `403 FORBIDDEN` on every company route, and every comp
 - **THEN** the response is `403 FORBIDDEN`
 
 ### Requirement: A manager reaches only their own team
-<!-- source: B12 · Plan-v3.2 §4.4 "Manager scoping" · PRD "Permission matrix" -->
+<!-- source: B12 · Plan-v3.5 §4.4 "Manager scoping" · PRD "Permission matrix" -->
 Every route open to `manager` SHALL filter `employees` and every row keyed by `employee_id` to employees whose `manager_user_id` is the caller. An employee outside the team MUST answer `404 NOT_FOUND`, and lists MUST NOT include them. A manager MUST NOT write employee, monitoring or pause data.
 
 #### Scenario: A manager opens another manager's employee
@@ -82,12 +82,12 @@ Every route open to `manager` SHALL filter `employees` and every row keyed by `e
 - **WHEN** a manager calls a list route with `manager_user_id` of another manager
 - **THEN** the response is `403 FORBIDDEN` and no employee of that team is returned
 
-#### Scenario: A team member is reassigned mid-session
+#### Scenario: A team member moves to another manager mid-session
 - **WHEN** an admin moves an employee away from manager M while M's session is open
 - **THEN** M's next request for that employee answers `404 NOT_FOUND`
 
 ### Requirement: Another company's record answers 404
-<!-- source: Plan-v3.2 §6.1 · B2 -->
+<!-- source: Plan-v3.5 §6.1 · B2 -->
 A path or query ID that names a record of another company SHALL answer `404 NOT_FOUND`, the same as an ID that does not exist, and MUST NOT reveal that the record exists.
 
 #### Scenario: A company admin guesses an ID

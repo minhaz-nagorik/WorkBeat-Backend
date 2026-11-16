@@ -38,7 +38,7 @@ An employee's manager SHALL be stored only in `employees.manager_user_id`, set o
 - **THEN** the employee ends with either no manager or a manager who is still enabled
 
 ### Requirement: A manager reads only their own team
-<!-- source: B12 · Plan-v3.2 §4.4 "Manager scoping" · PRD "API surface" -->
+<!-- source: B12 · Plan-v3.5 §4.4 "Manager scoping" · PRD "API surface" -->
 For a `manager`, every employee read in this change SHALL be limited to employees whose `manager_user_id` is that user. An employee outside the team MUST return `404 NOT_FOUND`, the same as an unknown ID. Reads in later changes (reports, screenshots, alerts) MUST apply the same filter.
 
 #### Scenario: A manager lists employees

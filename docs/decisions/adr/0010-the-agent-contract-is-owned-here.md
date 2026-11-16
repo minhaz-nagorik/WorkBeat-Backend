@@ -8,7 +8,7 @@
 The Mac and Windows agents and the Downloader live in their own repositories and specify the
 client side: what they send and how they react to every HTTP status and `code`. Each agent repo
 says the API's published contract is the authority for payload shapes and leaves that open (their
-open question Q1). The agent repos were written before Plan v3.2 D43 and D44 and still describe
+open question Q1). The agent repos were written before Plan v3.5 D43 to D48 and still describe
 portal tokens, `--token`, an optional employee, an unassigned queue and
 `ENROLLMENT_TOKEN_REVOKED` (Q16). Plan §3 makes `packages/shared` the single source of truth for
 API contracts.
@@ -22,7 +22,7 @@ browser list) live in `packages/shared`, which the agents' contract tests and th
 consume. Every response is `{ "data": … }` or `{ "error": …, "code": … }` with `Date` and
 `X-Request-Id` headers; clients branch on status and `code`, never on `error`. A route, field,
 status or `code` the agents rely on changes only through a spec change here and in both agent
-repositories (CLAUDE.md rule 5). Where Plan v3.2 changed the contract (D43, D44), the backend
+repositories (CLAUDE.md rule 5). Where Plan v3.5 changed the contract (D43–D48), the backend
 follows the plan and the agent repositories are behind; that gap is tracked as Q16, not worked
 around in the API.
 
@@ -41,7 +41,7 @@ enrollment.
 |---|---|
 | Each agent repo defines its own wire types | Two copies drift; Plan §3 names `packages/shared` as the source |
 | OpenAPI generated from the NestJS code | The code would define the contract after the fact; specs come first (ADR 0001) |
-| Follow the agent specs where they predate D43 / D44 | Plan v3.2 outranks them (config.yaml "Source authority") |
+| Follow the agent specs where they predate D43–D48 | Plan v3.5 outranks them (config.yaml "Source authority") |
 
 ## Rejected explicitly
 
@@ -49,7 +49,7 @@ Returning `ENROLLMENT_TOKEN_REVOKED`, or accepting portal tokens, to match the o
 
 ## Links
 
-- Decisions: [B9](../backend-decisions.md), D43, D44, Plan-v3.2 §3, Q1 and Q16 in
+- Decisions: [B9](../backend-decisions.md), D43–D48, Plan-v3.5 §3, Q1 and Q16 in
   [open-questions.md](../open-questions.md).
 - Contract: [agent-contract.md](../../core/api/agent-contract.md).
 - Design: [enroll-devices](../../openspec/changes/enroll-devices/design.md).

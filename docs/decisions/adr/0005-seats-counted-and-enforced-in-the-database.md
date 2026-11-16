@@ -8,7 +8,7 @@
 A company pays per seat. Seats belong to the company, not to the licence key: releasing or
 deactivating a device frees its seat for the next install, and reissuing the key changes only the
 key, keeping every device and seat (D43). A seat is filled only when the agent enrolls for a picked
-employee, never at validation (D44, Plan-v3.2 §5.3). Two Downloaders can pass validation for the
+employee, never at validation (D47, Plan-v3.5 §5.3). Two Downloaders can pass validation for the
 last seat at the same moment, and their enrollments can land on two API instances.
 
 ## Decision
@@ -48,7 +48,7 @@ Storing seats used anywhere (CLAUDE.md rule 7).
 
 ## Links
 
-- Decisions: [B4, B8, B17](../backend-decisions.md), D43, D44, Plan-v3.2 §5.3.
+- Decisions: [B4, B8, B17](../backend-decisions.md), D43, D47, Plan-v3.5 §5.3.
 - Schema: [0001_init.sql](../../../db/migrations/0001_init.sql) `devices_seat_check`.
 - Specs: [device-enrollment](../../openspec/changes/enroll-devices/specs/device-enrollment/spec.md),
   [license-validation](../../openspec/changes/enroll-devices/specs/license-validation/spec.md),

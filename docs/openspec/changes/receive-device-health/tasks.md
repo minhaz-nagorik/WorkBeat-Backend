@@ -17,7 +17,7 @@
 
 - [ ] 2.1 Insert on `(device_id, notice_version)` conflict do nothing; set `notice_ack_version` to the max; ignore versions above the company's
 - [ ] 2.2 `GET /v1/employees/:id/notice-acknowledgements` for `company_admin`
-- [ ] 2.3 Tests: 12 heartbeats → one row; reassignment keeps the old employee; manager → 403; tenant isolation: another company's employee → 404 and no rows
+- [ ] 2.3 Tests: 12 heartbeats → one row; release and a new binding keep the old row with the old binding and employee; manager → 403; tenant isolation: another company's employee → 404 and no rows
 - [ ] 2.4 Edge tests: concurrent identical acks → one row; older version after a newer one → row written, `notice_ack_version` kept; ack on a `402` heartbeat recorded; current version recorded; archived employee listed; `it_admin` → 403; version without a time → 200, no row
 
 ## 3. offline-detection

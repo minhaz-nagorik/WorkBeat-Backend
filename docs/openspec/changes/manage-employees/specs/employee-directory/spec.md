@@ -6,7 +6,7 @@ why an employee who still has a device cannot be removed.
 ## ADDED Requirements
 
 ### Requirement: Company admins add and edit employees
-<!-- source: PRD "Permission matrix" · Plan-v3.2 §4.4 "Employees and devices" -->
+<!-- source: PRD "Permission matrix" · Plan-v3.5 §4.4 "Employees and devices" -->
 `POST /v1/employees` and `PATCH /v1/employees/:id` SHALL accept `name` (required, non-empty), `email`, `department` and `manager_user_id`, and only from a `company_admin`; any other role MUST get `403 FORBIDDEN`. An `email` already held by a non-archived employee of the company MUST return `409 CONFLICT`. The employee MUST be written in the caller's company.
 
 #### Scenario: An admin adds an employee
@@ -43,7 +43,7 @@ why an employee who still has a device cannot be removed.
 - **THEN** the employee is written in company A
 
 ### Requirement: The directory is readable per role
-<!-- source: PRD "Permission matrix" · B12 · Plan-v3.2 §4.4 "Manager scoping" -->
+<!-- source: PRD "Permission matrix" · B12 · Plan-v3.5 §4.4 "Manager scoping" -->
 `GET /v1/employees` and `GET /v1/employees/:id` SHALL return `id`, `name`, `email`, `department`, `manager_user_id` and `archived_at` to a `company_admin`, only `id`, `name`, `email` and `department` to an `it_admin` (B18), for every employee of their company, and to a `manager` only for their own team (`manager-teams`). Archived employees MUST be listed only when asked for with `archived=true`. An employee of another company MUST return `404 NOT_FOUND`.
 
 #### Scenario: An IT admin lists employees
@@ -63,7 +63,7 @@ why an employee who still has a device cannot be removed.
 - **THEN** the response is `200` with an empty list
 
 ### Requirement: Employees are imported from CSV
-<!-- source: PRD "Permission matrix" · Plan-v3.2 §4.4 "Employees and devices" -->
+<!-- source: PRD "Permission matrix" · Plan-v3.5 §4.4 "Employees and devices" -->
 `POST /v1/employees/import` SHALL accept from a `company_admin` a CSV with the columns `name, email, department, manager email`, with or without a header row. A row whose email matches a non-archived employee of the company MUST be skipped. A `manager email` MUST name a user with role `manager` in the company. The response MUST give `created`, `skipped` and the skipped emails.
 
 #### Scenario: A file with a header row and an existing employee
@@ -118,8 +118,8 @@ An import with any invalid row (no `name`, a malformed email, an unknown manager
 - **AND** a file with one more row gets `413` with `code` `PAYLOAD_TOO_LARGE`
 
 ### Requirement: Removing an employee archives them
-<!-- source: D44 · Plan-v3.2 §4.4 "Employees and devices" -->
-`DELETE /v1/employees/:id` from a `company_admin` SHALL set `archived_at` and keep the employee's rows and history. While the employee has any device with `released_at` and `deactivated_at` both NULL it MUST return `409 EMPLOYEE_HAS_DEVICES` and change nothing. An archived employee MUST NOT appear in `/license/validate` or be assignable to a device.
+<!-- source: D44 · D46 · D48 · Plan-v3.5 §4.4 "Employees and devices" · Plan-v3.5 §4.4 "Employee directory" -->
+`DELETE /v1/employees/:id` from a `company_admin` SHALL set `archived_at` and keep the employee's rows and history. While the employee has any binding (`devices` row) with `released_at` NULL, deactivated or not, it MUST return `409 EMPLOYEE_HAS_DEVICES` and change nothing. An archived employee MUST NOT appear in `/license/validate` or get a new binding.
 
 #### Scenario: The employee still has a laptop
 - **WHEN** an admin removes an employee whose device is enrolled and not released
@@ -131,9 +131,9 @@ An import with any invalid row (no `name`, a malformed email, an unknown manager
 - **THEN** `archived_at` is set and the employee's past activity is still in reports
 - **AND** the employee's email can be used for a new employee
 
-#### Scenario: A deactivated device does not block
-- **WHEN** an admin removes an employee whose only device is deactivated and not released
-- **THEN** `archived_at` is set
+#### Scenario: A deactivated binding still blocks
+- **WHEN** an admin removes an employee whose only binding is deactivated and not released
+- **THEN** the response is `409` with `code` `EMPLOYEE_HAS_DEVICES` and `archived_at` stays NULL
 
 #### Scenario: Removing an already archived employee
 - **WHEN** an admin removes an employee whose `archived_at` is set
@@ -144,7 +144,7 @@ An import with any invalid row (no `name`, a malformed email, an unknown manager
 - **THEN** either the removal answers `409 EMPLOYEE_HAS_DEVICES` or the enrollment answers `404 EMPLOYEE_NOT_FOUND`, never both succeeding
 
 ### Requirement: An archived employee is read-only
-<!-- source: D44 · Plan-v3.2 §4.4 "Employees and devices" -->
+<!-- source: D47 · Plan-v3.5 §4.4 "Employees and devices" -->
 `PATCH /v1/employees/:id`, `PUT /v1/employees/:id/monitoring-settings` and every pause write for an archived employee SHALL return `409 CONFLICT` and change nothing. Reads of an archived employee, their settings, pauses and history MUST keep working for the roles allowed to read them.
 
 #### Scenario: An admin edits an archived employee

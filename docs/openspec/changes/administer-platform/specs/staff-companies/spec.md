@@ -7,7 +7,7 @@ expired-licence grace period.
 ## ADDED Requirements
 
 ### Requirement: Staff list every company
-<!-- source: Plan-v3.2 §4.6 · PRD "Permission matrix" · D41 -->
+<!-- source: Plan-v3.5 §4.6 · PRD "Permission matrix" · D41 -->
 `GET /v1/staff/companies` SHALL return, to `super_admin` only, each company's `id`, `name`, `slug`, `plan`, `seat_limit`, `seats_used`, `screenshot_tier`, `status`, `suspended_reason`, `custom_domain`, `custom_domain_status`, `trial_ends_at`, `created_at` and `mrr_estimate`, with totals of companies, seats used, MRR and suspended companies. It MUST filter by `status` and search by `name` or `slug`. `GET /v1/staff/companies/:id` MUST return one row.
 
 #### Scenario: Staff open the company list
@@ -31,7 +31,7 @@ expired-licence grace period.
 - **THEN** its staff row shows `seats_used` 10
 
 ### Requirement: The MRR estimate follows the price list
-<!-- source: PRD "Pricing" · Plan-v3.2 §4.6 -->
+<!-- source: PRD "Pricing" · Plan-v3.5 §4.6 -->
 `mrr_estimate` SHALL be `seats_used` × ($1.00 + the tier add-on: `off` 0, `light` 0.50, `standard` 1.00, `intensive` 2.00) for an `active` company, and 0 for `trial`, `suspended` and `expired`. It MUST be labelled an estimate; invoices stay in Stripe.
 
 #### Scenario: A Standard company
@@ -43,7 +43,7 @@ expired-licence grace period.
 - **THEN** its `mrr_estimate` is 0
 
 ### Requirement: Staff suspend and restore a company
-<!-- source: Plan-v3.2 §4.6 · PRD "Retention and suspension" · D29 -->
+<!-- source: Plan-v3.5 §4.6 · PRD "Retention and suspension" · D29 -->
 `POST /v1/staff/companies/:id/suspend` SHALL set `status` `suspended`, `suspended_reason` `staff` and `suspended_at`, also over a `payment_failed` suspension. `POST /v1/staff/companies/:id/restore` SHALL set `status` `active`, or `trial` while `trial_ends_at` is ahead, and clear `suspended_reason`. Either on an `expired` company MUST get `409 CONFLICT`.
 
 #### Scenario: Staff suspend a company
@@ -76,7 +76,7 @@ expired-licence grace period.
 - **THEN** the company ends `suspended` with `suspended_reason` `staff`
 
 ### Requirement: Staff override Enterprise plan and seat limit
-<!-- source: Plan-v3.2 §4.6 · PRD "Pricing" · B4 -->
+<!-- source: Plan-v3.5 §4.6 · PRD "Pricing" · B4 -->
 `PATCH /v1/staff/companies/:id/license` with `plan` `enterprise` and `seat_limit` (a number or NULL for unlimited) SHALL update the licence. A `seat_limit` below the company's seats used, or a `seat_limit` change on a `starter` or `growth` licence, MUST get `409 CONFLICT` and change nothing.
 
 #### Scenario: A limit below seats used
@@ -96,7 +96,7 @@ expired-licence grace period.
 - **THEN** enrollments are never refused for seats
 
 ### Requirement: Staff set the expired-licence grace period
-<!-- source: D36 · Plan-v3.2 §4.6 -->
+<!-- source: D36 · Plan-v3.5 §4.6 -->
 `PATCH /v1/staff/companies/:id` with `expired_blocking_grace_days` (0–365) SHALL update the company; other values MUST get `422 VALIDATION_FAILED`. The new value MUST apply at once to `blocking_ends_at` (`company-status`).
 
 #### Scenario: Staff extend the grace

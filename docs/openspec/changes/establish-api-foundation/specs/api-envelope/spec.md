@@ -35,7 +35,7 @@ Unless a route's own spec names another status, a route that creates a record SH
 - **THEN** it answers `204` even though it is an action
 
 ### Requirement: Unknown failures are hidden behind INTERNAL
-<!-- source: B9 · Plan-v3.2 §8 -->
+<!-- source: B9 · Plan-v3.5 §8 -->
 An unexpected error SHALL return `500` with `code` `INTERNAL` and a generic `error` message. The response MUST NOT contain a stack trace, SQL, a table name or any request value.
 
 #### Scenario: A query fails unexpectedly

@@ -6,7 +6,7 @@ architecture, and how the global and effective minimum agent versions follow fro
 ## ADDED Requirements
 
 ### Requirement: Staff publish a release
-<!-- source: Plan-v3.2 §4.6 · D40 · D41 · data-model.md "agent_releases" -->
+<!-- source: Plan-v3.5 §4.6 · D40 · D41 · data-model.md "agent_releases" -->
 `POST /v1/staff/agent-releases` SHALL let a `super_admin` create an `agent_releases` row with `product` (`agent` or `downloader`), `platform`, `arch`, `version` and `min_supported` (both `x.y.z`), `storage_path`, `sha256`, `signature`, `size_bytes` and `release_notes`, with `published_by` the caller, and return `201`. The object MUST exist in the private `agents` bucket with `size_bytes`, or the request gets `422 VALIDATION_FAILED`.
 
 #### Scenario: A new Mac package
@@ -46,7 +46,7 @@ A `macos` release SHALL have `arch` `universal`, and a `windows` release `x64` o
 - **THEN** the response is `422 VALIDATION_FAILED`
 
 ### Requirement: Staff withdraw a release and list releases
-<!-- source: Plan-v3.2 §4.6 -->
+<!-- source: Plan-v3.5 §4.6 -->
 `POST /v1/staff/agent-releases/:id/withdraw` SHALL set `withdrawn_at` for a `super_admin`; withdrawing a withdrawn release MUST return it unchanged. `GET /v1/staff/agent-releases` SHALL list every release, newest first, with `withdrawn_at`. A withdrawn release MUST NOT be offered for download or update.
 
 #### Scenario: A broken build is pulled
@@ -63,7 +63,7 @@ A `macos` release SHALL have `arch` `universal`, and a `windows` release `x64` o
 - **THEN** the response is `403 FORBIDDEN`
 
 ### Requirement: The global minimum comes from the newest live release
-<!-- source: Plan-v3.2 §4.6 "set global minimum version" · data-model.md "agent_releases" -->
+<!-- source: Plan-v3.5 §4.6 "set global minimum version" · data-model.md "agent_releases" -->
 The global minimum for a platform SHALL be the greatest `min_supported` among the non-withdrawn `agent` releases with that platform's highest `version`, or none when no such release exists.
 
 #### Scenario: A release raises the floor
@@ -83,7 +83,7 @@ The global minimum for a platform SHALL be the greatest `min_supported` among th
 - **THEN** 1.0.10 is the newest
 
 ### Requirement: The effective minimum is the greater of global and company
-<!-- source: Plan-v3.2 §4.4 "Deployment", §5.7 · data-model.md "companies" -->
+<!-- source: Plan-v3.5 §4.4 "Deployment", §5.7 · data-model.md "companies" -->
 A company's effective minimum for a platform SHALL be the greater, by numeric `x.y.z` comparison, of the global minimum and `companies.min_agent_version`, and MUST be what `min_agent_version` in policy and the `outdated` badge use.
 
 #### Scenario: A company sets a higher floor

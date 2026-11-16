@@ -6,7 +6,7 @@ the account routes that never exist for them: self sign-up and impersonation.
 ## ADDED Requirements
 
 ### Requirement: Only a super admin invites a super admin
-<!-- source: D41 · Plan-v3.2 §4.4 "Staff accounts" -->
+<!-- source: D41 · Plan-v3.5 §4.4 "Staff accounts" -->
 `POST /v1/staff/invitations` with `email` SHALL be allowed to `super_admin` only and MUST insert an `invitations` row with `company_id` NULL, `role` `super_admin` and `invited_by` = the caller, then email the link. Acceptance SHALL use `POST /v1/invitations/accept` and MUST create a `users` row with no `company_id`.
 
 #### Scenario: Staff invite a colleague
@@ -26,7 +26,7 @@ the account routes that never exist for them: self sign-up and impersonation.
 - **THEN** the response is `403` with `code` `MFA_REQUIRED` and no invitation is written
 
 ### Requirement: No route creates a super admin any other way
-<!-- source: D41 · Plan-v3.2 §4.4, §4.6 -->
+<!-- source: D41 · Plan-v3.5 §4.4, §4.6 -->
 No sign-up route, Stripe event or company invitation SHALL create a `super_admin`. The first `super_admin` MUST be created only by an operator script run with the service credentials, outside the API.
 
 #### Scenario: A sign-up names role super_admin
@@ -34,7 +34,7 @@ No sign-up route, Stripe event or company invitation SHALL create a `super_admin
 - **THEN** the response is `422 VALIDATION_FAILED` and no `super_admin` exists afterwards
 
 ### Requirement: Staff must use MFA on every call
-<!-- source: D41 · Plan-v3.2 §4.6 · Plan-v3.2 §8 -->
+<!-- source: D41 · Plan-v3.5 §4.6 · Plan-v3.5 §8 -->
 Every request from a `super_admin` SHALL require a token whose `aal` claim is `aal2`. A `super_admin` token at `aal1` MUST get `403 MFA_REQUIRED` on every route except `GET /v1/me`.
 
 #### Scenario: Staff without MFA
@@ -54,7 +54,7 @@ Every request from a `super_admin` SHALL require a token whose `aal` claim is `a
 - **THEN** the response is `200`
 
 ### Requirement: Staff manage the staff team
-<!-- source: D41 · Plan-v3.2 §4.6 -->
+<!-- source: D41 · Plan-v3.5 §4.6 -->
 `GET /v1/staff/team` SHALL return only `users` with role `super_admin` and open staff invitations. `DELETE /v1/staff/invitations/:id` MUST set `revoked_at`; `DELETE /v1/staff/users/:id` MUST set `disabled_at` and end the sessions, and MUST answer `409 CONFLICT` for the caller themselves or the last enabled `super_admin`.
 
 #### Scenario: Staff list the staff team

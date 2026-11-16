@@ -9,9 +9,9 @@
 - [ ] 1.2 `GET /v1/agents/policy` behind the device-key guard: one query for company, employee settings, device, rules, sensitive domains, open pauses
 - [ ] 1.3 `min_agent_version` = max(company, newest non-withdrawn `agent` release `min_supported` for the device `os`), compared as semantic versions
 - [ ] 1.4 `ETag` = hash of the serialised body; `If-None-Match` match → `304`
-- [ ] 1.5 Tests: every field present and typed; two employees get their own switches and pauses; cancelled and ended pauses absent; `policy_version` = greatest of three and grows on reassignment; 304 on match, 200 after a rule change; tenant isolation — a device never receives another company's rules or another employee's pauses
+- [ ] 1.5 Tests: every field present and typed; two employees get their own switches and pauses; cancelled and ended pauses absent; `policy_version` = greatest of three, `devices.policy_version` never changes after insert; 304 on match, 200 after a rule change; tenant isolation — a device never receives another company's rules or another employee's pauses
 - [ ] 1.6 Read the version and the body in one snapshot (one statement or a `REPEATABLE READ` transaction)
-- [ ] 1.7 Edge tests: no rules → empty arrays, never null; suspended → 402 and no `ETag`; pause in force and future pause both listed; pause ending now absent; tier `off` → interval 0; reassignment switches settings and pauses; withdrawn newest release ignored for `min_agent_version`; company B's rule never in A's policy; rule add raises every device's version; stale `If-None-Match` → 200 with current `ETag`; next UTC day → one 200 then 304; rule added mid-fetch → old version + old body or new + new
+- [ ] 1.7 Edge tests: no rules → empty arrays, never null; suspended → 402 and no `ETag`; pause in force and future pause both listed; pause ending now absent; tier `off` → interval 0; a new binding after release carries only the new employee's settings and pauses; withdrawn newest release ignored for `min_agent_version`; company B's rule never in A's policy; rule add raises every device's version; stale `If-None-Match` → 200 with current `ETag`; next UTC day → one 200 then 304; rule added mid-fetch → old version + old body or new + new
 
 ## 2. block-rules
 

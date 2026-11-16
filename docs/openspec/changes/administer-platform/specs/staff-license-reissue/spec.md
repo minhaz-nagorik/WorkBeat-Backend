@@ -6,7 +6,7 @@ same, and who is told the new key.
 ## ADDED Requirements
 
 ### Requirement: Staff reissue a company's licence key
-<!-- source: D43 · Plan-v3.2 §4.4 "Licence key", §4.6 -->
+<!-- source: D43 · Plan-v3.5 §4.4 "Licence key", §4.6 -->
 `POST /v1/staff/companies/:id/license/reissue` SHALL be allowed to `super_admin` only. On the company's existing `licenses` row it MUST set a new key's `key_hash`, `key_ciphertext` and `key_last4` (format and storage as in `license-key`) and `key_reset_at`, and return the new `key` once with `Cache-Control: no-store`. No second `licenses` row MUST be created.
 
 #### Scenario: Staff reissue a key
@@ -47,7 +47,7 @@ The reissue SHALL delete, in the same transaction, every `enrollment_tokens` row
 - **THEN** the reissue succeeds and deletes nothing
 
 ### Requirement: Devices and seats are unchanged
-<!-- source: D43 · B4 · Plan-v3.2 §5.3 "Re-enrollment and seats" -->
+<!-- source: D43 · B4 · Plan-v3.5 §5.3 "Re-enrollment and seats" -->
 A reissue SHALL change no `devices` row, and seats used MUST be the same before and after. Enrolled devices MUST keep working with their device keys.
 
 #### Scenario: A full company
@@ -56,7 +56,7 @@ A reissue SHALL change no `devices` row, and seats used MUST be the same before 
 - **AND** every enrolled device's next heartbeat succeeds
 
 ### Requirement: Company admins receive the new key
-<!-- source: D43 · Plan-v3.2 §5.3 step 1 -->
+<!-- source: D43 · Plan-v3.5 §5.3 step 1 -->
 After the reissue commits, the API SHALL email the new key through Resend to every enabled `company_admin` of the company. The key MUST NOT be logged.
 
 #### Scenario: Two company admins

@@ -1,16 +1,17 @@
 ## Why
 
-Every device belongs to an employee from the moment it enrolls (D44), and every device's policy is
+Every device belongs to an employee from the moment it enrolls (D47), and every device's policy is
 resolved from that employee's switches and pauses (D37, D31). The company therefore needs its
 people in WorkBeat before the first install: a directory with CSV import (PRD "Permission
-matrix"), one manager per employee for scoped reports (B12, Plan-v3.2 §4.4 "Manager
+matrix"), one manager per employee for scoped reports (B12, Plan-v3.5 §4.4 "Manager
 scoping"), per-employee monitoring switches within the screenshot tier (B11), and monitoring
-pauses for leave (D31–D34). Removing an employee must not orphan a device (D44).
+pauses for leave (D31–D34). Removing an employee must not orphan a device (D47).
 
 ## What Changes
 
 - **Employee directory**: add, edit, list, CSV import and remove (archive) employees; removal is
-  refused with `409 EMPLOYEE_HAS_DEVICES` while a device that still holds a seat is assigned (D44).
+  refused with `409 EMPLOYEE_HAS_DEVICES` while any binding of the employee is not released,
+  deactivated ones included (D44, D46, D48).
 - **Manager teams**: one manager per employee (B12); a manager reads only their own team and
   writes nothing.
 - **Monitoring settings**: the four switches and the screenshot interval per employee, created

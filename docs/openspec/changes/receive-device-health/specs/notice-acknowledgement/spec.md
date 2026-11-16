@@ -5,9 +5,9 @@ append-only record the company can show as evidence, and who can read it.
 
 ## ADDED Requirements
 
-### Requirement: An acknowledgement is recorded once per device, employee and version
-<!-- source: D25 · Plan-v3.2 §4.4 "Monitoring policy" · report-device-health/heartbeat -->
-When a heartbeat carries `notice_version` and `notice_acknowledged_at`, the API SHALL insert one `notice_acknowledgements` row with the device, the device's employee at receipt, the version, `acknowledged_at` from the agent and `received_at` from the server, unless a row for that device, employee and version exists, so a reassigned device records its new employee's acknowledgement too. It MUST then set `devices.notice_ack_version` to the highest version acknowledged.
+### Requirement: An acknowledgement is recorded once per binding and version
+<!-- source: D25 · D46 · D48 · Plan-v3.5 §4.4 "Monitoring policy" · Plan-v3.5 §4.4 "Binding history" · report-device-health/heartbeat -->
+When a heartbeat carries `notice_version` and `notice_acknowledged_at`, the API SHALL insert one `notice_acknowledgements` row with the binding's `device_id` and `employee_id`, the version, `acknowledged_at` from the agent and `received_at` from the server, unless a row for that binding and version exists. It MUST then set `devices.notice_ack_version` to the highest version acknowledged.
 
 #### Scenario: The same acknowledgement rides on every heartbeat
 - **WHEN** 12 heartbeats carry `notice_version` 3
@@ -23,9 +23,9 @@ When a heartbeat carries `notice_version` and `notice_acknowledged_at`, the API 
 - **THEN** a row for version 3 is written if none exists
 - **AND** `devices.notice_ack_version` stays 4
 
-#### Scenario: A reassigned device acknowledges again
-- **WHEN** a device's employee acknowledged version 3, the device is reassigned and the new employee acknowledges version 3
-- **THEN** a second version 3 row exists, carrying the new employee
+#### Scenario: A new binding on the same device acknowledges again
+- **WHEN** employee A acknowledged version 3, the device was released and set up for employee B, and B acknowledges version 3
+- **THEN** a second version 3 row exists for the new binding's `device_id`, carrying employee B
 
 #### Scenario: An acknowledgement on a suspended company's heartbeat
 - **WHEN** a heartbeat answered `402 COMPANY_SUSPENDED` carries `notice_version` 2
@@ -45,15 +45,15 @@ An acknowledgement whose `notice_version` is greater than the company's `notice_
 - **THEN** the row is written
 
 ### Requirement: Acknowledgements are append-only
-<!-- source: D25 · PRD "Privacy" -->
-No route SHALL update or delete a `notice_acknowledgements` row. Reassigning the device to another employee MUST leave earlier rows with the employee who acknowledged.
+<!-- source: D25 · D48 · PRD "Privacy" · Plan-v3.5 §4.4 "Binding history" -->
+No route SHALL update or delete a `notice_acknowledgements` row. A release of the binding and a new binding on the same device MUST leave earlier rows with the binding and employee that acknowledged.
 
-#### Scenario: A device is reassigned
-- **WHEN** a device whose employee A acknowledged version 2 is reassigned to employee B
-- **THEN** the version 2 row still names employee A
+#### Scenario: A device changes hands by release
+- **WHEN** a binding whose employee A acknowledged version 2 is released and the device is set up for employee B
+- **THEN** the version 2 row still names A's binding and employee A
 
 ### Requirement: The company admin lists an employee's acknowledgements
-<!-- source: D25 · Plan-v3.2 §4.5 "Employees" -->
+<!-- source: D25 · Plan-v3.5 §4.5 "Employees" -->
 `GET /v1/employees/:id/notice-acknowledgements` SHALL return, for a `company_admin`, every acknowledgement of that employee with `device_id`, the device's `hostname`, `notice_version`, `acknowledged_at` and `received_at`, newest first. Any other role MUST get `403 FORBIDDEN`; an employee of another company MUST get `404 NOT_FOUND`.
 
 #### Scenario: A manager asks for acknowledgements

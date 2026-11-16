@@ -6,7 +6,7 @@ and the device list and rollout counts that serve them to admins and IT.
 ## ADDED Requirements
 
 ### Requirement: Status is derived in a fixed order and never stored
-<!-- source: Plan-v3.2 §2.4, §5.9 · D38 · D44 -->
+<!-- source: Plan-v3.5 §2.4, §5.9 · D38 · D47 -->
 A device's `status` SHALL be computed at read time as the first that applies: `released` (`released_at` set), `deactivated` (`deactivated_at` set), `tamper` (an unresolved tamper event other than `offline`), `offline` (`offline_since` set), else `online`. No column MUST store it, and there MUST be no `unassigned` status.
 
 #### Scenario: A tampered device goes offline
@@ -26,7 +26,7 @@ A device's `status` SHALL be computed at read time as the first that applies: `r
 - **THEN** its status is `online`
 
 ### Requirement: Badges flag what IT must act on
-<!-- source: Plan-v3.2 §5.7, §5.9 · W11 · D31 · D39 -->
+<!-- source: Plan-v3.5 §5.7, §5.9 · W11 · D31 · D39 -->
 Each device SHALL carry `badges`: `outdated` when `agent_version` is below the effective minimum (`agent-releases`, distribute-agents), `permission_pending` when a macOS `permissions` entry is not granted, `browser_access_pending` when a `browser_access` entry is `pending` or `unreadable`, and `paused` when `active_pause_id` is set or a pause is in force. Windows MUST never be `permission_pending`.
 
 #### Scenario: A Mac awaits Screen Recording approval
@@ -55,7 +55,7 @@ Each device SHALL carry `badges`: `outdated` when `agent_version` is below the e
 - **THEN** its badges never include `permission_pending`
 
 ### Requirement: Admins and IT list the company's devices
-<!-- source: Plan-v3.2 §4.5 "Devices" · PRD "Permission matrix" -->
+<!-- source: Plan-v3.5 §4.5 "Devices" · PRD "Permission matrix" -->
 `GET /v1/devices` SHALL return, for a `company_admin` or `it_admin`, the company's devices with `id`, `hostname`, `os`, `os_version`, `arch`, `agent_version`, employee `id` and `name`, `status`, `badges` and `last_heartbeat_at`, filterable by `status`, `badge`, `os` and `employee_id`. `GET /v1/devices/:id` SHALL add `helper_status`, `browser_access`, `permissions` and `health`. A `manager` MUST get `403 FORBIDDEN`.
 
 #### Scenario: IT filters offline devices
@@ -75,7 +75,7 @@ Each device SHALL carry `badges`: `outdated` when `agent_version` is below the e
 - **THEN** the response is `403 FORBIDDEN`
 
 ### Requirement: The rollout dashboard counts devices by status and badge
-<!-- source: Plan-v3.2 §5.9 · D44 -->
+<!-- source: Plan-v3.5 §5.9 · D47 -->
 `GET /v1/rollout` SHALL return, for a `company_admin` or `it_admin`, the company's device counts per `status` and per badge, and `healthy`: devices `online` with no badge. A `manager` MUST get `403 FORBIDDEN`.
 
 #### Scenario: A fresh rollout
@@ -87,7 +87,7 @@ Each device SHALL carry `badges`: `outdated` when `agent_version` is below the e
 - **THEN** every count is 0 and `healthy` is 0
 
 ### Requirement: Device data never crosses a company
-<!-- source: Plan-v3.2 §6.1 · D41 · B2 -->
+<!-- source: Plan-v3.5 §6.1 · D41 · B2 -->
 `GET /v1/devices`, `GET /v1/devices/:id` and `GET /v1/rollout` SHALL read only the caller's company. A device ID of another company MUST return `404 NOT_FOUND`, and a `super_admin` MUST get `403 FORBIDDEN`.
 
 #### Scenario: An admin asks for another company's device

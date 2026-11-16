@@ -9,7 +9,7 @@
 - [ ] 1.2 `POST /v1/agents/tamper`: insert with hostname snapshot; on `id` conflict, a visible row of the same device and type → 200; anything else, including a row hidden by RLS → 409
 - [ ] 1.3 Clamp a future `occurred_at` to server time; no B7 window
 - [ ] 1.4 Hand the new event to `alert-emails` after commit
-- [ ] 1.5 Tests: repeat → 200 and one row; other device's `id` → 409; `offline` → 422; ten-day-old event stored; `402` during suspension writes nothing
+- [ ] 1.5 Tests: repeat → 200 and one row; other device's `id` → 409; `offline` → 422; `duplicate_device_id` from an agent → 422; ten-day-old event stored; `402` during suspension writes nothing
 - [ ] 1.6 Tests (edge cases): repeat with a different `repeat_count` → 200, row unchanged; concurrent same `id` → one 201, one 200; new `id` after resolution → second open event; other company's `id` → 409 revealing nothing; `repeat_count` 0, oversized `detail`, array `detail` → 422; `occurred_at` a day ahead clamped; event during a pause stored; repeat hands over no second alert
 
 ## 2. alerts-feed
@@ -18,7 +18,7 @@
 - [ ] 2.2 `POST /v1/alerts/:id/resolve` for `company_admin` and `it_admin`, idempotent
 - [ ] 2.3 Tests: manager sees only own team; manager resolve → 403; resolved tamper clears `tamper` status; staff → 403; tenant isolation: another company's event never listed and resolve → 404
 - [ ] 2.4 Cursor on `(occurred_at, id)`; `null` next cursor on the last page; resolve with `UPDATE … WHERE resolved_at IS NULL` so the first resolver wins
-- [ ] 2.5 Tests (edge cases): reassigned employee moves events to the new manager's feed; empty feed; released device's event listed with snapshot hostname; ties across a page break neither repeat nor skip; full last page → `null` cursor; reversed dates → 422; other company's `device_id` → empty; concurrent resolves keep the first `resolved_by`; one of two open events resolved → still `tamper`
+- [ ] 2.5 Tests (edge cases): employee moved to another manager moves events to the new manager's feed; a released binding's events stay with its employee, never the next binding's; empty feed; released device's event listed with snapshot hostname; ties across a page break neither repeat nor skip; full last page → `null` cursor; reversed dates → 422; other company's `device_id` → empty; concurrent resolves keep the first `resolved_by`; one of two open events resolved → still `tamper`
 
 ## 3. alert-emails
 

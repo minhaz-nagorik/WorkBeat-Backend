@@ -6,7 +6,7 @@ record, the verification job activates it, and the API resolves a host name to i
 ## ADDED Requirements
 
 ### Requirement: A company admin sets a custom domain
-<!-- source: PRD "Tenants and custom domains" · Plan-v3.2 §4.4 -->
+<!-- source: PRD "Tenants and custom domains" · Plan-v3.5 §4.4 -->
 `PUT /v1/company/custom-domain` with `domain` SHALL be allowed to `company_admin` only. It MUST set `custom_domain` (lower case), `custom_domain_status` `pending`, a new random `custom_domain_token`, and clear `custom_domain_verified_at`. A domain under `workbeat.io` or not a valid host name MUST get `422 VALIDATION_FAILED`; a domain another company holds MUST get `409 CONFLICT`.
 
 #### Scenario: An admin adds a domain
@@ -42,7 +42,7 @@ record, the verification job activates it, and the API resolves a host name to i
 - **THEN** the response carries `txt_name` `_workbeat.monitor.acme.com` and `txt_value` `verify-` followed by the token
 
 ### Requirement: The verification job activates a matching domain
-<!-- source: Plan-v3.2 §6.4 · PRD "Tenants and custom domains" -->
+<!-- source: Plan-v3.5 §6.4 · PRD "Tenants and custom domains" -->
 `/cron/domain-verify`, run every 5 minutes, SHALL look up the TXT record `_workbeat.{domain}` of every `pending` domain and set `custom_domain_checked_at`. When a value equals `verify-{token}` it MUST set `custom_domain_status` `active` and `custom_domain_verified_at`. A domain still unmatched after the cut-off in `packages/shared` MUST become `failed`.
 
 #### Scenario: The TXT record is found
@@ -66,7 +66,7 @@ record, the verification job activates it, and the API resolves a host name to i
 - **THEN** the domain stays `active`, because only `pending` domains are checked
 
 ### Requirement: A failed DNS lookup changes nothing
-<!-- source: Plan-v3.2 §6.4 -->
+<!-- source: Plan-v3.5 §6.4 -->
 A TXT lookup that times out or errors SHALL leave the domain's status unchanged, and one domain's failure MUST NOT stop the job checking the others.
 
 #### Scenario: DNS times out
@@ -78,7 +78,7 @@ A TXT lookup that times out or errors SHALL leave the domain's status unchanged,
 - **THEN** every domain keeps its status and the run still answers `200`
 
 ### Requirement: A host name resolves to its company
-<!-- source: PRD "Tenants and custom domains" · B3 · Plan-v3.2 §6.1 -->
+<!-- source: PRD "Tenants and custom domains" · B3 · Plan-v3.5 §6.1 -->
 `GET /v1/hosts/resolve` with `host` SHALL need no credential and return the company `name` and `slug` for `{slug}.workbeat.io` or an `active` custom domain, resolved only through `company_by_host`. A `pending` or `failed` domain, or an unknown host, MUST get `404 NOT_FOUND`. A resolved host MUST NOT select the company of an authenticated request; the token does.
 
 #### Scenario: An active custom domain
@@ -102,7 +102,7 @@ A TXT lookup that times out or errors SHALL leave the domain's status unchanged,
 - **THEN** it resolves to that company
 
 ### Requirement: A failed domain is released
-<!-- source: PRD "Tenants and custom domains" · Plan-v3.2 §6.4 -->
+<!-- source: PRD "Tenants and custom domains" · Plan-v3.5 §6.4 -->
 `/cron/domain-verify` SHALL clear every `custom_domain*` column of a domain that has been `failed` for longer than the release period in `packages/shared`, so a domain a company never proved is free for the company that owns it. A `failed` domain MUST stay visible to its admin until then.
 
 #### Scenario: A squatted domain

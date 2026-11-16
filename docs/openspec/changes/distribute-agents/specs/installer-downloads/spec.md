@@ -6,7 +6,7 @@ current agent packages, and who cannot.
 ## ADDED Requirements
 
 ### Requirement: Admins and IT get signed download links
-<!-- source: Plan-v3.2 §4.4 "Deployment", §4.5 "Deployment" · W31 · D40 -->
+<!-- source: Plan-v3.5 §4.4 "Deployment", §4.5 "Deployment" · W31 · D40 -->
 `GET /v1/downloads` SHALL return, for a `company_admin` or `it_admin`, the newest non-withdrawn `downloader` release per platform and the newest non-withdrawn `agent` release per platform and architecture, each with `product`, `platform`, `arch`, `version`, `size_bytes`, `sha256`, `url` and `expires_at`.
 
 #### Scenario: IT opens Deployment
@@ -18,7 +18,7 @@ current agent packages, and who cannot.
 - **THEN** the response is `200` with the links
 
 ### Requirement: Download links are short-lived and never logged
-<!-- source: Plan-v3.2 §4.4 "Installer distribution" · Plan-v3.2 §5.3 "Secret" -->
+<!-- source: Plan-v3.5 §4.4 "Installer distribution" · Plan-v3.5 §5.3 "Secret" -->
 Each `url` SHALL be a signed URL to the private `agents` bucket valid for the lifetime in `packages/shared`, and MUST NOT be logged. The bucket MUST NOT be publicly readable.
 
 #### Scenario: A link is reused next week

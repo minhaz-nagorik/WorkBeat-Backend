@@ -5,9 +5,9 @@
 
 ## Context
 
-Four sources describe the backend and they do not agree everywhere: WorkBeat Plan v3.2, this
-repository's B-numbers, the PRD, and the two agent repositories' specs (which are behind D43 and
-D44). The API is multi-tenant and holds employee monitoring data, so an unstated behaviour is a
+Four sources describe the backend and they do not agree everywhere: WorkBeat Plan v3.5, this
+repository's B-numbers, the PRD, and the two agent repositories' specs (which are behind D43 to
+D48). The API is multi-tenant and holds employee monitoring data, so an unstated behaviour is a
 tenant leak or a privacy gap, not just a missing feature. Two agents, a Downloader and the web
 platform consume this API from other repositories, and each needs one place where the server's
 behaviour is stated testably.
@@ -19,7 +19,7 @@ tasks, a design where an upstream clause is amended, and one `spec.md` per capab
 SHALL / MUST statements with WHEN/THEN scenarios and a `<!-- source: … -->` comment naming the D,
 B, Plan or PRD clause behind each requirement (`docs/openspec/config.yaml`). A behaviour change
 starts as a spec change before any code. `openspec validate --all --strict`, run from `docs/`, is
-a merge gate. Docs elsewhere in `docs/` explain and never state a requirement. Plan v3.2 is the
+a merge gate. Docs elsewhere in `docs/` explain and never state a requirement. Plan v3.5 is the
 source of truth; where a design amends an upstream clause it records which one and why the newer
 rule wins.
 
@@ -41,6 +41,6 @@ not just a commit. A change the agents rely on also needs a spec change in both 
 
 ## Links
 
-- Decisions: CLAUDE.md rule 10; Plan-v3.2 §7 ("a behaviour change starts as a spec change").
+- Decisions: CLAUDE.md rule 10; Plan-v3.5 §7 ("a behaviour change starts as a spec change").
 - Config: [`docs/openspec/config.yaml`](../../openspec/config.yaml).
 - Same decision in the agent repositories: their ADR 0001.

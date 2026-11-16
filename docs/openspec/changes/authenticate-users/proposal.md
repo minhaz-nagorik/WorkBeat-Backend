@@ -2,10 +2,10 @@
 
 Company users and WorkBeat staff sign in through one Supabase Auth project (D41), so the role and
 company in a token are the only thing between a customer and another company's data, or a
-customer and the staff area (Plan-v3.2 §8 "One sign-in for staff and company users"). Every
+customer and the staff area (Plan-v3.5 §8 "One sign-in for staff and company users"). Every
 portal route needs the same guard: a verified token, a role allowed by the permission matrix
-(Plan-v3.2 §4.5, PRD "Permission matrix"), a manager limited to their team (B12), and staff
-held to MFA with no self sign-up (Plan-v3.2 §4.4, §4.6).
+(Plan-v3.5 §4.5, PRD "Permission matrix"), a manager limited to their team (B12), and staff
+held to MFA with no self sign-up (Plan-v3.5 §4.4, §4.6).
 
 ## What Changes
 

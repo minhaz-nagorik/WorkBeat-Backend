@@ -1,9 +1,9 @@
 ## Why
 
-Without MDM, every device is installed with the Downloader and updates itself (D40, Plan-v3.2 §5.7).
+Without MDM, every device is installed with the Downloader and updates itself (D40, Plan-v3.5 §5.7).
 WorkBeat staff must publish each package per platform and architecture and set the global minimum
-version (Plan-v3.2 §4.6); IT must download the Downloader and the packages through signed,
-short-lived links (Plan-v3.2 §4.4 "Deployment", W31); and each device's policy must point at the
+version (Plan-v3.5 §4.6); IT must download the Downloader and the packages through signed,
+short-lived links (Plan-v3.5 §4.4 "Deployment", W31); and each device's policy must point at the
 newest package for its platform and architecture so an outdated agent can update (D40).
 
 ## What Changes

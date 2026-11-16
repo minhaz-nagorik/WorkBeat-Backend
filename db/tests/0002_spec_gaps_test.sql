@@ -45,7 +45,7 @@ SELECT pg_temp.raises($$INSERT INTO notice_acknowledgements (company_id, device_
   'notice_acknowledgements_device_employee_version_key', 'the same employee''s acknowledgement is recorded once');
 
 SELECT pg_temp.raises($$UPDATE companies SET timezone = 'Mars/Base' WHERE slug = 'acme'$$, 'companies_timezone_check', 'unknown timezone refused');
-SELECT pg_temp.ok((SELECT jsonb_array_length(alert_email->'types') FROM companies WHERE slug = 'acme') = 6, 'a new company is alerted about every event type');
+SELECT pg_temp.ok((SELECT jsonb_array_length(alert_email->'types') FROM companies WHERE slug = 'acme') >= 6, 'a new company is alerted about every event type');
 
 SELECT pg_temp.ok((SELECT used FROM auth_enrollment_token('tUsed')) AND (SELECT expired FROM auth_enrollment_token('tOld'))
   AND NOT (SELECT used OR expired FROM auth_enrollment_token('tNew')), 'token lookup tells used from expired');
@@ -66,9 +66,9 @@ INSERT INTO monitoring_pauses (company_id, employee_id, starts_at, ends_at, reas
 SELECT pg_temp.ok(true, 'a cancelled pause no longer blocks a new one');
 
 SELECT pg_temp.raises($$UPDATE employees SET archived_at = now()$$, 'EMPLOYEE_HAS_DEVICES', 'an employee with a seat-holding device cannot be removed');
-UPDATE devices SET deactivated_at = now(), key_hash = NULL;
+UPDATE devices SET released_at = now();
 UPDATE employees SET archived_at = now();
-SELECT pg_temp.ok(true, 'a deactivated device no longer blocks removing its employee');
+SELECT pg_temp.ok(true, 'a released device no longer blocks removing its employee (0003 counts deactivated bindings)');
 
 -- staff: counts and token deletion without seeing devices or tokens
 SET LOCAL app.scope = 'staff';

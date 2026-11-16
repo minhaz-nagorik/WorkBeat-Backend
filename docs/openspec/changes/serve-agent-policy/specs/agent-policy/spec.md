@@ -47,12 +47,13 @@ to, resolved for that device's employee, with a version and an ETag so unchanged
 - **WHEN** an employee's `screenshot_interval_seconds` is 600 and the company's `screenshot_tier` is `off`
 - **THEN** the policy carries `screenshot_interval_seconds` 0
 
-#### Scenario: Reassigned to an employee with screenshots off
-- **WHEN** a device moves from an employee with screenshots at 600 to one at 0
-- **THEN** its next policy carries `screenshot_interval_seconds` 0 and the new employee's switches and pauses only
+#### Scenario: A new binding on a used device
+- **WHEN** a device bound to an employee with screenshots at 600 is released and set up for one at 0
+- **THEN** the new binding's policy carries `screenshot_interval_seconds` 0 and the new employee's switches and pauses only
+- **AND** the released binding's key gets `401 DEVICE_RELEASED` on `GET /v1/agents/policy`
 
 ### Requirement: Company-wide fields come from the company
-<!-- source: D4 · D15 · D19 · D25 · D39 · Plan-v3.2 §4.4 "Monitoring policy" -->
+<!-- source: D4 · D15 · D19 · D25 · D39 · Plan-v3.5 §4.4 "Monitoring policy" -->
 `block_rules` and `sensitive_domains` (as pattern strings) SHALL be the company's rows, `idle_threshold_seconds`, `uninstall_token_hash` and `collection_notice` its `companies` columns. `min_agent_version` MUST be the effective minimum defined by `distribute-agents` (`agent-releases`): the greater of `companies.min_agent_version` and the platform's global minimum. `update_package_url` and `update_package_sha256` MUST be as `distribute-agents` sets them, else null.
 
 #### Scenario: The company minimum is older than the global one
@@ -68,12 +69,13 @@ to, resolved for that device's employee, with a version and an ETag so unchanged
 - **THEN** no device of company A receives that rule
 
 ### Requirement: The version is the greatest of company, employee and device
-<!-- source: B5 · D8 -->
-`policy_version` SHALL be `greatest(companies.policy_version, employee_monitoring_settings.policy_version, devices.policy_version)` for the device's company, employee and row. It MUST never be lower than a version this device received before.
+<!-- source: B5 · D8 · D48 · Plan-v3.5 §6.2 "devices" -->
+`policy_version` SHALL be `greatest(companies.policy_version, employee_monitoring_settings.policy_version, devices.policy_version)` for the binding's company, employee and row. `devices.policy_version` is set once at insert and MUST NOT change, because a binding's employee never changes. A binding's version MUST never be lower than one it received before.
 
-#### Scenario: A device is reassigned to an employee with an older version
-- **WHEN** a device is reassigned to an employee whose settings were last changed long ago
-- **THEN** the device's next `policy_version` is higher than the one it had
+#### Scenario: The employee's settings change
+- **WHEN** an admin turns off `window_titles` for the binding's employee
+- **THEN** the binding's next `policy_version` is higher than the one it had
+- **AND** its `devices.policy_version` is unchanged
 
 #### Scenario: Only the company changed
 - **WHEN** a block rule is added and nothing else changes

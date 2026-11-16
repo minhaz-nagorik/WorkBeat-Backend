@@ -7,7 +7,7 @@ never explains why.
 
 ```markdown
 ### Requirement: <name>
-<!-- source: D43 · B4 · Plan-v3.2 §5.3 -->
+<!-- source: D43 · B4 · Plan-v3.5 §5.3 -->
 The API SHALL ...
 
 #### Scenario: <name>
@@ -37,8 +37,8 @@ their spec where a requirement exists because they rely on it.
 
 ## Sources
 
-Cite **D-numbers** (Plan v3.2 Appendix A), **B-numbers**
-([backend-decisions.md](../decisions/backend-decisions.md)), `Plan-v3.2 §n`, then
+Cite **D-numbers** (Plan v3.5 Appendix A), **B-numbers**
+([backend-decisions.md](../decisions/backend-decisions.md)), `Plan-v3.5 §n`, then
 `PRD "<section>"`.
 
 ## Commands

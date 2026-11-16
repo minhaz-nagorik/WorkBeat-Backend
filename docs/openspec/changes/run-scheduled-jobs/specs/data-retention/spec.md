@@ -6,7 +6,7 @@ and screenshots past its retention, old idempotency rows, and partitions past th
 ## ADDED Requirements
 
 ### Requirement: Cleanup prepares partitions first
-<!-- source: Plan-v3.2 §6.3 · data-model.md §6 · B13 -->
+<!-- source: Plan-v3.5 §6.3 · data-model.md §6 · B13 -->
 Each `/cron/cleanup` run SHALL first call `cron_ensure_month_partitions()`, so partitions exist from last month to two months ahead, before it deletes anything. Calling it twice MUST create nothing new.
 
 #### Scenario: A new month approaches
@@ -22,7 +22,7 @@ Each `/cron/cleanup` run SHALL first call `cron_ensure_month_partitions()`, so p
 - **THEN** the run creates nothing for it and does not fail
 
 ### Requirement: Activity past a company's retention is deleted
-<!-- source: B13 · PRD "Retention and suspension" · Plan-v3.2 §4.4 "Reports and data lifecycle" -->
+<!-- source: B13 · PRD "Retention and suspension" · Plan-v3.5 §4.4 "Reports and data lifecycle" -->
 For each company, cleanup SHALL delete `app_sessions`, `url_visits`, `activity_buckets` and `idle_intervals` rows whose time column is before now minus `data_retention_days`, in batches of the size in `packages/shared`, each batch its own transaction in `system` scope, until none remain or the run's time budget is spent. A spent budget MUST return `more` = `true`.
 
 #### Scenario: A company keeps 30 days
@@ -107,7 +107,7 @@ Cleanup MUST NOT delete `notice_acknowledgements`, `employees`, `devices`, `user
 - **THEN** the row remains
 
 ### Requirement: Partitions past the maximum are dropped
-<!-- source: B13 · Plan-v3.2 §4.4 "Reports and data lifecycle" -->
+<!-- source: B13 · Plan-v3.5 §4.4 "Reports and data lifecycle" -->
 After the per-company deletes, cleanup SHALL call `cron_drop_old_partitions(365)`, dropping every monthly partition that ends more than 365 days ago, and MUST report the number dropped.
 
 #### Scenario: A partition ends 400 days ago
@@ -123,7 +123,7 @@ After the per-company deletes, cleanup SHALL call `cron_drop_old_partitions(365)
 - **THEN** the run reports 0 partitions dropped
 
 ### Requirement: An interrupted cleanup loses nothing and resumes
-<!-- source: B15 · Plan-v3.2 §6.4 · design.md -->
+<!-- source: B15 · Plan-v3.5 §6.4 · design.md -->
 When a cleanup run stops part-way (a crash, a timeout or a lost connection), every batch already committed SHALL stay deleted and the next run MUST continue from what remains, deleting no row twice and never leaving a Storage object without its row being deleted later. A run that overlaps another between batches MUST only delete rows the other has not.
 
 #### Scenario: The process is killed after 40 batches

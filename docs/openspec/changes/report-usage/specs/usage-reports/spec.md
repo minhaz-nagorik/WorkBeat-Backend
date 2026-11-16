@@ -31,7 +31,7 @@ activity by hour and the productivity split, for one employee, a team, a departm
 - **THEN** the response is `200` with that employee's retained history
 
 ### Requirement: Reports take one range and one scope
-<!-- source: Plan-v3.2 §4.4 "Reports and data lifecycle" · B12 · PRD "Retention and suspension" -->
+<!-- source: Plan-v3.5 §4.4 "Reports and data lifecycle" · B12 · PRD "Retention and suspension" -->
 Every report SHALL take `from` and `to` dates (inclusive, in `companies.timezone`) and at most one of `employee_id`, `manager_user_id` or `department`; none means the caller's whole scope. A manager's scope MUST be intersected with the own team, and `manager_user_id` MUST be refused for a manager with `403 FORBIDDEN` unless it is the caller.
 
 #### Scenario: A manager filters by department
@@ -51,7 +51,7 @@ Every report SHALL take `from` and `to` dates (inclusive, in `companies.timezone
 - **THEN** the response is `200` with zero totals
 
 ### Requirement: Ranges are validated and clamped to retention
-<!-- source: B13 · PRD "Retention and suspension" · Plan-v3.2 §6.3 -->
+<!-- source: B13 · PRD "Retention and suspension" · Plan-v3.5 §6.3 -->
 A range with a malformed date, `to` before `from`, or more than 366 days SHALL get `422 VALIDATION_FAILED`. A `from` older than the company's `data_retention_days` MUST be moved to the first retained day, and every report MUST return the effective `from` and `to`. Periods with no rows, including paused periods, MUST count as zero.
 
 #### Scenario: The range starts before retention
@@ -83,7 +83,7 @@ A range with a malformed date, `to` before `from`, or more than 366 days SHALL g
 - **THEN** that day covers 25 hours of rows and no row is counted twice or dropped
 
 ### Requirement: Productivity is resolved when the report is read
-<!-- source: PRD "Activity levels, productivity, calendar and timesheets" · Plan-v3.2 §4.4 -->
+<!-- source: PRD "Activity levels, productivity, calendar and timesheets" · Plan-v3.5 §4.4 -->
 The API SHALL categorise each `app_sessions` row by `app_name` against `productivity_rules` with `match_type` `app`, and each `url_visits` row by `domain` against `match_type` `domain`, case-insensitively, at read time. No match MUST mean `neutral`. A category MUST NOT be stored on an activity row, so an edited rule MUST change every later report, history included.
 
 #### Scenario: A rule is edited
@@ -95,7 +95,7 @@ The API SHALL categorise each `app_sessions` row by `app_name` against `producti
 - **THEN** those sessions count as productive
 
 ### Requirement: App and website reports rank time
-<!-- source: D1 · Plan-v3.2 §4.4 · prototype "Top apps", "Websites" -->
+<!-- source: D1 · Plan-v3.5 §4.4 · prototype "Top apps", "Websites" -->
 `GET /v1/reports/apps` SHALL return the scope's apps ranked by summed `app_sessions.duration_seconds`, each with `app_name`, `seconds` and `category`. `GET /v1/reports/websites` SHALL return domains ranked by summed `url_visits.duration_seconds`, each with `domain`, `seconds` and `category`. Both MUST accept `limit` (default 10, at most 100).
 
 #### Scenario: Top five apps for a week

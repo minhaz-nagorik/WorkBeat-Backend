@@ -6,7 +6,7 @@ step with billing, and the billing routes a company admin uses to change them.
 ## ADDED Requirements
 
 ### Requirement: Subscription events set plan, seats and period
-<!-- source: Plan-v3.2 §4.4 "Plan changes" · PRD "Pricing" -->
+<!-- source: Plan-v3.5 §4.4 "Plan changes" · PRD "Pricing" -->
 On `customer.subscription.updated`, the API SHALL find the company through `company_by_stripe_customer`, read the subscription as Stripe returns it at that moment, and set `licenses.plan`, `seat_limit` from the plan (10 or 50; for `enterprise`, unchanged from the staff-set value), `screenshot_tier` from its add-on item, and `current_period_end`. A `trial` company whose subscription turns `active` MUST become `active`.
 
 #### Scenario: An upgrade to Growth
@@ -79,7 +79,7 @@ On `invoice.payment_failed` for a renewal, the API SHALL set the company's `stat
 - **THEN** its `status` stays `expired`
 
 ### Requirement: An ended subscription expires the licence
-<!-- source: D30 · D36 · Plan-v3.2 §4.4 "Expired licence" -->
+<!-- source: D30 · D36 · Plan-v3.5 §4.4 "Expired licence" -->
 On `customer.subscription.deleted`, the API SHALL set the company's `status` `expired`, clear `suspended_reason`, and set `licenses.expired_at` to the event time. Device rows and their seats MUST be left unchanged.
 
 #### Scenario: A customer cancels
@@ -96,7 +96,7 @@ On `customer.subscription.deleted`, the API SHALL set the company's `status` `ex
 - **THEN** `licenses.expired_at` keeps its first value
 
 ### Requirement: A company admin reads and changes billing
-<!-- source: Plan-v3.2 §4.5 "Settings" · PRD "Pricing" -->
+<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Pricing" -->
 For `company_admin` only, `GET /v1/billing` SHALL return `plan`, `seat_limit`, `seats_used`, `screenshot_tier`, any scheduled tier with its date, `trial_ends_at` and `current_period_end`. `PUT /v1/billing/screenshot-tier` MUST schedule the change in Stripe for `current_period_end` and MUST NOT change `licenses.screenshot_tier`; `POST /v1/billing/portal-session` MUST return a Stripe billing portal URL.
 
 #### Scenario: An admin picks a higher tier

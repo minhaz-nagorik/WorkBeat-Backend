@@ -2,9 +2,9 @@
 
 WorkBeat staff run the business from the staff area: they see every company's plan, seats,
 tier and status, suspend and restore, set Enterprise limits and the expired-licence grace, and
-reissue a leaked licence key (Plan-v3.2 §4.6, D43). They must do all of it without ever seeing an
+reissue a leaked licence key (Plan-v3.5 §4.6, D43). They must do all of it without ever seeing an
 employee, device, URL or screenshot (D41, PRD "Permission matrix"), and a staff token reading
-tenant data is a top risk the plan wants tested in CI (Plan-v3.2 §8).
+tenant data is a top risk the plan wants tested in CI (Plan-v3.5 §8).
 
 ## What Changes
 

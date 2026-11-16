@@ -6,7 +6,7 @@ a regex an admin writes is turned into `url` patterns or refused.
 ## ADDED Requirements
 
 ### Requirement: Admins and IT edit the block list; managers read it
-<!-- source: PRD "Permission matrix" · Plan-v3.2 §4.4 "Monitoring policy" -->
+<!-- source: PRD "Permission matrix" · Plan-v3.5 §4.4 "Monitoring policy" -->
 `POST /v1/block-rules`, `PATCH /v1/block-rules/:id` (`pattern`, `reason`) and `DELETE /v1/block-rules/:id` SHALL be accepted from a `company_admin` or `it_admin` and set `created_by` on create; a `manager` MUST get `403 FORBIDDEN`. `GET /v1/block-rules` MUST return `id`, `type`, `pattern`, `reason`, `created_at` to all three roles. A duplicate `(type, lower(pattern))` MUST return `409 CONFLICT`.
 
 #### Scenario: IT blocks a site
@@ -66,7 +66,7 @@ A `url` rule's `pattern` SHALL be accepted only in the Chrome `URLBlocklist` fil
 - **THEN** the response is `422` with `code` `VALIDATION_FAILED`
 
 ### Requirement: Regex input is compiled to url patterns or refused
-<!-- source: D39 · Plan-v3.2 §4.3 "Regex rules" · Mac track-and-block-websites "browser-url-blocking" -->
+<!-- source: D39 · Plan-v3.5 §4.3 "Regex rules" · Mac track-and-block-websites "browser-url-blocking" -->
 A create with `type` `regex` SHALL be compiled into one or more `url` rules when it is an anchored literal host, optionally with `(www\.)?` or an alternation of literal hosts, followed by a literal path prefix and an optional trailing `.*`; the created rules MUST be returned. Any other regex MUST return `422 VALIDATION_FAILED`. No rule MUST be stored with type `regex`.
 
 #### Scenario: A simple prefix regex
@@ -91,7 +91,7 @@ Every create, update or delete of a `block_rules` row SHALL raise `companies.pol
 - **AND** the next policy no longer carries the rule
 
 ### Requirement: Rule IDs stay inside the company
-<!-- source: B2 · Plan-v3.2 §6.1 · PRD "Permission matrix" -->
+<!-- source: B2 · Plan-v3.5 §6.1 · PRD "Permission matrix" -->
 `PATCH` and `DELETE /v1/block-rules/:id` on an ID that is not a rule of the caller's company, including one already deleted, SHALL return `404 NOT_FOUND` and change nothing; `GET /v1/block-rules` MUST list only the caller's company's rules.
 
 #### Scenario: Another company's rule

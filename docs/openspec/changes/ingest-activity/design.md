@@ -13,4 +13,4 @@ never hits it.
 
 **Amends:** PRD "Screenshots" (`{company_id}/{device_id}/{timestamp}.jpg`).
 **Why:** the ID is the agent's UUIDv7 and the idempotency key (D13); the schema already stores
-`{company_id}/{device_id}/{id}.jpg` as unique. Plan v3.2 and the schema outrank the PRD.
+`{company_id}/{device_id}/{id}.jpg` as unique. Plan v3.5 and the schema outrank the PRD.

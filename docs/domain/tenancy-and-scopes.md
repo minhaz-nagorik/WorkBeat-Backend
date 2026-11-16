@@ -30,7 +30,7 @@ Never from a body, query or path. Always from the credential:
 | Credential | Resolved by | Gives |
 |---|---|---|
 | Supabase JWT | Signature check, then the `users` row (`app_metadata` must match, not disabled) | `role`, `company_id` |
-| `X-Device-Key` | `auth_device(sha256)` | `device_id`, `company_id`, `employee_id`, `released` |
+| `X-Device-Key` | `auth_device(sha256)` | `device_id`, `company_id`, `employee_id`, `released`, `released_at` (0003: the upload routes accept a released key for 7 days, D45) |
 | `X-License-Key` | `auth_license(sha256)` | `license_id`, `company_id` |
 | Enrollment token | `auth_enrollment_token(sha256)` | `token_id`, `company_id`, `employee_id`, `used`, `expired` |
 | Invitation token | `auth_invitation(sha256)` | `invitation_id`, `company_id`, `email`, `role`, `usable` |
@@ -68,7 +68,7 @@ R = read, W = write, T = own team only, — = `403`.
 |---|---|---|---|---|
 | Onboarding checklist | RW | — | RW | — |
 | Licence key, uninstall token, min version | RW | — | RW | — |
-| Devices, rollout, deactivate / release / reassign | RW | — | RW | — |
+| Devices, rollout, deactivate / release | RW | — | RW | — |
 | Block list | RW | R | RW | — |
 | Employee directory | RW | R (T) | R (`id`, `name`, `email`, `department`, B18) | — |
 | Monitoring settings, pauses | RW | R (T) | — | — |

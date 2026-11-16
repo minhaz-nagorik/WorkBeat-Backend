@@ -6,7 +6,7 @@ company in one step, its first company admin and the welcome email with the lice
 ## ADDED Requirements
 
 ### Requirement: Stripe webhooks are verified and processed once
-<!-- source: Plan-v3.2 §4.4 "Company, subscription and licence" · PRD "API surface" -->
+<!-- source: Plan-v3.5 §4.4 "Company, subscription and licence" · PRD "API surface" -->
 `POST /v1/webhooks/stripe` SHALL verify the `Stripe-Signature` header against the raw body before parsing; a bad or missing signature MUST get `400 WEBHOOK_SIGNATURE_INVALID` and store nothing. Each event SHALL be inserted into `stripe_events` by its `id`; an `id` already processed MUST answer `200` without running its handler again.
 
 #### Scenario: Stripe retries an event
@@ -67,7 +67,7 @@ A `starter` checkout SHALL create the company with `status` `trial` and `license
 - **THEN** the company stays `trial` and is still served
 
 ### Requirement: Signup creates the install and policy defaults
-<!-- source: D43 · B6 · D19 · D4 · D25 · Plan-v3.2 §4.4 -->
+<!-- source: D43 · B6 · D19 · D4 · D25 · Plan-v3.5 §4.4 -->
 In the same transaction, the API SHALL generate the licence key (see `license-key`) and an uninstall token stored as `uninstall_token_hash` and `uninstall_token_ciphertext`, set `notice_text` to the default from `packages/shared` with `notice_version` 1, and insert the default `sensitive_domains` (`is_default` true) and default `productivity_rules` from `packages/shared`. A failure MUST leave no company row.
 
 #### Scenario: Defaults are seeded
@@ -98,7 +98,7 @@ The API SHALL create a Supabase Auth user for the checkout's email with `app_met
 - **THEN** it is treated as the same email
 
 ### Requirement: A welcome email carries the key and the dashboard address
-<!-- source: PRD "Purchase, license and install" · Plan-v3.2 §5.3 step 1 -->
+<!-- source: PRD "Purchase, license and install" · Plan-v3.5 §5.3 step 1 -->
 After the transaction commits, the API SHALL send one welcome email through Resend to the checkout email with the licence key, the dashboard URL `https://{slug}.workbeat.io` and a link to set a password. Neither the key nor the link MUST be logged.
 
 #### Scenario: The welcome email
@@ -106,7 +106,7 @@ After the transaction commits, the API SHALL send one welcome email through Rese
 - **THEN** one email reaches the buyer with the key `WB-XXXX-XXXX-XXXX-XXXX` and `https://acme-ltd.workbeat.io`
 
 ### Requirement: A failed webhook handler is retried by Stripe
-<!-- source: Plan-v3.2 §4.4 "Company, subscription and licence" · D13 -->
+<!-- source: Plan-v3.5 §4.4 "Company, subscription and licence" · D13 -->
 When a handler fails, the API SHALL roll back its writes, leave `stripe_events.processed_at` NULL and answer `500 INTERNAL`, so Stripe redelivers the event. A redelivery of an event whose row exists with `processed_at` NULL MUST run the handler again; concurrent deliveries of one `id` MUST be serialised on that row.
 
 #### Scenario: The database is briefly unavailable
@@ -119,7 +119,7 @@ When a handler fails, the API SHALL roll back its writes, leave `stripe_events.p
 - **THEN** the event is stored with `processed_at` set and the response is `200` with no other write
 
 ### Requirement: Every company gets a usable slug
-<!-- source: PRD "Tenants and custom domains" · data-model.md "companies" · Plan-v3.2 §4.4 -->
+<!-- source: PRD "Tenants and custom domains" · data-model.md "companies" · Plan-v3.5 §4.4 -->
 The slug SHALL match `^[a-z0-9]+(-[a-z0-9]+)*$` and be at most 32 characters including any numeric suffix. A name with no ASCII letter or digit MUST get the base `company`; a slug in the reserved list in `packages/shared` (such as `www`, `api`, `admin`, `staff`) MUST be treated as taken. Two signups racing for one slug MUST both succeed with different slugs.
 
 #### Scenario: A long name
@@ -139,7 +139,7 @@ The slug SHALL match `^[a-z0-9]+(-[a-z0-9]+)*$` and be at most 32 characters inc
 - **THEN** one company gets `acme-ltd` and the other `acme-ltd-2`
 
 ### Requirement: A failed welcome email never undoes the signup
-<!-- source: PRD "Purchase, license and install" · Plan-v3.2 §5.3 step 1 -->
+<!-- source: PRD "Purchase, license and install" · Plan-v3.5 §5.3 step 1 -->
 When Resend refuses or times out on the welcome email, the API SHALL retry it up to the attempt count in `packages/shared` with backoff, and after the last failure MUST log the failure by company ID and keep the company, licence and user. The event MUST stay processed: a Stripe redelivery MUST NOT resend the email or create anything.
 
 #### Scenario: Resend is down during signup

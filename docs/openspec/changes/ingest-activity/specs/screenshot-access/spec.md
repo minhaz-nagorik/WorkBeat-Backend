@@ -6,16 +6,16 @@ URL that shows each image lives.
 ## ADDED Requirements
 
 ### Requirement: The admin and the employee's manager see a day's timeline
-<!-- source: PRD "Permission matrix" · PRD "Screenshots" · Plan-v3.2 §4.4 "Reports and data lifecycle" -->
+<!-- source: PRD "Permission matrix" · PRD "Screenshots" · Plan-v3.5 §4.4 "Reports and data lifecycle" -->
 `GET /v1/employees/:id/screenshots?date=YYYY-MM-DD` SHALL return, for a `company_admin` or the employee's manager, the employee's `uploaded` screenshots captured on that day in the company's `timezone`, oldest first, each with `id`, `captured_at`, `device_id`, the device's `hostname`, `view_url` and `expires_at`. `pending` screenshots MUST NOT be listed.
 
 #### Scenario: A manager opens their report's screenshots
 - **WHEN** a manager requests a day for an employee on their team
 - **THEN** that day's uploaded screenshots are returned with signed view URLs
 
-#### Scenario: A device was reassigned
-- **WHEN** a device moved from employee A to employee B at noon
-- **THEN** A's timeline for that day holds the morning's screenshots and B's the afternoon's
+#### Scenario: A device changed hands by release
+- **WHEN** a device bound to employee A was released at noon and set up again for employee B
+- **THEN** A's timeline for that day holds only screenshots with `employee_id` A and B's only those with `employee_id` B
 
 #### Scenario: An archived employee
 - **WHEN** a company admin opens a day for an archived employee

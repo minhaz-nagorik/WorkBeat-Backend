@@ -23,7 +23,7 @@ returns the 7 days it has, with the effective `from` in the response. Only malfo
 refused.
 
 ### CSV export is synchronous with a row cap
-Plan-v3.2 §4.4 lists CSV export without a shape. A streamed export would hold a pooled
+Plan-v3.5 §4.4 lists CSV export without a shape. A streamed export would hold a pooled
 transaction-mode connection for minutes; an async job needs a job table and storage nobody asked
 for. A cap from `packages/shared` keeps one request bounded; over the cap the caller narrows the
 range. Revisit with an async export if the cap is hit in practice.

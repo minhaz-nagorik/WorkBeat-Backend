@@ -24,7 +24,7 @@ to the employee IT picked.
 - **AND** the body key is never read
 
 ### Requirement: Suspended and expired companies are refused
-<!-- source: D29 · D30 · Plan-v3.2 §4.4 "Company, subscription and licence" -->
+<!-- source: D29 · D30 · Plan-v3.5 §4.4 "Company, subscription and licence" -->
 When the key's company has `status` `suspended` the API SHALL return `402 LICENSE_SUSPENDED`, and when `status` is `expired` it MUST return `402 LICENSE_EXPIRED`, at both steps and before any other check except the key lookup.
 
 #### Scenario: A failed renewal
@@ -44,7 +44,7 @@ When the key's company has `status` `suspended` the API SHALL return `402 LICENS
 - **THEN** the response is `200` with no status code in the body
 
 ### Requirement: A free seat is checked and nothing is reserved
-<!-- source: D43 · D44 · B4 · Plan-v3.2 §5.3 -->
+<!-- source: D43 · D47 · B4 · Plan-v3.5 §5.3 -->
 At both steps the API SHALL return `403 SEAT_LIMIT_EXCEEDED` when the devices with `deactivated_at` and `released_at` NULL number at least `licenses.seat_limit` (never for a NULL limit). Validation MUST NOT reserve or count a seat.
 
 #### Scenario: The last seat
@@ -65,7 +65,7 @@ At both steps the API SHALL return `403 SEAT_LIMIT_EXCEEDED` when the devices wi
 - **THEN** validation never answers `SEAT_LIMIT_EXCEEDED`
 
 ### Requirement: Step one returns the company and its employees
-<!-- source: B8 · D42 · D44 -->
+<!-- source: B8 · D42 · D47 -->
 A request with no `employee_id` SHALL return `company_name` and `employees[]` with `id`, `name`, `email` and `department` for every non-archived employee of the company, ordered by `name`. It MUST write nothing.
 
 #### Scenario: IT checks the key
@@ -78,7 +78,7 @@ A request with no `employee_id` SHALL return `company_name` and `employees[]` wi
 - **THEN** the response is `200` with `employees` an empty array
 
 ### Requirement: Step two issues a single-use token for the picked employee
-<!-- source: B8 · D26 · D43 · D44 · Plan-v3.2 §5.3 -->
+<!-- source: B8 · D26 · D43 · D47 · Plan-v3.5 §5.3 -->
 A request with `employee_id` SHALL, when it names a non-archived employee of the company, write one `enrollment_tokens` row with `license_id`, `employee_id`, `token_hash` (SHA-256 of a random token) and `expires_at` = now + 24 h, and return the token and `expires_at` once. Any other `employee_id` MUST return `404 EMPLOYEE_NOT_FOUND`.
 
 #### Scenario: IT picks an employee
@@ -100,7 +100,7 @@ A request with `employee_id` SHALL, when it names a non-archived employee of the
 - **THEN** step 2 gets `404` with `code` `EMPLOYEE_NOT_FOUND` and no token is written
 
 ### Requirement: Step 2 also returns the agent package to install
-<!-- source: B8 · W31 · D40 · Plan-v3.2 §5.1 -->
+<!-- source: B8 · W31 · D40 · Plan-v3.5 §5.1 -->
 When step 2 carries `os` (`macos` or `windows`) and `arch` (`x64` or `arm64`), the response SHALL also carry `package_url`, a short-lived signed URL to the newest non-withdrawn `agent` release for that platform and architecture (the universal `.pkg` on macOS), and its `package_sha256`, chosen as `distribute-agents` defines.
 
 #### Scenario: The Downloader installs on an ARM64 PC

@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-11-15
-**Amends:** Plan-v3.2 §6.1, which says the API connects with a server connection that bypasses
+**Amends:** Plan-v3.5 §6.1, which says the API connects with a server connection that bypasses
 row-level security and keeps RLS only as a recommended extra.
 
 ## Context
@@ -53,7 +53,7 @@ Granting `workbeat_api` `BYPASSRLS`, or granting it direct access to a partition
 
 ## Links
 
-- Decisions: [B2, B15](../backend-decisions.md), D41, Plan-v3.2 §6.1; CLAUDE.md rules 1–3.
+- Decisions: [B2, B15](../backend-decisions.md), D41, Plan-v3.5 §6.1; CLAUDE.md rules 1–3.
 - Schema: [0001_init.sql](../../../db/migrations/0001_init.sql) "row-level security".
 - Specs: [request-scope](../../openspec/changes/establish-api-foundation/specs/request-scope/spec.md),
   [staff-data-boundary](../../openspec/changes/administer-platform/specs/staff-data-boundary/spec.md),

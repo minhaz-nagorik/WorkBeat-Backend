@@ -28,4 +28,4 @@ run every `openspec` command from `docs/`.
    self-check in `db/tests/`.
 10. **Spec before code.** A behaviour change starts as an OpenSpec change in
     `docs/openspec/changes/`. `openspec validate --all --strict` is a merge gate. **WorkBeat Plan
-    v3.2 is the source of truth**; D-numbers are its rulings, B-numbers are this repository's.
+    v3.5 is the source of truth**; D-numbers are its rulings, B-numbers are this repository's.

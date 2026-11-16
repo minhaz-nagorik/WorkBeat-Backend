@@ -1,7 +1,7 @@
 ## Why
 
 Reports are what a company pays for: app and website usage, activity level, productivity split,
-calendar, weekly timesheet and CSV export (Plan-v3.2 §4.4 "Reports and data lifecycle"). Tracked
+calendar, weekly timesheet and CSV export (Plan-v3.5 §4.4 "Reports and data lifecycle"). Tracked
 time is all foreground time with activity percent beside it (D1), productivity is resolved when a
 report is read (PRD "Activity levels, productivity, calendar and timesheets"), managers see only
 their own team (B12) and staff never see any of it (D41).

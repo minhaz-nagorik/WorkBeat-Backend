@@ -12,14 +12,14 @@
 - [ ] 1.5 Tests: role matrix per route; duplicate email → 409; archive with an unreleased device → 409, after release → archived; import skips existing emails and writes nothing on one bad row; tenant isolation — another company's employee ID → 404 and never listed
 - [ ] 1.6 CSV parser: strip a UTF-8 BOM, accept CRLF, RFC 4180 quoting; empty or header-only file → 422; case-insensitive in-file duplicate check; manager email must be an enabled `manager`
 - [ ] 1.7 Archived employee is read-only: PATCH, settings PUT and pause writes → `409 CONFLICT`; archive takes the employee row lock that enrollment also takes (`FOR SHARE`), so archive and enroll serialise
-- [ ] 1.8 Tests (edge cases): case-only duplicate email → 409; concurrent same-email creates → one 201, one 409; blank name → 422; `company_id` in body ignored; several employees without email; BOM + CRLF file; quoted comma; archived email re-created on import; duplicate emails in file → 422 naming both lines; unknown or disabled manager email → 422; 0 rows → 422; exactly the cap → imported, cap + 1 → 413; two concurrent imports of one file → no duplicate; deactivated device does not block archive; repeat archive keeps `archived_at`; archive vs enroll race
+- [ ] 1.8 Tests (edge cases): case-only duplicate email → 409; concurrent same-email creates → one 201, one 409; blank name → 422; `company_id` in body ignored; several employees without email; BOM + CRLF file; quoted comma; archived email re-created on import; duplicate emails in file → 422 naming both lines; unknown or disabled manager email → 422; 0 rows → 422; exactly the cap → imported, cap + 1 → 413; two concurrent imports of one file → no duplicate; deactivated, unreleased binding blocks archive → 409, released binding does not; repeat archive keeps `archived_at`; archive vs enroll race
 
 ## 2. manager-teams
 
 - [ ] 2.1 Manager validation: user with role `manager`, same company, not disabled → else `422`
 - [ ] 2.2 Team filter (`manager_user_id = caller`) applied in the employee query layer for role `manager`, reusable by later changes
 - [ ] 2.3 Tests: manager lists only their team; other team → 404; every write route → 403 for a manager; tenant isolation — a manager of company A assigned in company B is refused
-- [ ] 2.4 Tests (edge cases): disabled manager → 422; employee ID as `manager_user_id` → 422; clear to null; reassignment moves visibility at once; manager `archived=true` sees own team only; manager import → 403 before parsing; assign vs remove race ends with no manager or an enabled one (lock the `users` row while validating)
+- [ ] 2.4 Tests (edge cases): disabled manager → 422; employee ID as `manager_user_id` → 422; clear to null; moving an employee to another manager moves visibility at once; manager `archived=true` sees own team only; manager import → 403 before parsing; assign vs remove race ends with no manager or an enabled one (lock the `users` row while validating)
 
 ## 3. monitoring-settings
 

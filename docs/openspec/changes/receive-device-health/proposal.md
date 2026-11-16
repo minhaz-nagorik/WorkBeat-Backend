@@ -4,8 +4,8 @@ The portal's whole view of a fleet comes from one call every 5 minutes. The hear
 the latest health, tell the agent its policy version and the pause in force (D31, D32), carry the
 notice acknowledgement that is the company's legal evidence (D25), and keep a suspended device from
 looking offline (D5). Offline is raised only by the backend after 15 minutes of silence, never for
-a released device (D24, D38, Plan-v3.2 §6.4), and the rollout dashboard derives every status from
-these fields (Plan-v3.2 §2.4, §5.9).
+a released device (D24, D38, Plan-v3.5 §6.4), and the rollout dashboard derives every status from
+these fields (Plan-v3.5 §2.4, §5.9).
 
 ## What Changes
 
@@ -18,7 +18,7 @@ these fields (Plan-v3.2 §2.4, §5.9).
   exactly one `offline` event; never for released, deactivated or ended devices (D36, D38).
 - **Device status is derived, never stored**: released, deactivated, tamper, offline, online, with
   badges outdated, permission pending, browser access pending and paused. No unassigned status
-  (D44). `GET /v1/devices`, `GET /v1/devices/:id` and `GET /v1/rollout` serve it.
+  (D47). `GET /v1/devices`, `GET /v1/devices/:id` and `GET /v1/rollout` serve it.
 
 ## Capabilities
 
