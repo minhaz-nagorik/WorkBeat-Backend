@@ -8,7 +8,7 @@
 - [ ] 1.1 `POST /v1/webhooks/stripe`: raw-body signature check, insert into `stripe_events` first, set `processed_at` after the handler commits
 - [ ] 1.2 Price → plan and price → screenshot tier maps, plan seat limits, trial length, default notice text, default sensitive domains and productivity rules in `packages/shared`
 - [ ] 1.3 Slug generator (lowercase, hyphens, ≤ 32, numeric suffix on collision)
-- [ ] 1.4 Company, licence, uninstall token, defaults and first admin in one `tenant`-scope transaction for the new company ID; Supabase Auth user with `app_metadata`; welcome email after commit
+- [ ] 1.4 Company, licence, uninstall token, defaults and first admin in one `tenant`-scope transaction for the new company ID; `users` row without a password and a set-password link (B24); welcome email after commit
 - [ ] 1.5 Tests: same event twice → one company; bad signature → 400 and nothing stored; slug collision; Starter → `trial` with `trial_ends_at`; welcome email carries the key and URL, the log carries neither; tenant isolation: the new company's defaults are invisible to another company
 - [ ] 1.6 Row lock on the `stripe_events` row so concurrent deliveries of one `id` serialise; handler failure rolls back, leaves `processed_at` NULL and answers 500; unhandled event types stored as processed
 - [ ] 1.7 Slug: reserved list in `packages/shared`, `company` fallback, truncation with suffix ≤ 32, retry on unique violation; welcome email retry count and backoff in `packages/shared`

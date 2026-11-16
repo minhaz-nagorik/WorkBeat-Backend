@@ -101,7 +101,7 @@ Creating, extending or cancelling a pause SHALL raise the employee's `employee_m
 
 ### Requirement: Pauses are listed for the admin and the employee's manager
 <!-- source: D31 · B12 · PRD "Users and roles" -->
-`GET /v1/employees/:id/pauses` SHALL return each pause's `id`, `starts_at`, `ends_at`, `reason`, `note`, `created_by`, `cancelled_at` and a derived `status` (`scheduled`, `active`, `ended`, `cancelled`) to a `company_admin`, and read-only to a `manager` for their own team. An `it_admin` MUST get `403 FORBIDDEN`.
+`GET /v1/employees/:id/pauses` SHALL return each pause's `id`, `starts_at`, `ends_at`, `reason`, `note`, `created_by`, `created_by_name` (`null` when the user is gone), `cancelled_at` and a derived `status` (`scheduled`, `active`, `ended`, `cancelled`) to a `company_admin`, and read-only to a `manager` for their own team. An `it_admin` MUST get `403 FORBIDDEN`.
 
 #### Scenario: A manager views a team member's leave
 - **WHEN** a manager lists pauses for an employee on their team

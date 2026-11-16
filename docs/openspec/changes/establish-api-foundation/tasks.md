@@ -6,7 +6,7 @@
 ## 1. Repository
 
 - [ ] 1.1 Workspace with `apps/api` (NestJS 10, Fastify adapter, Node 20) and `packages/shared` (zod) (B1)
-- [ ] 1.2 Config from the environment, validated at start: database URL, Supabase URL and JWT secret, encryption key (B6), cron secret (B10), Stripe and Resend keys
+- [x] 1.2 Config from the environment, validated at start: database URL, encryption key (B6), storage directory (B26), cron secret (B10), Stripe and Resend keys
 - [ ] 1.3 CI: lint, typecheck, unit tests, migrations + self-checks on PostgreSQL 15, `openspec validate --all --strict`
 
 ## 2. api-envelope

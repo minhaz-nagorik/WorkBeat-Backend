@@ -87,21 +87,25 @@ const ALERT_FROM = `FROM tamper_events t JOIN devices d ON d.id = t.device_id JO
     AND ($4::text IS NULL OR ($4 = 'open') = (t.resolved_at IS NULL))
     AND ($5::uuid IS NULL OR t.device_id = $5)
     AND ($6::timestamptz IS NULL OR t.occurred_at >= $6) AND ($7::timestamptz IS NULL OR t.occurred_at <= $7)
-    AND ($8::uuid IS NULL OR d.employee_id = $8)`;
+    AND ($8::uuid IS NULL OR d.employee_id = $8)
+    AND ($9::text IS NULL OR t.event_type ILIKE $9 OR t.hostname ILIKE $9 OR e.name ILIKE $9 OR t.detail::text ILIKE $9)`;
 
 export async function alerts(c: Tx, u: User, q: Record<string, string | undefined>, limit = ALERT_PAGE, withCounts = false) {
   const types = q.type ? q.type.split(',') : null;
   let cursorAt: string | null = null, cursorId: string | null = null;
   if (q.cursor) [cursorAt, cursorId] = Buffer.from(q.cursor, 'base64url').toString().split('|');
   const filters = [u.role, u.id, types, q.state ?? null, q.device_id ? idOrNone(q.device_id) : null, q.from ?? null, q.to ?? null,
-    q.employee_id ? idOrNone(q.employee_id) : null];
+    q.employee_id ? idOrNone(q.employee_id) : null,
+    // q: free text over event type, hostname, employee name and detail (labels are the web platform's)
+    q.q ? `%${q.q.slice(0, 100).replace(/[\\%_]/g, (ch) => '\\' + ch)}%` : null];
   const { rows } = await c.query(
     `SELECT t.id, t.event_type, t.device_id, t.hostname, json_build_object('id', e.id, 'name', e.name) AS employee,
-            t.detail, t.repeat_count, t.occurred_at, t.received_at, t.resolved_at, t.resolved_by
+            t.detail, t.repeat_count, t.occurred_at, t.received_at, t.resolved_at, t.resolved_by,
+            (SELECT name FROM users u WHERE u.id = t.resolved_by) AS resolved_by_name
        ${ALERT_FROM}
-        AND ($9::timestamptz IS NULL OR (t.occurred_at, t.id) < ($9, $10::uuid))
-        AND ($11::uuid IS NULL OR t.id = $11)
-      ORDER BY t.occurred_at DESC, t.id DESC LIMIT $12`,
+        AND ($10::timestamptz IS NULL OR (t.occurred_at, t.id) < ($10, $11::uuid))
+        AND ($12::uuid IS NULL OR t.id = $12)
+      ORDER BY t.occurred_at DESC, t.id DESC LIMIT $13`,
     [...filters, cursorAt, cursorId, q.id ?? null, limit + 1],
   );
   const page = rows.slice(0, limit);

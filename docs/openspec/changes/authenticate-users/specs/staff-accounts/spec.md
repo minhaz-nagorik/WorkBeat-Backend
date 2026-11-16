@@ -113,3 +113,23 @@ No route SHALL issue a token, session or link that acts as another user, and no 
 #### Scenario: Staff ask to open a company dashboard
 - **WHEN** a `super_admin` calls any company route with a company ID
 - **THEN** the response is `403 FORBIDDEN`
+
+### Requirement: A staff invitation is accepted without a session
+<!-- source: D41 · B23 -->
+`POST /v1/invitations/accept` for a `super_admin` invitation SHALL create the `users` row with no `company_id` and answer `201` with `user` only, no `token`: the person then signs in and sets up TOTP (`POST /v1/auth/mfa/enroll`).
+
+#### Scenario: A new staff member accepts
+- **WHEN** a staff invitation is accepted with a name and password
+- **THEN** the response is `201` with `user.role` `super_admin` and no `token`
+
+### Requirement: Staff invitations follow the company rules
+<!-- source: D41 · team-invitations -->
+`POST /v1/staff/invitations` SHALL answer `409 CONFLICT` for an email with an open staff invitation or any `users` row. `POST /v1/staff/invitations/:id/resend` MUST replace the token, renew `expires_at` and email again, with the codes of the company team's resend: `404` unknown, `409` not open.
+
+#### Scenario: Inviting the same email twice
+- **WHEN** staff invite an email that already has an open staff invitation
+- **THEN** the response is `409 CONFLICT` and one invitation exists
+
+#### Scenario: Resending a staff invitation
+- **WHEN** staff resend an open invitation
+- **THEN** the old link answers `404 INVITATION_INVALID` and the new one works

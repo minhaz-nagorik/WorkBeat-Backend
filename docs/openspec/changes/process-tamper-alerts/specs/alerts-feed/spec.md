@@ -97,3 +97,15 @@ An event SHALL appear in `GET /v1/alerts` as soon as the request or job that sto
 #### Scenario: Alerts on the employee page
 - **WHEN** a company admin lists alerts with `employee_id` of employee E
 - **THEN** every item's `employee.id` is E and `counts` covers only E's events
+
+### Requirement: Alerts name who resolved them and can be searched
+<!-- source: Plan-v3.5 §4.5 "Alerts" -->
+Each item SHALL carry `resolved_by_name` (the resolving user's name, `null` when none). `GET /v1/alerts` MUST accept `q`, at most 100 characters, matching case-insensitively and literally (no wildcards) any part of `event_type`, `hostname`, the employee's name or `detail`, combined with the other filters and applied to `counts`.
+
+#### Scenario: Searching a laptop name
+- **WHEN** a manager searches `q` = `mac-17`
+- **THEN** only their team's events of devices whose hostname contains `mac-17` are listed
+
+#### Scenario: Wildcard characters
+- **WHEN** `q` is `%_`
+- **THEN** only events containing the literal text `%_` are listed

@@ -12,7 +12,7 @@
 - [ ] 2.1 Cron guard: `X-Cron-Secret` vs. the configured secret with `crypto.timingSafeEqual`; 401 `UNAUTHENTICATED` otherwise; header in the log redaction list
 - [ ] 2.2 Job runner: `system` scope per transaction, `pg_try_advisory_xact_lock(hashtext('cron:<job>'))`, response `{ job, started_at, duration_ms, rows_affected, skipped, more }`, one log line
 - [ ] 2.3 `POST /cron/token-expiry`
-- [ ] 2.4 Schedule definitions (pg_cron + pg_net, secret from Supabase Vault) for all five jobs, in `db/cron/` and the deploy guide
+- [ ] 2.4 Schedule definitions (server cron or systemd timers calling `curl` with the secret from the environment) for all five jobs, in `db/cron/` and the deploy guide
 - [ ] 2.5 Tests: no / wrong secret / user JWT → 401 and nothing runs; second concurrent call → `skipped`; run twice = run once; used tokens survive token-expiry; no route outside `/cron/*` can set `system` scope
 - [ ] 2.6 Tests (edge cases): unknown job with valid secret → 404; secret prefix (different length) → 401 without throwing; secret in query → 401; old secret after rotation → 401; every batch transaction sets `system` scope with no company; two same-second calls → one `skipped`; two different jobs never skip each other; failed run then retry writes nothing twice; run longer than its interval → next call `skipped`; skipped run response and log line; token at exactly `expires_at` kept; no tokens → 0
 

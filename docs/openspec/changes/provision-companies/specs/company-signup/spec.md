@@ -77,12 +77,12 @@ In the same transaction, the API SHALL generate the licence key (see `license-ke
 
 #### Scenario: Seeding fails half-way
 - **WHEN** inserting the default productivity rules fails after the company and licence rows were inserted
-- **THEN** no `companies`, `licenses` or Supabase Auth user exists for the checkout
+- **THEN** no `companies`, `licenses` or `users` row exists for the checkout
 - **AND** `stripe_events.processed_at` stays NULL so Stripe's retry runs the handler again
 
 ### Requirement: The buyer becomes the first company admin
 <!-- source: D41 · PRD "Users and roles" -->
-The API SHALL create a Supabase Auth user for the checkout's email with `app_metadata` `{ role: company_admin, company_id }` and the matching `users` row, and MUST NOT create an `invitations` row for it. When that email already belongs to a `users` row, the company MUST still be created and the welcome email MUST go to the checkout email without a sign-in link, and the conflict MUST be logged by company ID.
+The API SHALL create the `users` row for the checkout's email with role `company_admin`, the new `company_id` and no password, and email a single-use set-password link (`password_resets`, B24); it MUST NOT create an `invitations` row for it. When that email already belongs to a `users` row, the company MUST still be created and the welcome email MUST go to the checkout email without a sign-in link, and the conflict MUST be logged by company ID.
 
 #### Scenario: A new buyer
 - **WHEN** a checkout completes for `owner@acme.com`

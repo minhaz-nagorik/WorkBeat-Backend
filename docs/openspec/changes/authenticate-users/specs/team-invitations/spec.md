@@ -103,7 +103,7 @@ An invitation for an email that already has an open invitation in the company, o
 
 ### Requirement: A company admin changes roles and removes users
 <!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Permission matrix" -->
-`PATCH /v1/team/users/:id` with `role` and `DELETE /v1/team/users/:id` SHALL be allowed to `company_admin` only, update `app_metadata` with the `users` row, and on removal set `disabled_at` and end the user's sessions. A change that would leave the company with no enabled `company_admin` MUST answer `409 CONFLICT`. A user who stops being a manager MUST have their employees' `manager_user_id` set to NULL.
+`PATCH /v1/team/users/:id` with `role` and `DELETE /v1/team/users/:id` SHALL be allowed to `company_admin` only and update the `users` row, which every session reads on its next request; removal MUST set `disabled_at` and revoke the user's sessions. A change that would leave the company with no enabled `company_admin` MUST answer `409 CONFLICT`. A user who stops being a manager MUST have their employees' `manager_user_id` set to NULL.
 
 #### Scenario: The last admin removes themselves
 - **WHEN** the only company admin deletes their own user

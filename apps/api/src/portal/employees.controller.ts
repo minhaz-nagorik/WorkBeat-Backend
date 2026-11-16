@@ -51,7 +51,7 @@ const settingsBody = z.object({
   screenshot_interval_seconds: z.union([z.literal(0), z.literal(600), z.literal(1800), z.literal(3600)]),
 });
 const REASONS = ['annual_leave', 'sick_leave', 'personal', 'offsite_training', 'other'] as const;
-const PAUSE = `id, starts_at, ends_at, reason, note, created_by, cancelled_at,
+const PAUSE = `id, starts_at, ends_at, reason, note, created_by, (SELECT name FROM users u WHERE u.id = created_by) AS created_by_name, cancelled_at,
   CASE WHEN cancelled_at IS NOT NULL THEN 'cancelled' WHEN ends_at <= now() THEN 'ended'
        WHEN starts_at <= now() THEN 'active' ELSE 'scheduled' END AS status`;
 

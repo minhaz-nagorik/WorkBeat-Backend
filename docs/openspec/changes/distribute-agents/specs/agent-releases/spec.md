@@ -7,7 +7,7 @@ architecture, and how the global and effective minimum agent versions follow fro
 
 ### Requirement: Staff publish a release
 <!-- source: Plan-v3.5 §4.6 · D40 · D41 · data-model.md "agent_releases" -->
-`POST /v1/staff/agent-releases` SHALL let a `super_admin` create an `agent_releases` row with `product` (`agent` or `downloader`), `platform`, `arch`, `version` and `min_supported` (both `x.y.z`), `storage_path`, `sha256`, `signature`, `size_bytes` and `release_notes`, with `published_by` the caller, and return `201`. The object MUST exist in the private `agents` bucket with `size_bytes`, or the request gets `422 VALIDATION_FAILED`.
+`POST /v1/staff/agent-releases` SHALL let a `super_admin` create an `agent_releases` row with `product` (`agent` or `downloader`), `platform`, `arch`, `version` and `min_supported` (both `x.y.z`), `storage_path`, `sha256`, `signature` (required for macOS; `null` or omitted for Windows, whose MSIs are unsigned, W35; an empty string MUST get `422`), `size_bytes` and `release_notes`, with `published_by` the caller, and return `201`. The object MUST exist in the private `agents` bucket with `size_bytes`, or the request gets `422 VALIDATION_FAILED`.
 
 #### Scenario: A new Mac package
 - **WHEN** staff publish agent 1.0.5 for `macos` `universal` with an uploaded object
@@ -105,3 +105,11 @@ Publishing or withdrawing an `agent` release SHALL give every company a new `com
 #### Scenario: A Downloader release
 - **WHEN** staff publish or withdraw a `downloader` release
 - **THEN** no `companies.policy_version` changes
+
+### Requirement: Staff upload a release package
+<!-- source: Plan-v3.5 §4.6 · B26 -->
+`POST /v1/staff/agent-releases/upload-url` with `product`, `platform`, `arch` and `version` SHALL return, to a `super_admin`, `upload_url` (a signed `PUT` into the private `agents` bucket), its `storage_path` and `expires_at`. Publishing with that `storage_path` MUST then check the object's size and SHA-256.
+
+#### Scenario: Staff upload a new macOS agent
+- **WHEN** staff request an upload URL for `agent` `macos` `universal` `1.5.0` and `PUT` the package
+- **THEN** publishing with the returned `storage_path`, `size_bytes` and `sha256` answers `201`

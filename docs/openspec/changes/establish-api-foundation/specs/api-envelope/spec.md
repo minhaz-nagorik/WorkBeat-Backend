@@ -71,3 +71,11 @@ A request body larger than its route's limit in `packages/shared` SHALL be refus
 #### Scenario: An oversized activity batch
 - **WHEN** a body exceeds the activity route's limit
 - **THEN** the response is `413` with `code` `PAYLOAD_TOO_LARGE`
+
+### Requirement: Lists without a cursor are returned whole
+<!-- source: B9 · Plan-v3.5 §4.5 -->
+Every list route except `GET /v1/alerts` SHALL return all matching rows in one response, without paging parameters, and MUST stay within the API's time budget for a company of 5,000 employees and 5,000 devices. A list expected to grow past that MUST get a cursor through a spec change first.
+
+#### Scenario: The largest company's devices
+- **WHEN** an IT admin of a company with 5,000 devices lists devices
+- **THEN** every device is in one `200` response

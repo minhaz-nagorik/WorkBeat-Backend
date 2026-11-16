@@ -142,7 +142,7 @@ async function main() {
   expect(await call('GET', `/v1/employees/${ada.id}/monitoring-settings`, it.token), 403);
   const start = new Date(Date.now() + 86400_000), end = new Date(Date.now() + 2 * 86400_000);
   const pause = expect(await call('POST', `/v1/employees/${ada.id}/pauses`, admin, { starts_at: start.toISOString(), ends_at: end.toISOString(), reason: 'annual_leave' }), 201);
-  assert.equal(pause.status, 'scheduled');
+  assert.equal(pause.status, 'scheduled'); assert.equal(pause.created_by_name, me.name);
   expect(await call('POST', `/v1/employees/${ada.id}/pauses`, admin, { starts_at: start.toISOString(), ends_at: end.toISOString(), reason: 'personal' }), 409);
   expect(await call('PATCH', `/v1/employees/${ada.id}/pauses/${pause.id}`, admin, { ends_at: new Date(end.getTime() + 3600_000).toISOString() }), 200);
   expect(await call('POST', `/v1/employees/${ada.id}/pauses/${pause.id}/cancel`, admin), 200);
@@ -227,7 +227,11 @@ async function main() {
   const alert = feed.items.find((a: any) => a.device_id === dev.device_id);
   assert.ok(alert);
   expect(await call('POST', `/v1/alerts/${alert.id}/resolve`, mgr.token), 403);
-  assert.ok(expect(await call('POST', `/v1/alerts/${alert.id}/resolve`, it.token), 200).resolved_at);
+  const resolved = expect(await call('POST', `/v1/alerts/${alert.id}/resolve`, it.token), 200);
+  assert.ok(resolved.resolved_at); assert.equal(resolved.resolved_by_name, 'Test it_admin');
+  assert.ok(expect(await call('GET', `/v1/alerts?q=${encodeURIComponent(`MAC-${run}`)}`, mgr.token), 200).items.some((a: any) => a.id === alert.id));
+  assert.ok(expect(await call('GET', `/v1/alerts?q=${encodeURIComponent(`Ada ${run}`)}`, admin), 200).items.length >= 1);
+  assert.equal(expect(await call('GET', '/v1/alerts?q=%25no-such-thing_', admin), 200).items.length, 0);
   assert.equal(expect(await call('GET', `/v1/devices/${dev.device_id}`, admin), 200).status, 'online');
   ok('devices: tamper status, badges, alerts feed, resolve');
 

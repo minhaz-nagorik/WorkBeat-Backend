@@ -66,7 +66,7 @@ Request:
 |---|---|---|---|
 | email | string | yes | |
 
-Response: status and fields not specified.
+Response `201`: `{ id, email, role, expires_at }`. Open invitation or existing user for the email → `409 CONFLICT`.
 Errors: `403 FORBIDDEN` (company roles).
 Notes: inserts `invitations` with `company_id` NULL, `role` `super_admin`, `invited_by` = caller, then emails the link.
 
@@ -74,7 +74,7 @@ Notes: inserts `invitations` with `company_id` NULL, `role` `super_admin`, `invi
 Roles: super_admin · Spec: [`staff-accounts`][staff-accounts]
 Cancel a staff invitation.
 Request: none.
-Response: status not specified.
+Response `204`.
 Errors: `404 NOT_FOUND` (derived from [`role-access`][role-access]: unknown ID).
 Notes: sets `revoked_at`.
 
@@ -82,7 +82,7 @@ Notes: sets `revoked_at`.
 Roles: super_admin · Spec: [`staff-accounts`][staff-accounts]
 Remove a staff member.
 Request: none.
-Response: status not specified.
+Response `204`.
 Errors:
 
 | status | code | when |
@@ -104,7 +104,7 @@ Query:
 | field | type | required | notes |
 |---|---|---|---|
 | status | enum(trial\|active\|suspended\|expired) | no | |
-| search | string | no | matches `name` or `slug`; parameter name not specified |
+| q | string | no | literal, case-insensitive match on `name`, `slug` or `key_last4` |
 
 Response `200`: the rows plus totals.
 
@@ -124,7 +124,12 @@ Response `200`: the rows plus totals.
 | trial_ends_at | ISO-8601 datetime \| null | |
 | created_at | ISO-8601 datetime | |
 | mrr_estimate | number | `active`: `seats_used` × ($1.00 + tier add-on: off 0, light 0.50, standard 1.00, intensive 2.00); 0 for trial, suspended, expired. An estimate; invoices stay in Stripe |
-| totals | object | companies, seats used, MRR, suspended companies; field names not specified |
+| key_last4 | string | |
+| expired_blocking_grace_days | int | |
+| custom_domain_checked_at | ISO-8601 datetime \| null | |
+
+The body is `{ items: [ …rows above… ], totals: { companies, seats_used, mrr_estimate, suspended } }`,
+newest company first, not paged.
 
 Errors: none route-specific.
 
@@ -140,7 +145,7 @@ Notes: carries no employee, device or activity field.
 Roles: super_admin · Spec: [`staff-companies`][staff-companies]
 Suspend a company.
 Request: none.
-Response: status and fields not specified.
+Response `200`: the company row as in the list.
 Errors: `404 NOT_FOUND` (derived); `409 CONFLICT` (company is `expired`; nothing changes).
 Notes: sets `status` `suspended`, `suspended_reason` `staff`, `suspended_at`, also over a `payment_failed` suspension. A later `invoice.paid` leaves it suspended. Its agents then get `402 COMPANY_SUSPENDED`, the Downloader `402 LICENSE_SUSPENDED`.
 
@@ -148,7 +153,7 @@ Notes: sets `status` `suspended`, `suspended_reason` `staff`, `suspended_at`, al
 Roles: super_admin · Spec: [`staff-companies`][staff-companies]
 Lift a suspension.
 Request: none.
-Response: status and fields not specified.
+Response `200`: the company row as in the list.
 Errors: `404 NOT_FOUND` (derived); `409 CONFLICT` (company is `expired`; nothing changes).
 Notes: sets `status` `trial` while `trial_ends_at` is ahead, else `active`; clears `suspended_reason`.
 
@@ -161,7 +166,7 @@ Request:
 |---|---|---|---|
 | expired_blocking_grace_days | int | yes | 0–365 |
 
-Response: status and fields not specified.
+Response `200`: the company row as in the list.
 Errors: `404 NOT_FOUND` (derived); `422 VALIDATION_FAILED` (outside 0–365).
 Notes: applies at once: `blocking_ends_at` = `licenses.expired_at` + grace is computed on every read.
 
@@ -179,7 +184,7 @@ Request:
 | plan | enum(enterprise) | yes | |
 | seat_limit | int \| null | yes | null = unlimited |
 
-Response: status and fields not specified.
+Response `200`: the company row as in the list. Moving a `starter` or `growth` licence to `enterprise` is allowed.
 Errors:
 
 | status | code | when |
@@ -193,7 +198,7 @@ Notes: later `customer.subscription.updated` events leave an `enterprise` `seat_
 Roles: super_admin · Spec: [`staff-license-reissue`][staff-license-reissue]
 Replace a leaked licence key.
 Request: none.
-Response: `key` string (`WB-XXXX-XXXX-XXXX-XXXX`), returned once, with `Cache-Control: no-store`. Status not specified.
+Response: `key` string (`WB-XXXX-XXXX-XXXX-XXXX`), returned once, with `Cache-Control: no-store`. Status `200`: `{ key }`.
 Errors: `404 NOT_FOUND` (derived).
 Notes:
 - On the existing `licenses` row (same `id`, no second row): new `key_hash`, `key_ciphertext`, `key_last4`, and `key_reset_at`.
@@ -245,7 +250,7 @@ Request:
 | min_supported | string | yes | `x.y.z`, not above `version` |
 | storage_path | string | yes | object in the private `agents` bucket |
 | sha256 | string | yes | |
-| signature | string | yes | Windows has none; see Unspecified |
+| signature | string \| null | macOS: yes | Windows MSIs are unsigned (W35): `null` or omitted; `''` → `422` |
 | size_bytes | int | yes | must match the stored object |
 | release_notes | string | no | (derived) nullable |
 
@@ -264,7 +269,7 @@ Notes: sets `published_by` = caller. An `agent` release raises every company's `
 Roles: super_admin · Spec: [`agent-releases`][agent-releases]
 Pull a broken release.
 Request: none.
-Response: the release; status not specified.
+Response `200`: the release.
 Errors: `404 NOT_FOUND` (derived).
 Notes: sets `withdrawn_at`; withdrawing again returns it unchanged. A withdrawn release is never offered for download or update; the newest live one is. Withdrawing an `agent` release raises every company's `policy_version`.
 
@@ -272,19 +277,14 @@ Notes: sets `withdrawn_at`; withdrawing again returns it unchanged. A withdrawn 
 
 ## Unspecified
 
-- **Write responses:** status and body for staff invite, invitation cancel, user removal, suspend,
-  restore, both company PATCHes, reissue (beyond `key`) and withdraw.
-- **Staff invitation conflicts:** whether an email with an open invitation or an existing `users`
-  row gets `409 CONFLICT`, as company invitations do.
-- **Staff team fields:** the spec names only the row sets, not their fields.
-- **Company list:** search parameter name, totals field names, paging and sort order.
-- **`PATCH /v1/staff/companies/:id/license`:** whether it may move a `starter` or `growth` licence to
-  `enterprise` (the spec refuses only a `seat_limit` change on those plans).
-- **Release `signature` for Windows:** [design.md](../../openspec/changes/distribute-agents/design.md)
-  says `''` because the column is `NOT NULL`, but `0002_spec_gaps.sql` drops `NOT NULL`; whether the
-  field is required, empty or null is not settled.
-- **404 for an unknown staff-route ID** is derived from [`role-access`][role-access]; no staff spec
-  states it.
+Nothing is left open; the staff API is specified but **not built yet**, except
+`POST /v1/staff/users/:id/mfa/reset` and the TOTP sign-in. Settled (16 Nov 2026):
+
+- **Staff team:** `GET /v1/staff/team` → `{ users: [{ id, name, email, mfa_enabled, created_at }], invitations: [{ id, email, created_at, expires_at }] }`.
+- **Staff invitation accept:** `201 { user }`, no session; the person signs in and sets up TOTP.
+- **Resend:** `POST /v1/staff/invitations/:id/resend` → `200 { id, email, role, expires_at }`, same codes as the company team's resend.
+- **Upload URL:** `POST /v1/staff/agent-releases/upload-url { product, platform, arch, version }` → `200 { upload_url, storage_path, expires_at }`.
+- **404:** every staff route answers `404 NOT_FOUND` for an ID of no row of its kind ([`staff-companies`][staff-companies]).
 
 [user-authentication]: ../../openspec/changes/authenticate-users/specs/user-authentication/spec.md
 [role-access]: ../../openspec/changes/authenticate-users/specs/role-access/spec.md

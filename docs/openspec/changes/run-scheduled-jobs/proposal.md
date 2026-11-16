@@ -30,10 +30,10 @@ None.
 
 ## Impact
 
-- Supabase pg_cron (with pg_net) or Cloud Scheduler calls the routes; the secret is in the API's
+- A scheduler on the server (cron or a systemd timer running `curl`) calls the routes; the secret is in the API's
   environment (establish-api-foundation 1.2).
 - Jobs specified elsewhere: `offline-detection` (receive-device-health), `custom-domains`
   (configure-company), `alert-emails` (process-tamper-alerts).
 - Schema: `0002_spec_gaps.sql` adds `cron_ensure_month_partitions()` and
   `cron_drop_old_partitions()`, which run as the owner and only in `system` scope.
-- Supabase Storage: screenshot objects are deleted with their rows.
+- Object storage (B26): screenshot objects are deleted with their rows.

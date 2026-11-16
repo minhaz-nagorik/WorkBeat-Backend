@@ -55,7 +55,7 @@ For each company, cleanup SHALL delete `app_sessions`, `url_visits`, `activity_b
 
 ### Requirement: Screenshots past retention are deleted with their files
 <!-- source: B13 · PRD "Retention and suspension" · PRD "Screenshots" -->
-Cleanup SHALL delete each Supabase Storage object at `screenshots.storage_path` whose `captured_at` is before now minus the company's `data_retention_days`, then delete those `screenshots` rows. A row whose object could not be deleted MUST be kept for the next run; a missing object MUST count as deleted.
+Cleanup SHALL delete each stored object (B26) at `screenshots.storage_path` whose `captured_at` is before now minus the company's `data_retention_days`, then delete those `screenshots` rows. A row whose object could not be deleted MUST be kept for the next run; a missing object MUST count as deleted.
 
 #### Scenario: Storage fails for one object
 - **WHEN** Storage refuses one of a batch of 100 deletes

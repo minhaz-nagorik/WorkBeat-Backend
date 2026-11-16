@@ -8,7 +8,7 @@ expired-licence grace period.
 
 ### Requirement: Staff list every company
 <!-- source: Plan-v3.5 §4.6 · PRD "Permission matrix" · D41 -->
-`GET /v1/staff/companies` SHALL return, to `super_admin` only, each company's `id`, `name`, `slug`, `plan`, `seat_limit`, `seats_used`, `screenshot_tier`, `status`, `suspended_reason`, `custom_domain`, `custom_domain_status`, `trial_ends_at`, `created_at` and `mrr_estimate`, with totals of companies, seats used, MRR and suspended companies. It MUST filter by `status` and search by `name` or `slug`. `GET /v1/staff/companies/:id` MUST return one row.
+`GET /v1/staff/companies` SHALL return, to `super_admin` only, each company's `id`, `name`, `slug`, `plan`, `seat_limit`, `seats_used`, `screenshot_tier`, `status`, `suspended_reason`, `custom_domain`, `custom_domain_status`, `custom_domain_checked_at`, `key_last4`, `expired_blocking_grace_days`, `trial_ends_at`, `created_at` and `mrr_estimate` as `items`, with `totals` (`companies`, `seats_used`, `mrr_estimate`, `suspended`). It MUST filter by `status`, search `name`, `slug` or `key_last4` with `q`, and sort newest first. `GET /v1/staff/companies/:id` MUST return one row.
 
 #### Scenario: Staff open the company list
 - **WHEN** a `super_admin` calls `GET /v1/staff/companies?status=trial`
@@ -110,3 +110,19 @@ expired-licence grace period.
 #### Scenario: The grace is shortened into the past
 - **WHEN** staff set 10 days for a company that expired 40 days ago
 - **THEN** its `blocking_ends_at` is 30 days in the past
+
+### Requirement: Staff routes answer 404 for unknown IDs
+<!-- source: D41 · role-access -->
+Every `/v1/staff/*` route with an ID in the path SHALL answer `404 NOT_FOUND`, and change nothing, when the ID names no row of the kind the route acts on, including a company user's ID on a staff-user route.
+
+#### Scenario: An unknown release
+- **WHEN** staff withdraw a release ID that does not exist
+- **THEN** the response is `404 NOT_FOUND`
+
+### Requirement: Staff move any licence to Enterprise
+<!-- source: Plan-v3.5 §4.6 · PRD "Pricing" -->
+`PATCH /v1/staff/companies/:id/license` with `plan` `enterprise` SHALL also apply to a `starter` or `growth` licence, setting `plan` `enterprise` and the given `seat_limit`; only a `seat_limit` change that keeps a `starter` or `growth` plan MUST get `409 CONFLICT`.
+
+#### Scenario: A Growth company moves to Enterprise
+- **WHEN** staff patch a `growth` licence with `plan` `enterprise` and `seat_limit` 500
+- **THEN** the licence has plan `enterprise` and `seat_limit` 500

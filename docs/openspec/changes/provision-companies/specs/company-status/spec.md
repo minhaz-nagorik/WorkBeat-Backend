@@ -63,7 +63,7 @@ For a `suspended` company, agent routes SHALL answer `402 COMPANY_SUSPENDED`, an
 
 ### Requirement: Company users can read their status
 <!-- source: Plan-v3.5 §4.5 · D29 -->
-`GET /v1/company/status` SHALL return, to every company role, `status`, `suspended_reason`, `trial_ends_at`, `expired_at` and `blocking_ends_at` for the caller's company. Portal reads and the billing routes MUST keep working while the company is `suspended` or `expired`.
+`GET /v1/company/status` SHALL return, to every company role, `status`, `suspended_reason`, `trial_ends_at`, `expired_at` and `blocking_ends_at` for the caller's company. Every portal read and write MUST keep working while the company is `suspended` or `expired`: only agent and Downloader routes answer the `402` codes.
 
 #### Scenario: A suspended company signs in
 - **WHEN** a company admin of a company suspended for `payment_failed` calls `GET /v1/company/status`
@@ -76,3 +76,11 @@ For a `suspended` company, agent routes SHALL answer `402 COMPANY_SUSPENDED`, an
 #### Scenario: A manager reads the status of an expired company
 - **WHEN** a manager of an `expired` company calls `GET /v1/company/status`
 - **THEN** the response is `200` with `status` `expired`, `expired_at` and `blocking_ends_at`
+
+### Requirement: Portal writes are not refused for billing
+<!-- source: D5 · D29 · D38 -->
+No portal route SHALL answer `402` or refuse a write because the company is `suspended` or `expired`, so admins can still release or deactivate devices, edit employees and rules, and fix billing.
+
+#### Scenario: Releasing a laptop while suspended
+- **WHEN** an IT admin of a suspended company releases a device
+- **THEN** the response is `200` and the device is released

@@ -84,8 +84,8 @@ processed ([`rate-limiting`][rate-limiting]).
 ### Pagination
 
 Only `GET /v1/alerts` is paged: it takes a cursor and returns at most the page size in
-`packages/shared` with the next cursor ([`alerts-feed`][alerts-feed]). The cursor's parameter and
-response field names are not specified. Every other list is returned whole.
+`packages/shared` with the next cursor ([`alerts-feed`][alerts-feed]). Pass the previous answer's
+`next_cursor` as `cursor`; the body is `{ items, next_cursor, counts }`. Every other list is returned whole.
 
 ### Time format
 
@@ -137,9 +137,8 @@ One catalog for all clients, owned by this repository (B9, `packages/shared`).
 
 ## Unspecified
 
-- The cursor parameter and next-cursor field names for `GET /v1/alerts`.
-- Whether portal writes are refused while the company is `suspended` or `expired`; the specs only say
-  portal reads and billing routes keep working ([`company-status`][company-status]).
+Nothing is left open. Portal writes are never refused for billing while a company is `suspended`
+or `expired` ([`company-status`][company-status]); only agent and Downloader routes answer `402`.
 
 [api-envelope]: ../../openspec/changes/establish-api-foundation/specs/api-envelope/spec.md
 [request-scope]: ../../openspec/changes/establish-api-foundation/specs/request-scope/spec.md

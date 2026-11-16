@@ -69,7 +69,7 @@ Response `200`:
 |---|---|---|
 | email | string | |
 | role | enum(company_admin\|manager\|it_admin\|super_admin) | |
-| company name | string | the company `name`; field name not specified |
+| company_name | string | the company `name` |
 
 Errors:
 
@@ -91,7 +91,7 @@ Request:
 | name | string | yes | |
 | password | string | yes | 10–200 characters, stored as a scrypt hash |
 
-Response `201`: fields not specified.
+Response `201`: company invitation `{ token, expires_at, user }` (a session, `user` as `GET /v1/me`); staff invitation `{ user }` only, no session (sign in, then TOTP).
 Errors: as `POST /v1/invitations/lookup`; no user is created on either.
 Notes: in one transaction: `users` row, `invitations.accepted_at` and a session, returned as `{ token, expires_at, user }`. A staff invitation creates a user with no `company_id`.
 
@@ -137,7 +137,7 @@ Notes: writes `invitations` (caller's company, `invited_by` = caller, `token_has
 Roles: company_admin · Spec: [`team-invitations`][team-invitations]
 Send a fresh link; the old one stops working.
 Request: none.
-Response: status and fields not specified.
+Response `200`: `{ id, email, role, expires_at }`. Not open (accepted or revoked) → `409 CONFLICT`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`.
 Notes: replaces `token_hash`, renews `expires_at`, sends a new email.
 
@@ -158,7 +158,7 @@ Request:
 |---|---|---|---|
 | role | enum(company_admin\|manager\|it_admin) | yes | `super_admin` is refused ([`staff-accounts`][staff-accounts]) |
 
-Response: status and fields not specified.
+Response `200`: `{ id, name, email, role, created_at }`. Takes effect on the user's next request.
 Errors:
 
 | status | code | when |
@@ -173,7 +173,7 @@ Notes: updates `app_metadata` with the `users` row. A user who stops being a man
 Roles: company_admin · Spec: [`team-invitations`][team-invitations]
 Remove a user.
 Request: none.
-Response: status not specified.
+Response `204`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT` (would leave no enabled `company_admin`, including the last admin removing themselves).
 Notes: sets `disabled_at` and ends the user's sessions; their next call gets `401`. A removed manager's employees get `manager_user_id` NULL.
 
@@ -210,7 +210,7 @@ Response `200`:
 | seat_limit | int \| null | null = unlimited |
 | seats_used | int | counted on read (B4) |
 | screenshot_tier | enum(off\|light\|standard\|intensive) | in force now |
-| scheduled tier and its date | — | "any scheduled tier with its date"; field names not specified |
+| scheduled_screenshot_tier, scheduled_at | enum \| null, ISO-8601 \| null | always `null` until Stripe is built |
 | trial_ends_at | ISO-8601 datetime \| null | |
 | current_period_end | ISO-8601 datetime \| null | |
 
@@ -226,7 +226,7 @@ Request:
 |---|---|---|---|
 | screenshot_tier | enum(off\|light\|standard\|intensive) | yes | (derived) name from `licenses.screenshot_tier` |
 
-Response: status not specified; shows the new tier scheduled for `current_period_end`.
+Response `200`: the `GET /v1/billing` object with `scheduled_screenshot_tier` and `scheduled_at` = `current_period_end`. **Not built yet** (Stripe).
 Errors: `403 FORBIDDEN`.
 Notes: schedules the change in Stripe; `licenses.screenshot_tier` is unchanged until the Stripe subscription event at that date ([webhooks-and-cron.md](webhooks-and-cron.md)).
 
@@ -234,7 +234,7 @@ Notes: schedules the change in Stripe; `licenses.screenshot_tier` is unchanged u
 Roles: company_admin · Spec: [`subscription-sync`][subscription-sync]
 Open Stripe's billing portal.
 Request: none.
-Response: a Stripe billing portal URL; field name and status not specified.
+Response `200`: `{ url }`, a Stripe billing portal URL. **Not built yet** (Stripe).
 Errors: `403 FORBIDDEN`.
 
 ---
@@ -279,7 +279,7 @@ Notes: `slug` is not writable. An `idle_threshold_seconds` change raises `compan
 Roles: company_admin, it_admin · Spec: [`company-settings`][company-settings]
 The onboarding checklist.
 Request: none.
-Response `200`: the steps `download_downloader`, `copy_license_key`, `install_first_device`, `first_device_seen`, each with `done` bool. Shape (e.g. array of `{ step, done }`) not specified.
+Response `200`: the steps `download_downloader`, `copy_license_key`, `install_first_device`, `first_device_seen`, each with `done` bool. Shape: `[{ step, done }]` in that order.
 Errors: `403 FORBIDDEN` (manager).
 Notes: the first two come from `setup_completed_steps`; `install_first_device` is true once the company has a device row, `first_device_seen` once one has `last_heartbeat_at`.
 
@@ -292,7 +292,7 @@ Request:
 |---|---|---|---|
 | step | enum(download_downloader\|copy_license_key) | yes | (derived) only these two are stored |
 
-Response: status and fields not specified.
+Response `204`. Repeating a done step is a no-op.
 Errors: `403 FORBIDDEN`.
 Notes: adds `step` to `companies.setup_completed_steps`.
 
@@ -323,7 +323,7 @@ Request:
 |---|---|---|---|
 | domain | string | yes | stored lower case |
 
-Response: status and fields not specified.
+Response `200`: the `GET /v1/company/custom-domain` object. **Not built yet.**
 Errors:
 
 | status | code | when |
@@ -338,7 +338,7 @@ Notes: sets `custom_domain_status` `pending`, a new `custom_domain_token`, clear
 Roles: company_admin · Spec: [`custom-domains`][custom-domains]
 Remove the custom domain.
 Request: none.
-Response: status not specified.
+Response `204`. **Not built yet.**
 Errors: `403 FORBIDDEN`.
 Notes: clears every `custom_domain*` column.
 
@@ -379,7 +379,7 @@ Errors: `403 FORBIDDEN` (manager).
 Roles: company_admin, it_admin · Spec: [`license-key`][license-key]
 Show the full licence key.
 Request: none.
-Response: `key` string (`WB-XXXX-XXXX-XXXX-XXXX`), with `Cache-Control: no-store`. Status not specified.
+Response: `key` string (`WB-XXXX-XXXX-XXXX-XXXX`), with `Cache-Control: no-store`. Status `200`: `{ key }`.
 Errors: `403 FORBIDDEN` (manager).
 Notes: decrypts `key_ciphertext`; never logged. No company route changes the key.
 
@@ -387,7 +387,7 @@ Notes: decrypts `key_ciphertext`; never logged. No company route changes the key
 Roles: company_admin, it_admin · Spec: [`license-key`][license-key]
 Show the uninstall token IT needs to remove an agent.
 Request: none.
-Response: the plain uninstall token; field name and status not specified.
+Response `200`: `{ uninstall_token }` (`wbu_…`), with `Cache-Control: no-store`.
 Errors: `403 FORBIDDEN` (manager).
 Notes: decrypts `companies.uninstall_token_ciphertext`; its hash is `uninstall_token_hash` in every policy. Never logged.
 
@@ -420,7 +420,7 @@ Request:
 |---|---|---|---|
 | min_agent_version | string \| null | yes | `x.y.z`; null clears |
 
-Response: status and fields not specified.
+Response `200`: `{ min_agent_version }`.
 Errors: `403 FORBIDDEN` (manager); `422 VALIDATION_FAILED` (malformed version).
 Notes: sets `companies.min_agent_version` and raises `companies.policy_version`. Effective minimum = greater of this and the global minimum ([`agent-releases`][agent-releases]); devices below it get the `outdated` badge.
 
@@ -485,14 +485,14 @@ Errors: `404 NOT_FOUND`.
 Roles: company_admin · Spec: [`employee-directory`][employee-directory], [`manager-teams`][manager-teams]
 Edit an employee.
 Request: `name`, `email`, `department`, `manager_user_id` as in POST, all optional.
-Response: status not specified; fields (derived) as in GET.
+Response `200`: the employee as in GET (company_admin fields, without `presence`). Archived → `409 CONFLICT`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT` (email); `422 VALIDATION_FAILED` (manager).
 
 ### `DELETE /v1/employees/:id`
 Roles: company_admin · Spec: [`employee-directory`][employee-directory]
 Remove (archive) an employee.
 Request: none.
-Response: status not specified.
+Response `204`; already archived → `204`.
 Errors:
 
 | status | code | when |
@@ -506,14 +506,14 @@ Notes: sets `archived_at`; rows and history kept. Archived employees leave `/lic
 ### `POST /v1/employees/import`
 Roles: company_admin · Spec: [`employee-directory`][employee-directory]
 Import employees from CSV.
-Request: a CSV with columns `name, email, department, manager email`, header row optional. Transport (multipart or raw body) not specified.
-Response: status not specified.
+Request: a CSV with columns `name, email, department, manager email`, header row optional. Transport: the raw file as the body with `Content-Type: text/csv`, UTF-8, at most 2 MiB and 5,000 rows.
+Response `201`:
 
 | field | type | notes |
 |---|---|---|
 | created | int | |
 | skipped | int | rows whose email matches a non-archived employee |
-| skipped emails | array<string> | field name not specified |
+| skipped_emails | array<string> | on `422` the body carries `lines`: array<int> of the invalid 1-based data rows |
 
 Errors:
 
@@ -556,8 +556,8 @@ Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND`.
 ### `PUT /v1/employees/:id/monitoring-settings`
 Roles: company_admin · Spec: [`monitoring-settings`][monitoring-settings]
 Change the employee's monitoring switches.
-Request: `activity`, `app_usage`, `window_titles`, `website_visits` (bool) and `screenshot_interval_seconds` (int). Whether all are required is not specified.
-Response: status not specified; fields (derived) as in GET.
+Request: `activity`, `app_usage`, `window_titles`, `website_visits` (bool) and `screenshot_interval_seconds` (int). All five are required.
+Response `200`: the five fields as in GET.
 Errors:
 
 | status | code | when |
@@ -582,6 +582,7 @@ Response `200`: array<object>:
 | reason | enum(annual_leave\|sick_leave\|personal\|offsite_training\|other) | |
 | note | string \| null | |
 | created_by | uuid | |
+| created_by_name | string \| null | the scheduler's name |
 | cancelled_at | ISO-8601 datetime \| null | |
 | status | enum(scheduled\|active\|ended\|cancelled) | derived on read |
 
@@ -615,7 +616,7 @@ Notes: sets `created_by`; raises the employee's `policy_version` in the same tra
 Roles: company_admin · Spec: [`monitoring-pauses`][monitoring-pauses]
 Extend or shorten a pause.
 Request: `ends_at` ISO-8601 datetime, required; after `starts_at` and after now.
-Response: status not specified; the pause keeps its `id`.
+Response `200`: the pause as in GET; it keeps its `id`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT` (pause cancelled or ended, or new end overlaps another pause); `422 VALIDATION_FAILED`.
 Notes: raises the employee's `policy_version`.
 
@@ -623,7 +624,7 @@ Notes: raises the employee's `policy_version`.
 Roles: company_admin · Spec: [`monitoring-pauses`][monitoring-pauses]
 End a pause early or call off a scheduled one.
 Request: none.
-Response: status not specified.
+Response `200`: the pause as in GET, `status` `cancelled`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT` (already cancelled or ended).
 Notes: sets `cancelled_at`, `cancelled_by`; row kept (no route deletes a pause). Raises the employee's `policy_version`.
 
@@ -663,14 +664,14 @@ Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`.
 Roles: company_admin, it_admin · Spec: [`device-status`][device-status]
 Device counts for the rollout dashboard.
 Request: none.
-Response `200`: count per `status`, count per badge, and `healthy` (online with no badge). Exact shape not specified.
+Response `200`: count per `status`, count per badge, and `healthy` (online with no badge). Shape: `{ status: { online, offline, tamper, deactivated, released }, badges: { outdated, permission_pending, browser_access_pending, paused }, healthy }`, all int.
 Errors: `403 FORBIDDEN` (manager).
 
 ### `POST /v1/devices/:id/deactivate`
 Roles: company_admin, it_admin (user token) · Spec: [`device-lifecycle`][device-lifecycle]
 Deactivate a device and free its seat. (The uninstaller's device-key call is in [agent-contract.md](agent-contract.md).)
 Request: none.
-Response: the device; status and fields not specified.
+Response `200`: the device as `GET /v1/devices/:id`.
 Errors:
 
 | status | code | when |
@@ -685,7 +686,7 @@ Notes: sets `deactivated_at`, clears `key_hash`; the device's next call gets `40
 Roles: company_admin, it_admin · Spec: [`device-lifecycle`][device-lifecycle]
 Release a device from monitoring.
 Request: none.
-Response: status and fields not specified.
+Response `200`: the device as `GET /v1/devices/:id`, `status` `released`.
 Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`; `409 CONFLICT` (already released).
 Notes: sets `released_at`, keeps `key_hash`, frees the seat and ends the binding. The device then gets `401 DEVICE_RELEASED` with `released_at` and `upload_until` (+24 h); its key is still accepted on the upload routes for 7 days ([agent-contract.md](agent-contract.md), D45). It raises no offline alert and stays listed as `released`. Allowed on a deactivated device. There is no reassign route: a binding's employee never changes. To give the device to someone else, release it, then run WorkBeat Setup for the new employee, which makes a new binding and takes a seat (D48).
 
@@ -729,7 +730,7 @@ Notes: sets `created_by`; raises `companies.policy_version`.
 Roles: company_admin, it_admin · Spec: [`block-rules`][block-rules]
 Edit a block rule.
 Request: `pattern` string, `reason` string; both optional.
-Response: status not specified.
+Response `200`: the rule `{ id, type, pattern, reason, created_at }`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `422 VALIDATION_FAILED`.
 Notes: raises `companies.policy_version`.
 
@@ -737,7 +738,7 @@ Notes: raises `companies.policy_version`.
 Roles: company_admin, it_admin · Spec: [`block-rules`][block-rules]
 Remove a block rule.
 Request: none.
-Response: status not specified.
+Response `204`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`.
 Notes: raises `companies.policy_version`.
 
@@ -760,7 +761,7 @@ Notes: sets `created_by` (derived); raises `companies.policy_version`.
 Roles: company_admin · Spec: [`sensitive-domains`][sensitive-domains]
 Remove a sensitive domain, defaults included.
 Request: none.
-Response: status not specified.
+Response `204`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`.
 Notes: a removed default is never restored. Raises `companies.policy_version`.
 
@@ -790,7 +791,7 @@ Notes: `created_by` set (derived, `0002`). No `policy_version` change.
 Roles: company_admin · Spec: [`productivity-rules`][productivity-rules]
 Change a rule's category.
 Request: `category` enum(productive\|neutral\|unproductive), required.
-Response: status not specified.
+Response `200`: the rule `{ id, match_type, pattern, category }`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`; `422 VALIDATION_FAILED`.
 Notes: re-categorises history in every later report; no `policy_version` change, no activity row written.
 
@@ -798,7 +799,7 @@ Notes: re-categorises history in every later report; no `policy_version` change,
 Roles: company_admin · Spec: [`productivity-rules`][productivity-rules]
 Remove a productivity rule.
 Request: none.
-Response: status not specified.
+Response `204`.
 Errors: `403 FORBIDDEN`; `404 NOT_FOUND`.
 
 ### `GET /v1/settings/notice`
@@ -812,7 +813,7 @@ Errors: `403 FORBIDDEN` (manager, it_admin).
 Roles: company_admin · Spec: [`collection-notice`][collection-notice]
 Edit the notice text.
 Request: `notice_text` string, required; non-empty, within the `packages/shared` limit.
-Response: status and fields not specified.
+Response `200`: `{ notice_text, notice_version }`.
 Errors: `403 FORBIDDEN`; `422 VALIDATION_FAILED` (empty or too long; notice unchanged).
 Notes: a changed text raises `notice_version` by one and `companies.policy_version`, same transaction. Same text changes neither.
 
@@ -827,14 +828,16 @@ Query (all optional):
 
 | field | type | required | notes |
 |---|---|---|---|
-| type | array<enum(process_restart\|hosts_modified\|config_changed\|clock_tampered\|permission_revoked\|offline\|duplicate_device_id)> | no | one or more; encoding not specified |
+| type | array<enum(process_restart\|hosts_modified\|config_changed\|clock_tampered\|permission_revoked\|offline\|duplicate_device_id)> | no | one or more, comma-separated: `type=hosts_modified,offline` |
 | state | enum(open\|resolved) | no | |
 | device_id | uuid | no | |
+| employee_id | uuid | no | events of that employee's devices |
+| q | string | no | ≤ 100 characters; literal, case-insensitive match on event type, hostname, employee name or detail |
 | from | ISO-8601 datetime | no | type (derived) |
 | to | ISO-8601 datetime | no | type (derived) |
-| cursor | string | no | name not specified |
+| cursor | string | no | the previous page's `next_cursor` |
 
-Response `200`: at most the `packages/shared` page size, plus the next cursor:
+Response `200`: `{ items, next_cursor, counts }`. `items`: at most the `packages/shared` page size (50); `next_cursor`: string or `null`; `counts`: `{ <event_type>: int }` for the same filters without `type` and `cursor`. Each item:
 
 | field | type | notes |
 |---|---|---|
@@ -849,6 +852,7 @@ Response `200`: at most the `packages/shared` page size, plus the next cursor:
 | received_at | ISO-8601 datetime | |
 | resolved_at | ISO-8601 datetime \| null | |
 | resolved_by | uuid \| null | null when a heartbeat closed an `offline` |
+| resolved_by_name | string \| null | the resolver's name |
 
 Errors: none route-specific.
 Notes: an event is listed as soon as the request or job that stored it commits; no push.
@@ -857,7 +861,7 @@ Notes: an event is listed as soon as the request or job that stored it commits; 
 Roles: company_admin, it_admin · Spec: [`alerts-feed`][alerts-feed]
 Close an alert.
 Request: none.
-Response: the event, fields as in `GET /v1/alerts`; status not specified.
+Response `200`: the event, fields as in `GET /v1/alerts` items.
 Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`.
 Notes: sets `resolved_at`, `resolved_by`. Repeating returns it unchanged. With no open tamper event left the device is no longer `tamper`.
 
@@ -879,7 +883,7 @@ Response `200`:
 | field | type | notes |
 |---|---|---|
 | screenshots_enabled | bool | false while `screenshot_tier` is `off` |
-| items | array<object> | `uploaded` only, oldest first; empty when disabled. Key name not specified |
+| items | array<object> | `uploaded` only, oldest first; empty when disabled. Key `items` |
 | items[].id | uuid | |
 | items[].captured_at | ISO-8601 datetime | |
 | items[].device_id | uuid | |
@@ -922,14 +926,14 @@ Productivity is resolved at read time: app sessions by `app_name` (`match_type` 
 Roles: company_admin, manager · Spec: [`usage-reports`][usage-reports]
 Top apps by foreground time.
 Query: common, plus `limit` int (default 10, max 100).
-Response `200`: `from`, `to`, and apps ranked by `seconds`: `{ app_name: string, seconds: int, category: enum(productive|neutral|unproductive) }`. List key name not specified.
+Response `200`: `from`, `to`, and apps ranked by `seconds`: `{ app_name: string, seconds: int, category: enum(productive|neutral|unproductive) }`. List key `apps`.
 Errors: common.
 
 ### `GET /v1/reports/websites`
 Roles: company_admin, manager · Spec: [`usage-reports`][usage-reports]
 Top domains by visit time.
 Query: common, plus `limit` int (default 10, max 100).
-Response `200`: `from`, `to`, and domains ranked by `seconds`: `{ domain: string, seconds: int, category }`. List key name not specified.
+Response `200`: `from`, `to`, and domains ranked by `seconds`: `{ domain: string, seconds: int, category }`. List key `websites`.
 Errors: common.
 
 ### `GET /v1/reports/activity`
@@ -944,7 +948,7 @@ Response `200`:
 | tracked_seconds | int | sum of `app_sessions.duration_seconds`; idle not subtracted |
 | activity_percent | number \| null | Σ`active_samples` / Σ`total_samples`; null without samples |
 | idle_seconds | int | from `idle_intervals` |
-| hours | array<object> (24) | hour of day in company `timezone`, tracked time and activity percent averaged over days with data. Key and row field names not specified |
+| hours | array<object> (24) | hour of day in company `timezone`, tracked time and activity percent averaged over days with data. `hours: [{ hour (0–23), tracked_seconds, activity_percent }]` |
 
 Errors: common.
 
@@ -982,7 +986,7 @@ Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND`; `422 VALIDATION_FAILED`.
 Roles: company_admin, manager (own team) · Spec: [`calendar-and-timesheets`][calendar-and-timesheets]
 One employee's Monday-start week.
 Query: `week` string `YYYY-MM-DD`, required, must be a Monday.
-Response `200`: employee `name` and `email`, company `name`, seven day rows (`date`, `first_activity_at`, `last_activity_at`, `tracked_seconds`, `activity_percent`, `productive_seconds`, `neutral_seconds`, `unproductive_seconds`, `paused`), and week totals. Key names for employee, company, rows and totals not specified.
+Response `200`: employee `name` and `email`, company `name`, seven day rows (`date`, `first_activity_at`, `last_activity_at`, `tracked_seconds`, `activity_percent`, `productive_seconds`, `neutral_seconds`, `unproductive_seconds`, `paused`), and week totals, as `{ employee: { name, email }, company: { name }, week, days: [ …7 rows… ], totals: { tracked_seconds, activity_percent, productive_seconds, neutral_seconds, unproductive_seconds } }`.
 Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND`; `422 VALIDATION_FAILED` (`week` not a Monday).
 
 ### `GET /v1/employees/:id/timesheet.pdf`
@@ -1025,7 +1029,7 @@ Errors: common.
 Roles: company_admin, manager · Spec: [`data-export`][data-export]
 One row per employee per day.
 Query: report query.
-Response `200`: CSV rows with employee name, email, date, tracked seconds, activity percent, productive, neutral and unproductive seconds. Column names not specified.
+Response `200`: CSV rows with employee name, email, date, tracked seconds, activity percent, productive, neutral and unproductive seconds. Columns: `employee_name, employee_email, date, tracked_seconds, activity_percent, productive_seconds, neutral_seconds, unproductive_seconds`.
 Errors: common.
 
 ---
@@ -1052,22 +1056,20 @@ Notes: `it_admin` gets `devices` and `alerts` only.
 
 ## Unspecified
 
-- **Write responses.** These now follow the success convention in [`api-envelope`](../../openspec/changes/establish-api-foundation/specs/api-envelope/spec.md) (`201` create, `200` read/update/action with the record, `204` delete); the uninstaller's deactivate is `204`. The exact record shape is still unspecified for: team resend, user role change and
-  removal, billing tier and portal session, setup step, custom-domain PUT/DELETE, licence and
-  uninstall-token reveal, min-agent-version, employee PATCH/DELETE/import, monitoring-settings PUT,
-  pause PATCH/cancel, device deactivate/release, block-rule PATCH/DELETE, sensitive-domain
-  and productivity-rule DELETE/PATCH, notice PUT, alert resolve, `POST /v1/invitations/accept`'s body.
-- **Field names not specified:** the invitation lookup's company name, billing's scheduled tier and
-  date, the portal-session URL, the uninstall token, the setup-step shape, rollout counts shape, the
-  import's skipped emails, the screenshot list key, report list keys, activity `hours` rows,
-  timesheet sections, daily-summary CSV columns, the alerts cursor, the `EXPORT_TOO_LARGE` cap field.
-- **Request encoding:** CSV import transport; multi-value `type` on `GET /v1/alerts`; whether
-  `PUT .../monitoring-settings` needs every field.
-- **`GET /v1/employees/:id` for `it_admin`:** not specified beyond the list's four fields (B18).
-- **Resend or cancel of an invitation that is not open** (accepted, revoked, expired).
-- **Filtering, sorting and paging** on every list except alerts; `GET /v1/employees` has only
-  `archived`.
-- **Portal writes while suspended or expired** (see [README](README.md#unspecified)).
+Nothing is left open (round 3 of the WorkBeat Admin requests, 16 Nov 2026). Settled here:
+
+- **Write responses:** as stated on each route above: `201` create with the record, `200` update or
+  action with the record, `204` delete.
+- **`GET /v1/employees/:id` for `it_admin`:** the same four fields as the list (`id`, `name`,
+  `email`, `department`), B18.
+- **Resend or cancel of an invitation that is not open:** resend → `409 CONFLICT`; cancel of a
+  revoked one → `204` (first `revoked_at` kept), of an accepted one → `409 CONFLICT`.
+- **Lists:** returned whole, no paging or sort parameters, except `GET /v1/alerts` (cursor) and the
+  filters each route lists ([`api-envelope`](../../openspec/changes/establish-api-foundation/specs/api-envelope/spec.md)).
+- **Portal writes while suspended or expired:** never refused for billing
+  ([`company-status`](../../openspec/changes/provision-companies/specs/company-status/spec.md)).
+- **`EXPORT_TOO_LARGE`:** `422` with `cap` (the row limit, 100,000).
+- **Not built yet:** Stripe billing writes, custom domains, `timesheet.pdf`.
 
 [user-authentication]: ../../openspec/changes/authenticate-users/specs/user-authentication/spec.md
 [role-access]: ../../openspec/changes/authenticate-users/specs/role-access/spec.md
