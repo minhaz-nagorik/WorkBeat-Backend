@@ -12,7 +12,7 @@ const companyRole = z.enum(['company_admin', 'manager', 'it_admin']);
 
 async function me(c: Tx, u: User) {
   const company = u.company_id
-    ? (await c.query('SELECT id, name, slug, status FROM companies WHERE id = $1', [u.company_id])).rows[0] ?? null
+    ? (await c.query('SELECT id, name, slug, status, timezone FROM companies WHERE id = $1', [u.company_id])).rows[0] ?? null
     : null;
   return { id: u.id, email: u.email, name: u.name, role: u.role, company };
 }

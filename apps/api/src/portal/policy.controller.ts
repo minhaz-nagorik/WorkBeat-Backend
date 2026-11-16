@@ -37,7 +37,8 @@ export class PolicyController {
   async blockRules(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ALL);
-      return { data: (await c.query(`SELECT ${RULE} FROM block_rules ORDER BY created_at, id`)).rows };
+      return { data: (await c.query(`SELECT r.id, r.type, r.pattern, r.reason, r.created_at, u.name AS created_by_name
+        FROM block_rules r LEFT JOIN users u ON u.id = r.created_by ORDER BY r.created_at, r.id`)).rows };
     });
   }
 

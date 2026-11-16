@@ -48,7 +48,7 @@ async function main() {
   const login = expect(await call('POST', '/v1/auth/login', undefined, { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD }), 200);
   const admin: string = login.token;
   const me = expect(await call('GET', '/v1/me', admin), 200);
-  assert.equal(me.role, 'company_admin');
+  assert.equal(me.role, 'company_admin'); assert.ok(me.company.timezone);
   expect(await call('GET', '/v1/me'), 401, 'UNAUTHENTICATED');
   ok(`login as ${me.email} (${me.company.name})`);
 
@@ -154,6 +154,20 @@ async function main() {
   const devices = expect(await call('GET', '/v1/devices', it.token), 200);
   const d = devices.find((x: any) => x.id === dev.device_id);
   assert.equal(d.status, 'tamper'); assert.ok(d.badges.includes('permission_pending'));
+  assert.ok('released_at' in d && 'deactivated_at' in d);
+  const adaNow = expect(await call('GET', `/v1/employees/${ada.id}`, mgr.token), 200);
+  assert.equal(adaNow.presence, 'tamper'); assert.equal(adaNow.devices[0].id, dev.device_id);
+  assert.equal(expect(await call('GET', '/v1/employees', admin), 200).find((e: any) => e.id === bob.id).presence, 'no_device');
+  const team2 = expect(await call('GET', `/v1/employees?manager_user_id=${mgr.id}`, admin), 200);
+  assert.ok(team2.every((e: any) => e.manager_user_id === mgr.id) && team2.some((e: any) => e.id === ada.id));
+  const detail = expect(await call('GET', `/v1/devices/${dev.device_id}`, it.token), 200);
+  for (const k of ['store_bytes', 'dropped_records', 'screenshot_skips', 'outdated', 'notice_ack_version']) assert.ok(k in detail.health, k);
+  const fa = expect(await call('GET', `/v1/alerts?employee_id=${ada.id}`, admin), 200);
+  assert.ok(fa.items.length >= 1 && fa.items.every((a: any) => a.employee.id === ada.id)); assert.ok(fa.counts.hosts_modified >= 1);
+  assert.ok(expect(await call('GET', '/v1/block-rules', mgr.token), 200).find((r: any) => r.pattern === dom).created_by_name);
+  expect(await call('GET', '/v1/agent-versions', it.token), 200);
+  expect(await call('GET', '/v1/agent-versions', mgr.token), 403);
+  ok('admin asks: timezone, presence, devices, manager filter, health, alert counts, creator name, agent versions');
   expect(await call('GET', '/v1/devices', mgr.token), 403);
   expect(await call('GET', '/v1/rollout', admin), 200);
   const feed = expect(await call('GET', '/v1/alerts?state=open', mgr.token), 200);
@@ -173,6 +187,9 @@ async function main() {
   assert.deepEqual([prod.tracked_seconds, prod.productive_seconds, prod.unproductive_seconds], [3000, 1800, 1200]);
   const act = expect(await call('GET', `/v1/reports/activity?${q}`, admin), 200);
   assert.equal(act.activity_percent, 75); assert.equal(act.idle_seconds, 300); assert.equal(act.hours.length, 24);
+  const byDay = expect(await call('GET', `/v1/reports/productivity?${q}&group_by=week`, admin), 200);
+  assert.equal(byDay.periods.length, 1); assert.equal(byDay.periods[0].tracked_seconds, 3000);
+  expect(await call('GET', `/v1/reports/activity?${q}&group_by=year`, admin), 422);
   expect(await call('GET', `/v1/reports/apps?${q}`, it.token), 403);
   expect(await call('GET', `/v1/reports/apps?from=${today}&to=${today}&employee_id=${bob.id}`, mgr.token), 404);
   expect(await call('GET', `/v1/reports/apps?from=2026-02-30&to=${today}`, admin), 422);

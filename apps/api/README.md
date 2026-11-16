@@ -27,6 +27,10 @@ with these differences, since there is no Supabase:
   timesheet `{ employee, company, week, days, totals }`; alerts `{ items, next_cursor }` (pass
   `cursor`; `type` is comma-separated); `EXPORT_TOO_LARGE` carries `cap`.
 - **Device `offline`** is also derived from a heartbeat older than 15 minutes, until `/cron/offline` exists.
+- **Additions requested by WorkBeat Admin** (`presence`, `devices` and `?manager_user_id=` on employees,
+  `company.timezone` on `/v1/me`, a defined device `health`, `group_by` on activity/productivity,
+  alert `counts` and `?employee_id=`, `created_by_name`, `GET /v1/agent-versions`):
+  [admin-requests-response.md](../../docs/integration/admin-requests-response.md).
 
 ## First run
 

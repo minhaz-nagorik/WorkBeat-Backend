@@ -7,6 +7,33 @@ import { ApiError, Db, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { Storage } from '../storage';
 import { isDay } from './reports.controller';
+import { listDevices } from './devices.controller';
+
+const RECENT_MINUTES = 15;
+// presence (admin request 1.2): paused > no_device > tamper > active / idle (latest bucket in 15 min) > offline.
+// A live binding is a device neither released nor deactivated.
+async function withPresence(c: Tx, rows: any[]) {
+  if (!rows.length) return rows;
+  const ids = rows.map((r) => r.id);
+  const { rows: st } = await c.query(
+    `SELECT e.id,
+            EXISTS (SELECT 1 FROM monitoring_pauses p WHERE p.employee_id = e.id AND p.cancelled_at IS NULL
+                     AND p.starts_at <= now() AND p.ends_at > now()) AS paused,
+            (SELECT b.active_samples > 0 FROM activity_buckets b WHERE b.employee_id = e.id
+                AND b.bucket_start > now() - make_interval(mins => $2) ORDER BY b.bucket_start DESC LIMIT 1) AS recent_active
+       FROM employees e WHERE e.id = ANY ($1)`,
+    [ids, RECENT_MINUTES],
+  );
+  const devs = await listDevices(c, 'd.employee_id = ANY ($1) AND d.released_at IS NULL', [ids]);
+  return rows.map((r) => {
+    const s = st.find((x) => x.id === r.id);
+    const mine = devs.filter((d) => d.employee.id === r.id);
+    const live = mine.filter((d) => d.status !== 'deactivated');
+    const presence = s?.paused ? 'paused' : !live.length ? 'no_device' : live.some((d) => d.status === 'tamper') ? 'tamper'
+      : s?.recent_active === true ? 'active' : s?.recent_active === false ? 'idle' : 'offline';
+    return { ...r, presence, devices: mine.map((d) => ({ id: d.id, hostname: d.hostname, os: d.os, status: d.status, last_heartbeat_at: d.last_heartbeat_at })) };
+  });
+}
 
 const FULL = 'id, name, email, department, manager_user_id, archived_at';
 const LIMITED = 'id, name, email, department'; // it_admin (B18)
@@ -63,15 +90,16 @@ export class EmployeesController {
   constructor(@Inject(Db) private db: Db, @Inject(Storage) private storage: Storage) {}
 
   @Get()
-  async list(@Req() req: FastifyRequest, @Query('archived') archived?: string) {
+  async list(@Req() req: FastifyRequest, @Query('archived') archived?: string, @Query('manager_user_id') managerId?: string) {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ALL);
       const { rows } = await c.query(
         `SELECT ${u.role === 'it_admin' ? LIMITED : FULL} FROM employees
-          WHERE ($1 OR archived_at IS NULL) AND ($2 <> 'manager' OR manager_user_id = $3) ORDER BY name, id`,
-        [archived === 'true', u.role, u.id],
+          WHERE ($1 OR archived_at IS NULL) AND ($2 <> 'manager' OR manager_user_id = $3)
+            AND ($4::uuid IS NULL OR manager_user_id = $4) ORDER BY name, id`,
+        [archived === 'true', u.role, u.id, managerId ? idOrNone(managerId) : null],
       );
-      return { data: rows };
+      return { data: u.role === 'it_admin' ? rows : await withPresence(c, rows) };
     });
   }
 
@@ -129,7 +157,7 @@ export class EmployeesController {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ALL);
       const e = await employeeFor(c, u, id);
-      return { data: u.role === 'it_admin' ? { id: e.id, name: e.name, email: e.email, department: e.department } : e };
+      return { data: u.role === 'it_admin' ? { id: e.id, name: e.name, email: e.email, department: e.department } : (await withPresence(c, [e]))[0] };
     });
   }
 

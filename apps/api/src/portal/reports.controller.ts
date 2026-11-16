@@ -105,6 +105,26 @@ function dayRows(rows: any[], dates: string[], paused: Set<string>) {
   });
 }
 
+// group_by=day|week|month (admin request 2.1): one row per period in the range, zeros included.
+// Weeks start on Monday; a period is labelled by its first day, clipped to the range.
+async function periods(c: Tx, r: Range, g: string | undefined) {
+  if (g === undefined) return undefined;
+  if (!['day', 'week', 'month'].includes(g)) throw bad('group_by', 'group_by must be day, week or month');
+  const key = (d: string) => g === 'day' ? d : g === 'month' ? d.slice(0, 8) + '01'
+    : addDays(d, -((new Date(d + 'T00:00:00Z').getUTCDay() + 6) % 7));
+  const rows = await daily(c, r);
+  const out = new Map<string, any>();
+  for (const d of days(r.from, r.to)) {
+    const k = key(d);
+    if (!out.has(k)) out.set(k, { period_start: k < r.from ? r.from : k, tracked_seconds: 0, act: 0, tot: 0, productive_seconds: 0, neutral_seconds: 0, unproductive_seconds: 0 });
+    for (const x of rows.filter((x) => x.date === d)) {
+      const o = out.get(k);
+      for (const f of ['tracked_seconds', 'act', 'tot', 'productive_seconds', 'neutral_seconds', 'unproductive_seconds']) o[f] += x[f];
+    }
+  }
+  return [...out.values()].map(({ act, tot, ...o }) => ({ ...o, activity_percent: pct(act, tot) }));
+}
+
 // CSV cell: neutralise spreadsheet formulas, quote when needed (data-export).
 export function csvCell(v: unknown) {
   let s = v === null || v === undefined ? '' : v instanceof Date ? v.toISOString() : String(v);
@@ -165,7 +185,8 @@ export class ReportsController {
         const b = bh.find((x) => x.h === h);
         return { hour: h, tracked_seconds: th.find((x) => x.h === h)?.avg ?? 0, activity_percent: b ? pct(b.act, b.tot) : null };
       });
-      return { data: { from: r.from, to: r.to, tracked_seconds: tot.tracked, activity_percent: pct(tot.act, tot.tot), idle_seconds: tot.idle, hours } };
+      return { data: { from: r.from, to: r.to, tracked_seconds: tot.tracked, activity_percent: pct(tot.act, tot.tot), idle_seconds: tot.idle, hours,
+        periods: await periods(c, r, q.group_by) } };
     });
   }
 
@@ -177,7 +198,7 @@ export class ReportsController {
       const rows = await daily(c, r);
       const sum = (k: string) => rows.reduce((a, x) => a + x[k], 0);
       return { data: { from: r.from, to: r.to, productive_seconds: sum('productive_seconds'), neutral_seconds: sum('neutral_seconds'),
-        unproductive_seconds: sum('unproductive_seconds'), tracked_seconds: sum('tracked_seconds') } };
+        unproductive_seconds: sum('unproductive_seconds'), tracked_seconds: sum('tracked_seconds'), periods: await periods(c, r, q.group_by) } };
     });
   }
 

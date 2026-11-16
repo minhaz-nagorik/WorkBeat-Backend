@@ -158,6 +158,19 @@ export class CompanyController {
     });
   }
 
+  // Live agent versions per platform, newest first, for the minimum-version picker (admin request 2.7).
+  @Get('agent-versions')
+  async agentVersions(@Req() req: FastifyRequest) {
+    return this.db.tx(async (c) => {
+      await portalUser(c, req, ADMIN_IT);
+      const { rows } = await c.query("SELECT DISTINCT platform, version FROM agent_releases WHERE product = 'agent' AND withdrawn_at IS NULL");
+      const out: Record<string, string[]> = { macos: [], windows: [] };
+      for (const r of rows) out[r.platform].push(r.version);
+      for (const k of Object.keys(out)) out[k].sort((a, b) => cmpVersion(b, a));
+      return { data: out };
+    });
+  }
+
   @Put('deployment/min-agent-version')
   async minVersion(@Req() req: FastifyRequest, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
