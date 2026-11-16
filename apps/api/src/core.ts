@@ -14,6 +14,11 @@ const env = z
     PORT: z.coerce.number().int().default(3000),
     RESEND_API_KEY: z.string().optional(), // unset: emails go to STORAGE_DIR/outbox (local only)
     EMAIL_FROM: z.string().default('WorkBeat <no-reply@workbeat.io>'),
+    // Temporary until Resend: SMTP (e.g. Gmail with an app password). Used only when RESEND_API_KEY is unset.
+    SMTP_HOST: z.string().default('smtp.gmail.com'),
+    SMTP_PORT: z.coerce.number().int().default(465),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
     PORTAL_URL: z.string().url().default('http://localhost:3001'), // links in emails
   })
   .safeParse(process.env);

@@ -17,6 +17,7 @@
     "@nestjs/core": "11.2.10",
     "@nestjs/platform-fastify": "11.2.10",
     "fastify": "5.12.8",
+    "nodemailer": "6.9.16",
     "pg": "8.23.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "22.15.0",
+    "@types/nodemailer": "6.4.17",
     "@types/pg": "8.15.4",
     "typescript": "5.9.3"
   }
