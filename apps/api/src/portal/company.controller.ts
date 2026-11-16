@@ -114,7 +114,7 @@ export class CompanyController {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN_IT);
       const { rows: [r] } = await c.query(`SELECT key_last4, plan, seat_limit, ${SEATS_USED} AS seats_used, key_reset_at FROM licenses`);
-      return { data: { key_masked: `WB-•••••-•••••-•••••-•${r.key_last4}`, plan: r.plan, seat_limit: r.seat_limit, seats_used: r.seats_used, key_reset_at: r.key_reset_at } };
+      return { data: { key_masked: `WB-••••-••••-••••-${r.key_last4}`, plan: r.plan, seat_limit: r.seat_limit, seats_used: r.seats_used, key_reset_at: r.key_reset_at } };
     });
   }
 

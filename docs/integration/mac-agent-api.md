@@ -22,7 +22,7 @@ version of this page is [windows-agent-api.md](windows-agent-api.md); only the
 
 | | |
 |---|---|
-| Base URL | Per environment. Local: `http://localhost:3000`. Test: the cloudflared URL you are given (`https://….trycloudflare.com`). All routes below are relative to it |
+| Base URL | `<host>/api/v1`, e.g. `https://….trycloudflare.com/api/v1` (local: `http://localhost:3000/api/v1`). Routes below are written in full as `/v1/…`; with that base URL send `/agents/…`, `/devices/…`, `/license/…`. `<host>/v1/…` works too. Signed URLs (`upload_url`, `package_url`) are absolute: use them as given |
 | Body | JSON, `Content-Type: application/json`, UTF-8. Max 1 MiB (activity: 8 MiB) → `413 PAYLOAD_TOO_LARGE` |
 | Success | `{ "data": … }`. `204` and `304` have no body |
 | Error | `{ "error": "<human text>", "code": "<CODE>", …extra }`. **Branch on HTTP status and `code` only**, never on `error` |
@@ -39,7 +39,7 @@ version of this page is [windows-agent-api.md](windows-agent-api.md); only the
 
 | Credential | Format | Sent as | Obtained from |
 |---|---|---|---|
-| Licence key | `WB-XXXXX-XXXXX-XXXXX-XXXXX` | `X-License-Key` | Typed by IT in the Downloader |
+| Licence key | `WB-XXXX-XXXX-XXXX-XXXX` (letters and digits; case and surrounding spaces ignored) | `X-License-Key` | Typed by IT in the Downloader |
 | Enrollment token | `wbe_…` (single use, 24 h) | `Authorization: Bearer <token>` | `/v1/license/validate` step 2 |
 | Device key | `wbd_…` | `X-Device-Key` | `/v1/devices/enroll` |
 
@@ -62,7 +62,7 @@ Uninstaller: POST /v1/devices/:id/deactivate      (frees the seat)
 
 ## 1. `POST /v1/license/validate`
 
-Downloader only. Two steps; neither reserves a seat.
+Downloader only. Two steps; neither reserves a seat. (Plan v3.5 D43/B8: the licence key is the only install credential and the token is issued for the employee IT picks. A single call with hostname and hardware ID is the older design; those fields are ignored.)
 
 Headers: `X-License-Key: WB-…`. The key in a body is never read.
 
@@ -84,7 +84,7 @@ Step 1 request `{}` → `200`:
   ] } }
 ```
 
-Employees are active ones only, ordered by name. `email` and `department` may be `null`.
+Employees are active ones only, ordered by name. `email` and `department` may be `null`. There is no search route: the dropdown filters this list on the device. Scripted installs pick by `employee_id`, or match an email in this list locally (an employee without an email can only be picked by ID).
 
 Step 2 request `{ "employee_id": "cd6e…", "os": "macos", "arch": "arm64" }` → `200`: the step-1 fields plus
 
@@ -173,10 +173,11 @@ Every 5 minutes. Only `agent_version` is required; send everything you have.
 | `os_version` | string | omitted = keep the stored one |
 | `policy_version` | int \| null | the version the agent has applied |
 | `outdated` | bool | below `min_agent_version` |
-| `helper_status` | object | **macOS:** per user session, `{ "<session id>": "running" \| "restarting" }` |
+| `helper_status` | string or object | One value `"running"` \| `"not_running"` \| `"no_session"`, or per user session `{ "<session id>": "running" \| "restarting" \| "not_running" }`. Anything else → `422` |
 | `browser_access` | object | per browser: `{ "safari": "granted" \| "pending" \| "denied" \| "unreadable" }` |
 | `permissions` | object | **macOS:** `{ "accessibility": …, "screen_recording": … }`, each `granted` \| `pending` \| `denied` |
-| `store_bytes`, `dropped_records`, `dropped_samples`, `screenshot_skips`, `quarantined_batches`, `helper_restarts_24h`, `upload_failures_24h`, `uptime_seconds` | int ≥ 0 | negative → `422` |
+| `dropped_records`, `dropped_samples`, `screenshot_skips` | int ≥ 0, or an object of ints ≥ 0 by type/reason, e.g. `{ "app_sessions": 2 }` | negative → `422` |
+| `store_bytes`, `quarantined_batches`, `helper_restarts_24h`, `upload_failures_24h`, `uptime_seconds` | int ≥ 0 | negative → `422` |
 | `oldest_unsent_at` | time \| null | |
 | `blocking_status` | string ≤ 32 \| null | e.g. `applied`, `degraded`, `off` |
 | `update_failure` | string ≤ 256 \| null | step a self-update failed at |
@@ -251,7 +252,7 @@ equal the body's `batch_id`, else `400`). Max 8 MiB.
 | field | type | notes |
 |---|---|---|
 | `batch_id` | uuid (UUIDv7 recommended) | fixed when the batch is sealed |
-| `app_sessions` | array | `session_user`, `bundle_id`, `app_name`, `process_name`, `window_title` (`""` when withheld), `started_at`, `ended_at` (≥ `started_at`), `duration_seconds` ≥ 0, `clock_flag` bool |
+| `app_sessions` | array | `session_user`, `bundle_id`, `app_name`, `process_name` (optional, default `""`), `window_title` (`""` when withheld), `started_at`, `ended_at` (≥ `started_at`), `duration_seconds` ≥ 0, `clock_flag` bool (or `clock_suspect`; either true marks the record) |
 | `url_visits` | array | `session_user`, `browser`, `url`, `domain`, `visited_at`, `duration_seconds` ≥ 0 |
 | `activity_buckets` | array | `bucket_start`, `active_samples` ≤ `total_samples`, `total_samples` |
 | `idle_intervals` | array | `session_user`, `started_at`, `ended_at` (≥ `started_at`) |
@@ -305,8 +306,10 @@ Three calls per capture. JPEG only, max 4 MiB (4,194,304 bytes).
 ```
 
 A repeat for an already confirmed screenshot answers `status: "uploaded"`, `upload_url: null` — mark
-it done. `422` for `bytes` over the limit or `captured_at` outside [now − 8 days, now + 1 day];
-`409 IDEMPOTENCY_KEY_REUSED` if the id exists with another `bytes`/`captured_at` or another device.
+it done. `422` for `bytes` over the limit or `captured_at` outside [now − 8 days, now + 1 day], and
+`409 IDEMPOTENCY_KEY_REUSED` if the id exists with another `bytes`/`captured_at` or another device:
+**drop that screenshot and count it in `screenshot_skips`** — retrying can never succeed. Fix the `id`
+when the image is stored, so every retry reuses it.
 
 **b. Upload** — `PUT <upload_url>` with `Content-Type: image/jpeg` and the raw JPEG bytes as the
 body. No other headers. `200` with no body. The URL is valid 15 minutes; when expired (`403 FORBIDDEN`)
@@ -334,10 +337,14 @@ Send each event as soon as it is detected; queue offline and send later (any age
 | `occurred_at` | time | a future time is stored as server now |
 | `repeat_count` | int ≥ 1 | default 1 |
 
+`id` is required: it is how a resend after a lost response is recognised (D13). Generate it when the
+event is detected and keep it with the queued event. `repeat_count` is the debounce count.
+
 `201 { "data": { "id": "…", "received_at": "…" } }`; a repeat of the same `id` and `event_type`
 → `200` with the stored values (nothing changes, even a higher `repeat_count`). Same `id` with
 another `event_type` or from another device → `409 IDEMPOTENCY_KEY_REUSED`. Any invalid field →
-`422`. Use a new `id` for a new occurrence.
+`422`. Use a new `id` for a new occurrence. A released device's key gets `401 DEVICE_RELEASED` here: leave
+queued tamper events out of the release drain (they cannot be sent).
 
 ## 8. `POST /v1/devices/:id/deactivate`
 
@@ -367,10 +374,11 @@ Applies to every `X-Device-Key` route.
 | 401 | `DEVICE_RELEASED` + `released_at`, `upload_until` | released by the company | stop collecting, lift blocking, upload what it holds until `upload_until` (released_at + 24 h), then wipe and go dormant. Activity and screenshot uploads stay accepted for 7 days after `released_at`; every other route answers this |
 | 402 | `COMPANY_SUSPENDED` | company suspended | stop collecting, keep blocking, heartbeat only |
 | 402 | `LICENSE_EXPIRED` + `blocking_ends_at` | licence expired | as suspended; lift blocking after `blocking_ends_at` (compare to `Date`) |
-| 409 | `IDEMPOTENCY_KEY_REUSED` | same id, different content | quarantine |
-| 413 | `PAYLOAD_TOO_LARGE` | body over limit | quarantine (split smaller next time) |
+| 409 | `IDEMPOTENCY_KEY_REUSED` | same id, different content | quarantine (take it out of the upload queue, so it never blocks oldest-first order) |
+| 413 | `PAYLOAD_TOO_LARGE` | body over limit | quarantine; seal smaller batches from then on |
+| 404 | `EMPLOYEE_NOT_FOUND` | Downloader / enroll: employee archived since the list was loaded | Downloader reloads the list; enroll treats it as a rejected enrollment |
 | 429 | `RATE_LIMITED` + `Retry-After` | too many requests | wait, then back off |
-| 5xx | `INTERNAL` | server error | back off, keep the data, retry with the same ids |
+| 500, 502, 503, 504 | `INTERNAL` (or none from the proxy) | server or tunnel error | retryable: back off, keep the data, retry with the same ids and the same body |
 
 Example `401 DEVICE_RELEASED` body:
 
@@ -385,8 +393,10 @@ Example `401 DEVICE_RELEASED` body:
   installer is one universal `.pkg`.
 - `hardware_id`: the format is still open (Q10). It must be the same after a reinstall, or a
   reinstall takes a second seat. `IOPlatformUUID` is the obvious candidate.
-- `helper_status` is an object keyed by user session (e.g. the uid as a string), each `running` or
-  `restarting`. Any other value → `422`.
+- `helper_status`: send one value (`running`, `not_running`, `no_session`) as the agent spec says, or
+  an object keyed by user session (uid as a string) when reporting several sessions. Any other value
+  → `422`.
+- `arch` is required on enroll (`arm64` or `x64`, from `uname -m` / `sysctl hw.optional.arm64`).
 - `permissions` is `{ "accessibility": …, "screen_recording": … }` with `granted` \| `pending` \|
   `denied`.
 - `browser_access` keys are browser names (`safari`, `chrome`, …); `pending` = Automation not
@@ -396,6 +406,10 @@ Example `401 DEVICE_RELEASED` body:
   `duplicate_device_id` alert; the agent does nothing.
 
 ## Not available yet
+
+- **Test host.** The test server is a `https://….trycloudflare.com` address that changes whenever the
+  tunnel restarts. Debug builds need a rule that allows it (or a configurable base URL); this is the
+  agent's build setting (Q6), not a backend one.
 
 - `package_url` / `update_package_url` are `null` until agent releases are published (staff release
   routes are not built yet).

@@ -78,6 +78,20 @@ async function main() {
   assert.equal(r.status, 200); assert.equal(r.json.data.policy_version, p.policy_version); assert.equal(r.json.data.monitoring_pause, null);
   step('heartbeat + notice ack');
 
+  // Shapes from the agents' specs: /api/v1 base, one helper_status value, counts by type, clock_suspect.
+  r = await call('POST', '/api/v1/agents/heartbeat', dk(), {
+    agent_version: '1.0.0', helper_status: 'no_session', dropped_records: { app_sessions: 2, url_visits: 0 }, screenshot_skips: { locked: 1 },
+  });
+  assert.equal(r.status, 200);
+  const b2 = randomUUID();
+  r = await call('POST', '/api/v1/agents/activity', { ...dk(), 'idempotency-key': b2 }, {
+    batch_id: b2, app_sessions: [{ session_user: 'ada', bundle_id: 'x', app_name: 'X', started_at: Date.now() - 1000, ended_at: Date.now(), duration_seconds: 1, clock_suspect: true }],
+  });
+  assert.equal(r.status, 200); assert.equal(r.json.data.accepted.app_sessions, 1);
+  r = await call('POST', '/api/v1/license/validate', { 'x-license-key': LICENSE.toLowerCase() }, {});
+  assert.equal(r.status, 200);
+  step('/api/v1 prefix, helper_status string, counts by type, clock_suspect, lower-case key');
+
   const now = Date.now(), batchId = randomUUID();
   const batch = {
     batch_id: batchId,

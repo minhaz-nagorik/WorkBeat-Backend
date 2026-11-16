@@ -120,7 +120,7 @@ export class AgentsController {
       const b = parse(activityBody, raw);
       if (idem !== b.batch_id) throw new ApiError(400, 'VALIDATION_FAILED', 'Idempotency-Key must equal batch_id', { fields: ['Idempotency-Key'] });
 
-      const sessions = b.app_sessions.filter((r) => inWindow(r.started_at));
+      const sessions = b.app_sessions.filter((r) => inWindow(r.started_at)).map(({ clock_suspect, ...r }) => ({ ...r, clock_flag: r.clock_flag || !!clock_suspect }));
       const visits = b.url_visits.filter((r) => inWindow(r.visited_at));
       const idles = b.idle_intervals.filter((r) => inWindow(r.started_at));
       const inBuckets = b.activity_buckets.filter((r) => inWindow(r.bucket_start));

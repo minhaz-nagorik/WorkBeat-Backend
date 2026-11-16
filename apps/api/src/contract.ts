@@ -25,6 +25,8 @@ export const LIMITS = {
 // Unix milliseconds (agent wire format) or an ISO string.
 const time = z.union([z.number().int().nonnegative(), z.string().datetime({ offset: true })]).transform((v) => new Date(v));
 const nonneg = z.number().int().nonnegative();
+// A counter, or counts by type/reason (Mac sends dropped_records per record type).
+const counter = z.union([nonneg, z.record(nonneg)]);
 const os = z.enum(['macos', 'windows']);
 const arch = z.enum(['x64', 'arm64']);
 
@@ -58,9 +60,9 @@ export const heartbeatBody = z.object({
   permissions: z.union([z.literal('not_required'), z.record(grant)]).nullish(),
   store_bytes: nonneg.optional(),
   oldest_unsent_at: time.nullish(),
-  dropped_records: nonneg.optional(),
-  dropped_samples: nonneg.optional(),
-  screenshot_skips: nonneg.optional(),
+  dropped_records: counter.optional(),
+  dropped_samples: counter.optional(),
+  screenshot_skips: counter.optional(),
   quarantined_batches: nonneg.optional(),
   blocking_status: z.string().max(32).nullish(),
   helper_restarts_24h: nonneg.optional(),
@@ -83,12 +85,13 @@ const appSession = z
     session_user: sessionUser,
     bundle_id: z.string().max(512),
     app_name: z.string().max(512),
-    process_name: z.string().max(512),
+    process_name: z.string().max(512).default(''),
     window_title: z.string().max(4096).default(''),
     started_at: time,
     ended_at: time,
     duration_seconds: nonneg,
     clock_flag: z.boolean().default(false),
+    clock_suspect: z.boolean().optional(), // agent spec's name for clock_flag
   })
   .refine((s) => s.ended_at >= s.started_at, { message: 'ended_at before started_at', path: ['ended_at'] });
 const urlVisit = z.object({
@@ -134,3 +137,6 @@ export const tamperBody = z.object({
 });
 
 export const uuid = z.string().uuid();
+
+// Licence key as stored and hashed: WB-XXXX-XXXX-XXXX-XXXX, upper case (license-key spec).
+export const normaliseLicenceKey = (k: string) => k.trim().toUpperCase();

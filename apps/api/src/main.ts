@@ -67,6 +67,8 @@ async function main() {
   const adapter = new FastifyAdapter({
     bodyLimit: LIMITS.bodyBytes,
     trustProxy: true, // behind cloudflared / a reverse proxy
+    // The agents' specs use a base URL ending in /api/v1: /api/v1/... is served as /v1/...
+    rewriteUrl: (req: { url?: string }) => (req.url?.startsWith('/api/v1/') ? req.url.slice(4) : req.url ?? '/'),
     genReqId: (req: { headers: Record<string, unknown> }) => {
       const id = req.headers['x-request-id'];
       return typeof id === 'string' && /^[\w.-]{1,128}$/.test(id) ? id : randomUUID();

@@ -1,7 +1,7 @@
 // /health, the Downloader's /license/validate, and the agent's enroll and deactivate.
 import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { enrollBody, licenseValidateBody, LIMITS, uuid } from './contract';
+import { enrollBody, licenseValidateBody, LIMITS, normaliseLicenceKey, uuid } from './contract';
 import { ApiError, Db, fromDbError, parse, sha256, token } from './core';
 import { authDevice, billingError, newestRelease } from './device';
 import { Storage } from './storage';
@@ -27,7 +27,7 @@ export class InstallController {
   @HttpCode(200)
   async validate(@Req() req: FastifyRequest, @Headers('x-license-key') key: string | undefined, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      const lic = key ? (await c.query('SELECT * FROM auth_license($1)', [sha256(key)])).rows[0] : null;
+      const lic = key ? (await c.query('SELECT * FROM auth_license($1)', [sha256(normaliseLicenceKey(key))])).rows[0] : null;
       if (!lic) throw new ApiError(404, 'LICENSE_NOT_FOUND', 'Licence key not found');
       await c.tenant(lic.company_id);
       tag(req, { company_id: lic.company_id });
