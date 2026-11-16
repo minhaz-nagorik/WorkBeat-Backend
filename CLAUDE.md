@@ -1,6 +1,6 @@
 # CLAUDE.md — the ten rules
 
-WorkBeat backend: the NestJS API (Fastify adapter, Node 20), its PostgreSQL schema on Supabase, and
+WorkBeat backend: the NestJS API (Fastify adapter, Node 20), its PostgreSQL schema (self-hosted PostgreSQL, no Supabase), and
 the shared contract the agents and the web platform consume. These rules are cheap to break and
 expensive to discover. **Every diff is bound by them.** The requirements are in `docs/openspec/`;
 run every `openspec` command from `docs/`.

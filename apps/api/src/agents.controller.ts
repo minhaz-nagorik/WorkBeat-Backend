@@ -1,0 +1,273 @@
+// /v1/agents/*: heartbeat, policy, activity, screenshots, tamper.
+import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import { activityBody, HEALTH_FIELDS, heartbeatBody, LIMITS, screenshotBody, tamperBody, uuid } from './contract';
+import { ApiError, Db, parse, sha256 } from './core';
+import { authDevice, cmpVersion, newestRelease, pauseInForce, policyVersion } from './device';
+import { baseUrl, tag } from './http';
+import { Storage } from './storage';
+
+const inWindow = (d: Date) => {
+  const t = d.getTime(), now = Date.now();
+  return t >= now - LIMITS.windowPastMs && t <= now + LIMITS.windowFutureMs;
+};
+const json = (v: unknown) => (v === undefined || v === null ? null : JSON.stringify(v));
+
+@Controller('v1/agents')
+export class AgentsController {
+  constructor(@Inject(Db) private db: Db, @Inject(Storage) private storage: Storage) {}
+
+  // receive-device-health/heartbeat + notice-acknowledgement. Still written when answered 402 (D5).
+  @Post('heartbeat')
+  @HttpCode(200)
+  async heartbeat(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Body() raw: unknown) {
+    const out = await this.db.tx(async (c) => {
+      const { dev, billing } = await authDevice(c, key, 'normal');
+      tag(req, dev);
+      const b = parse(heartbeatBody, raw);
+      const health = Object.fromEntries(HEALTH_FIELDS.map((f) => [f, b[f] ?? null]));
+      await c.query(
+        `UPDATE devices SET agent_version = $2, os_version = coalesce($3, os_version), reported_policy_version = $4,
+                helper_status = $5, browser_access = $6, permissions = $7, active_pause_id = $8, health = $9,
+                last_heartbeat_at = greatest(last_heartbeat_at, now()), offline_since = NULL
+          WHERE id = $1`,
+        [dev.device_id, b.agent_version, b.os_version ?? null, b.policy_version ?? null, json(b.helper_status),
+         json(b.browser_access), json(b.permissions), b.active_pause_id ?? null, json(health)],
+      );
+      await c.query(
+        "UPDATE tamper_events SET resolved_at = now() WHERE device_id = $1 AND event_type = 'offline' AND resolved_at IS NULL",
+        [dev.device_id],
+      );
+      // Both halves present and a version the company published (D25).
+      if (b.notice_version && b.notice_acknowledged_at) {
+        const ins = await c.query(
+          `INSERT INTO notice_acknowledgements (company_id, device_id, employee_id, notice_version, acknowledged_at)
+           SELECT $1, $2, $3, $4, $5 FROM companies WHERE id = $1 AND notice_version >= $4
+           ON CONFLICT (device_id, employee_id, notice_version) DO NOTHING`,
+          [dev.company_id, dev.device_id, dev.employee_id, b.notice_version, b.notice_acknowledged_at],
+        );
+        if (ins.rowCount)
+          await c.query('UPDATE devices SET notice_ack_version = greatest(coalesce(notice_ack_version, 0), $2) WHERE id = $1', [dev.device_id, b.notice_version]);
+      }
+      if (billing) return { billing };
+      return { data: { policy_version: await policyVersion(c, dev), monitoring_pause: await pauseInForce(c, dev.employee_id) } };
+    });
+    if (out.billing) throw out.billing;
+    return { data: out.data };
+  }
+
+  // serve-agent-policy/agent-policy. One snapshot; ETag = hash of the body (D8).
+  @Get('policy')
+  async policy(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Res() res: FastifyReply) {
+    const data = await this.db.tx(async (c) => {
+      const { dev, billing } = await authDevice(c, key, 'normal');
+      tag(req, dev);
+      if (billing) throw billing;
+      const { rows: [p] } = await c.query(
+        `SELECT d.os, d.arch, d.agent_version, c.idle_threshold_seconds, c.min_agent_version, c.uninstall_token_hash,
+                c.notice_text, c.notice_version, l.screenshot_tier, s.activity, s.app_usage, s.window_titles,
+                s.website_visits, s.screenshot_interval_seconds
+           FROM devices d JOIN companies c ON c.id = d.company_id JOIN licenses l ON l.company_id = c.id
+           JOIN employee_monitoring_settings s ON s.employee_id = d.employee_id
+          WHERE d.id = $1`,
+        [dev.device_id],
+      );
+      const [rules, sensitive, pauses] = await Promise.all([
+        c.query('SELECT id, type, pattern, reason FROM block_rules ORDER BY created_at, id'),
+        c.query('SELECT pattern FROM sensitive_domains ORDER BY lower(pattern)'),
+        c.query(
+          `SELECT id AS pause_id, starts_at, ends_at FROM monitoring_pauses
+            WHERE employee_id = $1 AND cancelled_at IS NULL AND ends_at > now() ORDER BY starts_at, id`,
+          [dev.employee_id],
+        ),
+      ]);
+      const rel = await newestRelease(c, p.os, p.arch);
+      let minVersion: string | null = p.min_agent_version;
+      if (rel && (!minVersion || cmpVersion(rel.min_supported, minVersion) > 0)) minVersion = rel.min_supported;
+      // Re-signed once per UTC day so the ETag only moves daily for it (B16).
+      const dayEnd = Math.floor(Date.now() / 86400_000) * 86400 + 2 * 86400;
+      const update = rel && cmpVersion(rel.version, p.agent_version) > 0 ? rel : null;
+      return {
+        policy_version: await policyVersion(c, dev),
+        block_rules: rules.rows,
+        sensitive_domains: sensitive.rows.map((r) => r.pattern),
+        screenshot_interval_seconds: p.screenshot_tier === 'off' ? 0 : p.screenshot_interval_seconds,
+        idle_threshold_seconds: p.idle_threshold_seconds,
+        min_agent_version: minVersion,
+        update_package_url: update ? this.storage.sign(baseUrl(req), 'GET', 'agents', update.storage_path, dayEnd) : null,
+        update_package_sha256: update?.sha256 ?? null,
+        uninstall_token_hash: p.uninstall_token_hash,
+        collection_notice: { text: p.notice_text, version: p.notice_version },
+        monitoring_features: { activity: p.activity, app_usage: p.app_usage, window_titles: p.window_titles, website_visits: p.website_visits },
+        monitoring_pauses: pauses.rows,
+      };
+    }, { snapshot: true });
+    const body = JSON.stringify({ data });
+    const etag = `"${sha256(body).slice(0, 32)}"`;
+    res.header('ETag', etag);
+    if (req.headers['if-none-match'] === etag) return res.status(304).send();
+    return res.status(200).type('application/json').send(body);
+  }
+
+  // ingest-activity/activity-ingestion. One transaction; ingest_batches is the idempotency record (D13).
+  @Post('activity')
+  @HttpCode(200)
+  async activity(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Headers('idempotency-key') idem: string | undefined, @Body() raw: unknown) {
+    return this.db.tx(async (c) => {
+      const { dev, billing } = await authDevice(c, key, 'upload');
+      tag(req, dev);
+      if (billing) throw billing;
+      const b = parse(activityBody, raw);
+      if (idem !== b.batch_id) throw new ApiError(400, 'VALIDATION_FAILED', 'Idempotency-Key must equal batch_id', { fields: ['Idempotency-Key'] });
+
+      const sessions = b.app_sessions.filter((r) => inWindow(r.started_at));
+      const visits = b.url_visits.filter((r) => inWindow(r.visited_at));
+      const idles = b.idle_intervals.filter((r) => inWindow(r.started_at));
+      const inBuckets = b.activity_buckets.filter((r) => inWindow(r.bucket_start));
+      const buckets = [...new Map(inBuckets.map((r) => [r.bucket_start.getTime(), r])).values()]; // last one wins
+      const dropped =
+        b.app_sessions.length - sessions.length + b.url_visits.length - visits.length +
+        b.idle_intervals.length - idles.length + b.activity_buckets.length - inBuckets.length;
+      const counts = {
+        app_sessions: sessions.length, url_visits: visits.length,
+        activity_buckets: buckets.length, idle_intervals: idles.length,
+      };
+      const bodyHash = sha256(JSON.stringify(raw));
+
+      const ins = await c.query(
+        `INSERT INTO ingest_batches (device_id, batch_id, company_id, counts, body_sha256) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (device_id, batch_id) DO NOTHING`,
+        [dev.device_id, b.batch_id, dev.company_id, JSON.stringify({ accepted: counts, dropped_out_of_window: dropped }), bodyHash],
+      );
+      if (!ins.rowCount) {
+        const { rows: [prev] } = await c.query('SELECT counts, body_sha256 FROM ingest_batches WHERE device_id = $1 AND batch_id = $2', [dev.device_id, b.batch_id]);
+        if (prev.body_sha256 !== bodyHash) throw new ApiError(409, 'IDEMPOTENCY_KEY_REUSED', 'Batch ID reused with a different body');
+        return { data: { batch_id: b.batch_id, ...prev.counts } };
+      }
+
+      const stamp = [dev.company_id, dev.device_id, dev.employee_id, b.batch_id];
+      if (sessions.length)
+        await c.query(
+          `INSERT INTO app_sessions (company_id, device_id, employee_id, batch_id, os_user, bundle_id, app_name, process_name,
+                                     window_title, started_at, ended_at, duration_seconds, clock_flag)
+           SELECT $1, $2, $3, $4, x."session_user", x.bundle_id, x.app_name, x.process_name, x.window_title, x.started_at,
+                  x.ended_at, x.duration_seconds, x.clock_flag
+             FROM jsonb_to_recordset($5) AS x("session_user" text, bundle_id text, app_name text, process_name text,
+                  window_title text, started_at timestamptz, ended_at timestamptz, duration_seconds int, clock_flag bool)`,
+          [...stamp, JSON.stringify(sessions)],
+        );
+      if (visits.length)
+        await c.query(
+          `INSERT INTO url_visits (company_id, device_id, employee_id, batch_id, os_user, browser, url, domain, visited_at, duration_seconds)
+           SELECT $1, $2, $3, $4, x."session_user", x.browser, x.url, x.domain, x.visited_at, x.duration_seconds
+             FROM jsonb_to_recordset($5) AS x("session_user" text, browser text, url text, domain text, visited_at timestamptz, duration_seconds int)`,
+          [...stamp, JSON.stringify(visits)],
+        );
+      if (idles.length)
+        await c.query(
+          `INSERT INTO idle_intervals (company_id, device_id, employee_id, batch_id, os_user, started_at, ended_at)
+           SELECT $1, $2, $3, $4, x."session_user", x.started_at, x.ended_at
+             FROM jsonb_to_recordset($5) AS x("session_user" text, started_at timestamptz, ended_at timestamptz)`,
+          [...stamp, JSON.stringify(idles)],
+        );
+      if (buckets.length)
+        await c.query(
+          `INSERT INTO activity_buckets (company_id, device_id, employee_id, bucket_start, active_samples, total_samples)
+           SELECT $1, $2, $3, x.bucket_start, x.active_samples, x.total_samples
+             FROM jsonb_to_recordset($4) AS x(bucket_start timestamptz, active_samples int, total_samples int)
+           ON CONFLICT (device_id, bucket_start) DO UPDATE
+              SET active_samples = excluded.active_samples, total_samples = excluded.total_samples`,
+          [dev.company_id, dev.device_id, dev.employee_id, JSON.stringify(buckets)],
+        );
+      return { data: { batch_id: b.batch_id, accepted: counts, dropped_out_of_window: dropped } };
+    });
+  }
+
+  // ingest-activity/screenshot-upload: pending row + signed PUT URL.
+  @Post('screenshots')
+  async screenshot(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Headers('idempotency-key') idem: string | undefined, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
+    return this.db.tx(async (c) => {
+      const { dev, billing } = await authDevice(c, key, 'upload');
+      tag(req, dev);
+      if (billing) throw billing;
+      const b = parse(screenshotBody, raw);
+      if (idem !== b.id) throw new ApiError(400, 'VALIDATION_FAILED', 'Idempotency-Key must equal id', { fields: ['Idempotency-Key'] });
+      if (b.bytes > LIMITS.screenshotMaxBytes) throw new ApiError(422, 'VALIDATION_FAILED', 'Screenshot too large', { fields: ['bytes'] });
+      if (!inWindow(b.captured_at)) throw new ApiError(422, 'VALIDATION_FAILED', 'captured_at outside the accepted window', { fields: ['captured_at'] });
+
+      const path = `${dev.company_id}/${dev.device_id}/${b.id}.jpg`;
+      const ins = await c.query(
+        `INSERT INTO screenshots (id, company_id, device_id, employee_id, captured_at, storage_path, bytes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+        [b.id, dev.company_id, dev.device_id, dev.employee_id, b.captured_at, path, b.bytes],
+      );
+      let status = 'pending';
+      if (ins.rowCount) res.status(201);
+      else {
+        // RLS hides other companies' rows, so "not mine" and "not found" both mean reused.
+        const { rows: [s] } = await c.query('SELECT device_id, captured_at, bytes, status FROM screenshots WHERE id = $1', [b.id]);
+        if (!s || s.device_id !== dev.device_id || s.bytes !== b.bytes || s.captured_at.getTime() !== b.captured_at.getTime())
+          throw new ApiError(409, 'IDEMPOTENCY_KEY_REUSED', 'Screenshot ID reused');
+        status = s.status;
+        res.status(200);
+      }
+      const exp = Math.floor(Date.now() / 1000) + LIMITS.screenshotUploadUrlSeconds;
+      return {
+        data: {
+          id: b.id,
+          status,
+          upload_url: status === 'pending' ? this.storage.sign(baseUrl(req), 'PUT', 'screenshots', path, exp) : null,
+          expires_at: status === 'pending' ? new Date(exp * 1000) : null,
+        },
+      };
+    });
+  }
+
+  @Post('screenshots/:id/confirm')
+  @HttpCode(200)
+  async confirm(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Param('id') id: string) {
+    return this.db.tx(async (c) => {
+      const { dev, billing } = await authDevice(c, key, 'upload');
+      tag(req, dev);
+      if (billing) throw billing;
+      const notFound = new ApiError(404, 'NOT_FOUND', 'Screenshot not found');
+      if (!uuid.safeParse(id).success) throw notFound;
+      const { rows: [s] } = await c.query('SELECT storage_path, bytes, status FROM screenshots WHERE id = $1 AND device_id = $2 FOR UPDATE', [id, dev.device_id]);
+      if (!s) throw notFound;
+      if (s.status === 'uploaded') return { data: { id, status: 'uploaded' } };
+      const size = await this.storage.size('screenshots', s.storage_path);
+      if (size !== s.bytes) {
+        if (size !== null) await this.storage.remove('screenshots', s.storage_path);
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Uploaded object missing or wrong size', { fields: ['bytes'] });
+      }
+      await c.query("UPDATE screenshots SET status = 'uploaded', uploaded_at = coalesce(uploaded_at, now()) WHERE id = $1", [id]);
+      return { data: { id, status: 'uploaded' } };
+    });
+  }
+
+  // process-tamper-alerts/tamper-ingestion. Stored once on its ID, any age (D24).
+  @Post('tamper')
+  async tamper(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
+    return this.db.tx(async (c) => {
+      const { dev, billing } = await authDevice(c, key, 'normal');
+      tag(req, dev);
+      if (billing) throw billing;
+      const b = parse(tamperBody, raw, 422);
+      const ins = await c.query(
+        `INSERT INTO tamper_events (id, company_id, device_id, hostname, event_type, detail, occurred_at, repeat_count)
+         SELECT $1, company_id, id, hostname, $3, $4, least($5::timestamptz, now()), $6 FROM devices WHERE id = $2
+         ON CONFLICT DO NOTHING RETURNING id, received_at`,
+        [b.id, dev.device_id, b.event_type, JSON.stringify(b.detail), b.occurred_at, b.repeat_count],
+      );
+      if (ins.rowCount) {
+        res.status(201);
+        return { data: ins.rows[0] };
+      }
+      const { rows: [t] } = await c.query('SELECT id, received_at, device_id, event_type FROM tamper_events WHERE id = $1', [b.id]);
+      if (!t || t.device_id !== dev.device_id || t.event_type !== b.event_type)
+        throw new ApiError(409, 'IDEMPOTENCY_KEY_REUSED', 'Tamper event ID reused');
+      res.status(200);
+      return { data: { id: t.id, received_at: t.received_at } };
+    });
+  }
+}
