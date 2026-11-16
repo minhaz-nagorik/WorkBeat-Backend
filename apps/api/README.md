@@ -18,10 +18,8 @@ with these differences, since there is no Supabase:
   `POST /v1/auth/password` `{ current_password, new_password }` (other sessions end).
   `POST /v1/invitations/accept` also returns a session. Passwords: 10–200 characters, scrypt.
   Forgotten password: `POST /v1/auth/password-reset/request` (always 204) and `/confirm`.
-- **Staff (`super_admin`) sign in with TOTP MFA**: login returns an `mfa_token`, then
-  `POST /v1/auth/mfa/enroll` (first time) and `POST /v1/auth/mfa/verify` give the session;
-  `POST /v1/staff/users/:id/mfa/reset` clears a lost factor. Details:
-  [admin-requests-2-response.md](../../docs/integration/admin-requests-2-response.md).
+- **Staff (`super_admin`) sign in the same way**, email and password only; there is no MFA
+  (removed 16 Nov 2026, B23).
 - **Email** goes through Resend (`RESEND_API_KEY`); without it, to `STORAGE_DIR/outbox`.
 - **Status codes** follow the api-envelope convention where portal-api.md leaves them open:
   actions answer `200` with the record, creates `201`, deletes and `POST /v1/company/setup/steps` `204`.
@@ -54,8 +52,8 @@ ADMIN_EMAIL=you@acme.com ADMIN_PASSWORD=... pnpm smoke:portal   # portal flow; a
 
 `pnpm seed -- --slug <existing> --admin-email …` adds another company admin to an existing company;
 `--slug <existing> --rotate-key` issues a new licence key; `--staff-email …` creates a `super_admin`.
-`pnpm test` runs the unit tests. `smoke:portal` also checks staff MFA when `STAFF1_EMAIL`/`STAFF1_PASSWORD`
-and `STAFF2_EMAIL`/`STAFF2_PASSWORD` of two test staff are set (it clears their factors first).
+`pnpm test` runs the unit tests. `smoke:portal` also checks staff sign-in when `STAFF1_EMAIL`/`STAFF1_PASSWORD` of a test staff
+member are set.
 DB self-checks (`db/tests/*.sql`) expect an empty database: run them on a fresh one.
 
 The API must connect as a non-superuser role: superusers bypass row-level security.
@@ -73,8 +71,7 @@ cloudflared forwards). Check it from outside: `BASE_URL=https://….trycloudflar
 ## Not built yet
 
 Stripe (signup, tier change, billing portal, webhooks), custom domains and `/v1/hosts/resolve`,
-`timesheet.pdf`, staff routes (`/v1/staff/*` except MFA reset), alert emails, `/cron/*` (offline detection, domain
-verification, partitions, retention), agent release upload. The staff API itself (`/v1/staff/*`)
-has only the MFA reset so far. Partitions exist for last month to two months ahead
+`timesheet.pdf`, staff routes (`/v1/staff/*`), alert emails, `/cron/*` (offline detection, domain
+verification, partitions, retention), agent release upload. Partitions exist for last month to two months ahead
 (`ensure_month_partitions`); run `SELECT ensure_month_partitions();` as the owner monthly until
 `/cron/cleanup` exists.

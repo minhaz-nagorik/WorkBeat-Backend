@@ -18,7 +18,6 @@ import { EmployeesController } from './portal/employees.controller';
 import { PolicyController } from './portal/policy.controller';
 import { ReportsController } from './portal/reports.controller';
 import { SessionController } from './portal/session.controller';
-import { StaffController } from './portal/staff.controller';
 
 // Unauthenticated routes that guess secrets get the tight per-IP limit.
 const TIGHT = ['/v1/license/validate', '/v1/auth/', '/api/v1/license/validate', '/v1/invitations/'];
@@ -56,7 +55,7 @@ class AllErrors implements ExceptionFilter {
 
 @Module({
   controllers: [InstallController, AgentsController, StorageController, SessionController, CompanyController,
-    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController],
+    EmployeesController, DevicesController, PolicyController, ReportsController],
   providers: [
     { provide: Db, useValue: new Db(cfg.DATABASE_URL) },
     { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY) },

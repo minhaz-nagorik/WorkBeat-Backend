@@ -33,7 +33,6 @@ One project per environment. Each holds both company users and staff.
 | Area | Setting |
 |---|---|
 | Auth | Email + password. Role and `company_id` live in `app_metadata`, written only by the API with the service role key (D41). `user_metadata` is ignored by the guard |
-| Auth: MFA | TOTP enabled. Staff (`super_admin`) need `aal2` on every call except `GET /v1/me` (`staff-accounts`) |
 | Auth: first staff account | Created by the operator script from `authenticate-users` task 4.3; there is no route for it |
 | Storage | Buckets `screenshots` (private, `image/jpeg` only, size limit from `packages/shared`) and `agents` (private). No public bucket |
 | Database: pooler | Supavisor **transaction mode** (port 6543) for the API. Session mode and the direct connection are for migrations only |

@@ -5,9 +5,9 @@ Conventions, auth and the code catalog are in [README.md](README.md).
 
 **Applies to every route below; not repeated per route:**
 
-- `Authorization: Bearer <session token>` of a `super_admin`, issued only after TOTP (B23); missing, bad or disabled →
+- `Authorization: Bearer <session token>` of a `super_admin` from `POST /v1/auth/login`; missing, bad or disabled →
   `401 UNAUTHENTICATED`.
-- Sign-in: `POST /v1/auth/login` → `{ mfa_required: true, mfa_enrolled, mfa_token, expires_at }`; then `POST /v1/auth/mfa/enroll { mfa_token }` (no factor yet) and `POST /v1/auth/mfa/verify { mfa_token, code }` → `{ token, expires_at, user }` ([`staff-accounts`][staff-accounts]). Lost factor: `POST /v1/staff/users/:id/mfa/reset` by another `super_admin`.
+- Sign-in: `POST /v1/auth/login { email, password }` → `{ token, expires_at, user }`, as for company users; there is no MFA (removed 16 Nov 2026, B23) ([`staff-accounts`][staff-accounts]).
 - Every company role (`company_admin`, `manager`, `it_admin`) → `403 FORBIDDEN` ([`role-access`][role-access]).
 - `400`/`422 VALIDATION_FAILED`, `429 RATE_LIMITED`, `500 INTERNAL`.
 - Runs in `staff` scope, no `app.company_id`; reads only `companies`, `licenses`, `users`,
@@ -31,7 +31,6 @@ Who the staff member is.
 Request: none.
 Response `200`: `id` uuid, `email` string, `name` string, `role` `super_admin`, `company` `null`.
 Errors: `401 UNAUTHENTICATED`.
-Notes: a staff session exists only after MFA, so every staff call has passed it.
 Runs in `staff` scope. A `super_admin` token must carry no `company_id`.
 
 Staff accept their invitation through `POST /v1/invitations/accept`
@@ -277,11 +276,10 @@ Notes: sets `withdrawn_at`; withdrawing again returns it unchanged. A withdrawn 
 
 ## Unspecified
 
-Nothing is left open; the staff API is specified but **not built yet**, except
-`POST /v1/staff/users/:id/mfa/reset` and the TOTP sign-in. Settled (16 Nov 2026):
+Nothing is left open; the staff API is specified but **not built yet**. Settled (16 Nov 2026):
 
-- **Staff team:** `GET /v1/staff/team` → `{ users: [{ id, name, email, mfa_enabled, created_at }], invitations: [{ id, email, created_at, expires_at }] }`.
-- **Staff invitation accept:** `201 { user }`, no session; the person signs in and sets up TOTP.
+- **Staff team:** `GET /v1/staff/team` → `{ users: [{ id, name, email, created_at }], invitations: [{ id, email, created_at, expires_at }] }`.
+- **Staff invitation accept:** `201 { user }`, no session; the person then signs in with their password.
 - **Resend:** `POST /v1/staff/invitations/:id/resend` → `200 { id, email, role, expires_at }`, same codes as the company team's resend.
 - **Upload URL:** `POST /v1/staff/agent-releases/upload-url { product, platform, arch, version }` → `200 { upload_url, storage_path, expires_at }`.
 - **404:** every staff route answers `404 NOT_FOUND` for an ID of no row of its kind ([`staff-companies`][staff-companies]).

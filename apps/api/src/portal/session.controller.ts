@@ -3,12 +3,9 @@ import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Re
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ADMIN, ALL, bearer, hashPassword, idOrNone, INVITATION_DAYS, newSession, portalUser, User, verifyPassword } from '../auth';
-import { ApiError, config, Db, decrypt, encrypt, parse, sha256, token, Tx } from '../core';
+import { ApiError, config, Db, parse, sha256, token, Tx } from '../core';
 import { sendMail } from '../mail';
-import { newSecret, otpauthUri, verifyTotp } from '../totp';
 
-const MFA_CHALLENGE_MINUTES = 10;
-const MFA_MAX_ATTEMPTS = 5;
 const RESET_MINUTES = 30;
 
 const password = z.string().min(10).max(200);
@@ -47,15 +44,8 @@ export class SessionController {
       const { rows: [u] } = await c.query('SELECT * FROM auth_login($1)', [b.email]);
       if (!(await verifyPassword(b.password, u?.password_hash)) || (u.role !== 'super_admin' && !u.company_id))
         throw new ApiError(401, 'UNAUTHENTICATED', 'Wrong email or password');
-      if (u.role === 'super_admin') { // staff: no session until the second factor (D41)
-        const t = token('wbm_');
-        const { rows: [ch] } = await c.query(
-          'INSERT INTO mfa_challenges (user_id, token_hash, expires_at) VALUES ($1, $2, now() + make_interval(mins => $3)) RETURNING expires_at',
-          [u.user_id, sha256(t), MFA_CHALLENGE_MINUTES],
-        );
-        return { data: { mfa_required: true, mfa_enrolled: u.mfa_enabled, mfa_token: t, expires_at: ch.expires_at } };
-      }
-      return { data: { mfa_required: false, ...(await this.session(c, u.user_id)) } };
+      // Staff sign in with password only, like company users (MFA removed by the product owner, 16 Nov 2026).
+      return { data: await this.session(c, u.user_id) };
     });
   }
 
@@ -63,59 +53,6 @@ export class SessionController {
     const s = await newSession(c, userId);
     const { rows: [full] } = await c.query('SELECT * FROM auth_session($1)', [sha256(s.token)]);
     return { ...s, user: await me(c, { ...full, id: full.user_id }) };
-  }
-
-  // ------------------------------------------------------------ staff MFA (TOTP)
-
-  // Starts or restarts enrolment for a staff member without a factor: returns the secret once.
-  @Post('auth/mfa/enroll')
-  @HttpCode(200)
-  async mfaEnroll(@Body() raw: unknown) {
-    const b = parse(z.object({ mfa_token: z.string().min(1).max(200) }), raw);
-    return this.db.tx(async (c) => {
-      const ch = await this.challenge(c, b.mfa_token);
-      const { rows: [u] } = await c.query('SELECT email, mfa_enabled_at FROM users WHERE id = $1', [ch.user_id]);
-      if (u.mfa_enabled_at) throw new ApiError(409, 'CONFLICT', 'A second factor is already set up');
-      const secret = newSecret();
-      await c.query('UPDATE mfa_challenges SET pending_secret_ciphertext = $2 WHERE id = $1', [ch.challenge_id, encrypt(secret, config().SECRETS_ENCRYPTION_KEY)]);
-      return { data: { secret, otpauth_uri: otpauthUri(secret, u.email) } };
-    });
-  }
-
-  // Checks a code: confirms a pending enrolment or signs in with the existing factor.
-  @Post('auth/mfa/verify')
-  @HttpCode(200)
-  async mfaVerify(@Body() raw: unknown) {
-    const b = parse(z.object({ mfa_token: z.string().min(1).max(200), code: z.string().trim().max(10) }), raw);
-    const key = config().SECRETS_ENCRYPTION_KEY;
-    const out = await this.db.tx(async (c) => {
-      const ch = await this.challenge(c, b.mfa_token);
-      const { rows: [m] } = await c.query('SELECT attempts, pending_secret_ciphertext FROM mfa_challenges WHERE id = $1 FOR UPDATE', [ch.challenge_id]);
-      if (m.attempts >= MFA_MAX_ATTEMPTS) throw new ApiError(401, 'UNAUTHENTICATED', 'Too many wrong codes; sign in again');
-      const { rows: [u] } = await c.query('SELECT mfa_secret_ciphertext, mfa_last_step FROM users WHERE id = $1 FOR UPDATE', [ch.user_id]);
-      const blob = m.pending_secret_ciphertext ?? u.mfa_secret_ciphertext;
-      if (!blob) throw new ApiError(409, 'CONFLICT', 'Set up a second factor first (POST /v1/auth/mfa/enroll)');
-      const secret = decrypt(blob, key);
-      const step = verifyTotp(secret, b.code, m.pending_secret_ciphertext ? null : u.mfa_last_step);
-      if (step === null) {
-        await c.query('UPDATE mfa_challenges SET attempts = attempts + 1 WHERE id = $1', [ch.challenge_id]);
-        return { error: new ApiError(401, 'MFA_CODE_INVALID', 'Wrong or expired code', { attempts_left: MFA_MAX_ATTEMPTS - m.attempts - 1 }) };
-      }
-      if (m.pending_secret_ciphertext)
-        await c.query('UPDATE users SET mfa_secret_ciphertext = $2, mfa_enabled_at = now() WHERE id = $1', [ch.user_id, m.pending_secret_ciphertext]);
-      await c.query('UPDATE users SET mfa_last_step = $2 WHERE id = $1', [ch.user_id, step]);
-      await c.query('UPDATE mfa_challenges SET used_at = now() WHERE id = $1', [ch.challenge_id]);
-      return { data: await this.session(c, ch.user_id) };
-    });
-    if (out.error) throw out.error; // after commit, so the failed attempt counts
-    return { data: out.data };
-  }
-
-  private async challenge(c: Tx, t: string) {
-    const { rows: [ch] } = await c.query('SELECT * FROM auth_mfa_challenge($1)', [sha256(t)]);
-    if (!ch) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in again');
-    await c.query("SELECT set_config('app.scope', 'staff', true)"); // challenges exist only for super_admin
-    return ch;
   }
 
   // ------------------------------------------------------------ password reset
@@ -155,7 +92,6 @@ export class SessionController {
       await c.query('UPDATE users SET password_hash = $2 WHERE id = $1', [r.user_id, hash]);
       await c.query('UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [r.user_id]);
       await c.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [r.user_id]);
-      await c.query('UPDATE mfa_challenges SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [r.user_id]);
       return { data: { changed: true } };
     });
   }

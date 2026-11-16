@@ -54,7 +54,7 @@ count, never `detail`, a URL or a title (`alert-emails`).
 | List and edit companies, licences, seat limits, grace days, status | Read employees, devices, activity, URLs, screenshots, tamper events |
 | Reissue a licence key | Impersonate a company user; there is no such feature |
 | Manage staff accounts and agent releases | Call any company route (answers `403`) |
-| See seat counts through `company_seat_counts()` | Use a token below `aal2` (`403 MFA_REQUIRED`) |
+| See seat counts through `company_seat_counts()` | Create a `super_admin` through any route (only the operator script does) |
 
 Staff routes run in `staff` scope, where RLS returns no tenant rows, and a CI test fails the build
 if any staff response contains seeded employee data.

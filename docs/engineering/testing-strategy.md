@@ -54,7 +54,7 @@ A route that is not covered fails the suite.
 
 `staff-data-boundary` specifies this test, so it is a gate, not an option:
 
-- A `super_admin` token (at `aal2`) calls every staff route and every company route.
+- A `super_admin` token calls every staff route and every company route.
 - Company routes must answer `403 FORBIDDEN`.
 - Staff responses are searched for every seeded employee name, email, hostname, serial, URL, domain,
   window title and screenshot path. Any match fails the build.

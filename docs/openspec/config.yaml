@@ -13,8 +13,8 @@ context: |
     packages/shared   zod schemas and constants: the contract the agents, the Downloader and the
                       web platform consume (B9). It answers the agents' open question Q1.
     db/               numbered SQL migrations for PostgreSQL 15+ and their self-checks.
-  Self-hosted PostgreSQL (no Supabase since 16 Nov 2026, B22). The API owns sign-in: passwords,
-  sessions and staff TOTP MFA (B22, B23). Object storage: local disk behind signed URLs until a provider is chosen (B26). Email: Resend.
+  Self-hosted PostgreSQL (no Supabase since 16 Nov 2026, B22). The API owns sign-in: passwords and
+  sessions, staff included, with no MFA (B22; B23 removed 16 Nov 2026). Object storage: local disk behind signed URLs until a provider is chosen (B26). Email: Resend.
   Billing: Stripe.
 
   WHAT THIS REPOSITORY DOES NOT BUILD

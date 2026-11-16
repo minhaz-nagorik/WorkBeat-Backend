@@ -7,12 +7,12 @@ unauthenticated call gets.
 ## ADDED Requirements
 
 ### Requirement: Users sign in with email and password
-<!-- source: D41 · B22 · B25 -->
-`POST /v1/auth/login` with `email` and `password` SHALL compare the password with the scrypt hash of the enabled `users` row of that email. A company user MUST get `200` with `mfa_required` false, `token`, `expires_at` and `user` as `GET /v1/me` returns it. A wrong password, an unknown or disabled email MUST all get the same `401 UNAUTHENTICATED`.
+<!-- source: D41 · B22 · B25 · product owner 16 Nov 2026 -->
+`POST /v1/auth/login` with `email` and `password` SHALL compare the password with the scrypt hash of the enabled `users` row of that email. Every user, company or staff, MUST get `200` with `token`, `expires_at` and `user` as `GET /v1/me` returns it. A wrong password, an unknown or disabled email MUST all get the same `401 UNAUTHENTICATED`.
 
 #### Scenario: A company admin signs in
 - **WHEN** a company admin sends the right email and password
-- **THEN** the response is `200` with `mfa_required` false, a `token` starting `wbs_` and `expires_at` 7 days later
+- **THEN** the response is `200` with a `token` starting `wbs_` and `expires_at` 7 days later
 
 #### Scenario: A wrong password and an unknown email
 - **WHEN** one request sends a wrong password and another an email with no account
@@ -22,17 +22,18 @@ unauthenticated call gets.
 - **WHEN** a user with `disabled_at` set sends their right password
 - **THEN** the response is `401 UNAUTHENTICATED`
 
-### Requirement: A super admin signs in through the same route, then MFA
-<!-- source: D41 · B23 · Plan-v3.5 §4.6 -->
-For a `super_admin`, `POST /v1/auth/login` with the right password SHALL answer `200` with `mfa_required` true, `mfa_enrolled`, `mfa_token` and its `expires_at`, and MUST NOT issue a session. The session is issued only by the second factor (`staff-accounts`).
+### Requirement: A super admin signs in with a password only
+<!-- source: D41 · B22 · product owner 16 Nov 2026 -->
+For a `super_admin`, `POST /v1/auth/login` with the right password SHALL answer `200` with `token`, `expires_at` and `user`, exactly as for a company user. No role MUST be asked for a second factor.
 
-#### Scenario: Staff enter their password
+#### Scenario: Staff sign in
 - **WHEN** a `super_admin` sends the right email and password
-- **THEN** the response carries `mfa_required` true and an `mfa_token`, and no `token`
+- **THEN** the response is `200` with a `token` starting `wbs_`
+- **AND** `GET /v1/me` with that token shows `role` `super_admin` and `company` `null`
 
 ### Requirement: Portal and staff routes need a live session
 <!-- source: D41 · B22 -->
-Every route outside the agent, Downloader, webhook, cron, sign-in, password-reset, MFA, invitation, host-resolution and health routes SHALL require `Authorization: Bearer <token>` whose SHA-256 matches a `sessions` row that is not revoked, not expired and belongs to an enabled user. Anything else MUST get `401 UNAUTHENTICATED` and the route MUST NOT run.
+Every route outside the agent, Downloader, webhook, cron, sign-in, password-reset, invitation, host-resolution and health routes SHALL require `Authorization: Bearer <token>` whose SHA-256 matches a `sessions` row that is not revoked, not expired and belongs to an enabled user. Anything else MUST get `401 UNAUTHENTICATED` and the route MUST NOT run.
 
 #### Scenario: No token
 - **WHEN** `GET /v1/me` is called without `Authorization`
@@ -64,7 +65,7 @@ A session SHALL last 7 days. `POST /v1/auth/logout` MUST revoke the caller's ses
 
 ### Requirement: A forgotten password is reset by email
 <!-- source: B24 -->
-`POST /v1/auth/password-reset/request` with `email` SHALL always answer `204`, and for an enabled user MUST email a link with a single-use token valid 30 minutes. `POST /v1/auth/password-reset/confirm` with `token` and `new_password` MUST set the password, use up every open reset of the user, and revoke all their sessions and MFA challenges. It MUST answer `404 PASSWORD_RESET_INVALID` or `410 PASSWORD_RESET_EXPIRED`.
+`POST /v1/auth/password-reset/request` with `email` SHALL always answer `204`, and for an enabled user MUST email a link with a single-use token valid 30 minutes. `POST /v1/auth/password-reset/confirm` with `token` and `new_password` MUST set the password, use up every open reset of the user, and revoke all their sessions. It MUST answer `404 PASSWORD_RESET_INVALID` or `410 PASSWORD_RESET_EXPIRED`.
 
 #### Scenario: An unknown email
 - **WHEN** a reset is requested for an email with no account
@@ -107,7 +108,7 @@ A company user's request SHALL run in `tenant` scope with `app.company_id` from 
 `GET /v1/me` SHALL return the caller's `id`, `email`, `name`, `role` and, for a company user, `company` with `id`, `name`, `slug`, `status` and `timezone`; for a `super_admin`, `company` MUST be `null`. All four roles SHALL be allowed.
 
 #### Scenario: A staff member signs in
-- **WHEN** a `super_admin` with a session from the second factor calls `GET /v1/me`
+- **WHEN** a `super_admin` signed in with their password calls `GET /v1/me`
 - **THEN** the response carries `role` `super_admin` and `company` `null`
 
 #### Scenario: A manager needs the company day

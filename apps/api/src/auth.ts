@@ -68,7 +68,7 @@ export async function portalUser(c: Tx, req: FastifyRequest, roles: Role[], opts
   return user;
 }
 
-// Staff routes: super_admin only, in staff scope. A staff session exists only after MFA (0005).
+// Staff routes: super_admin only, in staff scope.
 export async function staffUser(c: Tx, req: FastifyRequest): Promise<User> {
   const t = bearer(req);
   const u = t ? (await c.query('SELECT * FROM auth_session($1)', [sha256(t)])).rows[0] : null;

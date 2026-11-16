@@ -29,9 +29,7 @@ no lockout, B25). Spec: [`user-authentication`][user-authentication], [`staff-ac
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /v1/auth/login` | `email`, `password` | company user: `{ mfa_required: false, token, expires_at, user }`; `super_admin`: `{ mfa_required: true, mfa_enrolled, mfa_token, expires_at }`; wrong → `401 UNAUTHENTICATED` |
-| `POST /v1/auth/mfa/enroll` | `mfa_token` | `{ secret, otpauth_uri }`; already set up → `409 CONFLICT` |
-| `POST /v1/auth/mfa/verify` | `mfa_token`, `code` | `{ token, expires_at, user }`; wrong code → `401 MFA_CODE_INVALID` + `attempts_left`; 6th try or expired token → `401 UNAUTHENTICATED` |
+| `POST /v1/auth/login` | `email`, `password` | `{ token, expires_at, user }` for every user, `super_admin` included; wrong → `401 UNAUTHENTICATED` |
 | `POST /v1/auth/logout` | — (Bearer) | `204` |
 | `POST /v1/auth/password` | `current_password`, `new_password` (Bearer) | `{ changed: true }`; other sessions end; wrong current → `422` |
 | `POST /v1/auth/password-reset/request` | `email` | always `204`; emails a 30-minute single-use link to `<PORTAL_URL>/reset-password?token=…` |
@@ -91,7 +89,7 @@ Request:
 | name | string | yes | |
 | password | string | yes | 10–200 characters, stored as a scrypt hash |
 
-Response `201`: company invitation `{ token, expires_at, user }` (a session, `user` as `GET /v1/me`); staff invitation `{ user }` only, no session (sign in, then TOTP).
+Response `201`: company invitation `{ token, expires_at, user }` (a session, `user` as `GET /v1/me`); staff invitation `{ user }` only, no session (the person then signs in).
 Errors: as `POST /v1/invitations/lookup`; no user is created on either.
 Notes: in one transaction: `users` row, `invitations.accepted_at` and a session, returned as `{ token, expires_at, user }`. A staff invitation creates a user with no `company_id`.
 

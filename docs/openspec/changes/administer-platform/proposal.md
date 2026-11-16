@@ -31,7 +31,7 @@ None.
 ## Impact
 
 - Consumed by the web platform's staff area.
-- Depends on `authenticate-users` (staff MFA, role guard) and `provision-companies` (status,
+- Depends on `authenticate-users` (staff sign-in, role guard) and `provision-companies` (status,
   licence key format and storage).
 - Agents see the reissue only through `enroll-devices`: the old key answers `404
   LICENSE_NOT_FOUND`, deleted tokens `404 ENROLLMENT_TOKEN_INVALID` (agent-contract.md).

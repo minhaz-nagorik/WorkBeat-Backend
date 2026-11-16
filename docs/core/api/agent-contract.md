@@ -99,7 +99,7 @@ under the released binding (B21, D45). Every other route answers it `401 DEVICE_
 always belong to the binding whose key uploaded them; nothing is re-credited by time (D48).
 
 **Portal-only codes** (the web platform, not the agents): `UNAUTHENTICATED` 401, `FORBIDDEN` 403,
-`MFA_REQUIRED` 403, `NOT_FOUND` 404, `INVITATION_INVALID` 404, `CONFLICT` 409,
+`NOT_FOUND` 404, `INVITATION_INVALID` 404, `CONFLICT` 409,
 `EMPLOYEE_HAS_DEVICES` 409, `INVITATION_EXPIRED` 410, `EXPORT_TOO_LARGE` 422,
 `WEBHOOK_SIGNATURE_INVALID` 400 (Stripe only).
 

@@ -1,6 +1,6 @@
 ## Purpose
 
-How WorkBeat staff accounts (`super_admin`) are created and removed, the MFA they must use, and
+How WorkBeat staff accounts (`super_admin`) are created and removed, and
 the account routes that never exist for them: self sign-up and impersonation.
 
 ## ADDED Requirements
@@ -29,58 +29,6 @@ No sign-up route, Stripe event or company invitation SHALL create a `super_admin
 #### Scenario: A sign-up names role super_admin
 - **WHEN** any portal request tries to set `role` `super_admin` for a new or existing user
 - **THEN** the response is `422 VALIDATION_FAILED` and no `super_admin` exists afterwards
-
-### Requirement: A staff session exists only after a second factor
-<!-- source: D41 · B23 · Plan-v3.5 §4.6 -->
-A `super_admin` SHALL get a session only from `POST /v1/auth/mfa/verify` with the `mfa_token` from login and a valid TOTP code, so every staff session has passed MFA. Company roles MUST NOT be asked for a second factor. `MFA_REQUIRED` is therefore never returned.
-
-#### Scenario: Staff stop after the password
-- **WHEN** a `super_admin` signs in with the right password and calls `GET /v1/me` with the `mfa_token`
-- **THEN** the response is `401 UNAUTHENTICATED`
-
-#### Scenario: Company roles are not asked for MFA
-- **WHEN** a `company_admin` signs in with the right password
-- **THEN** the login response carries a session and `mfa_required` false
-
-### Requirement: Staff set up an authenticator app at first sign-in
-<!-- source: D41 · B23 -->
-For a `super_admin` with no factor, `POST /v1/auth/mfa/enroll` with `mfa_token` SHALL return a new base32 `secret` and its `otpauth_uri` and keep the secret, encrypted, on the challenge. The first valid code at `POST /v1/auth/mfa/verify` MUST store it on the user and issue the session. Enrolling while a factor exists MUST answer `409 CONFLICT`.
-
-#### Scenario: First sign-in of a new staff member
-- **WHEN** staff enroll and send the code their app shows
-- **THEN** the response carries a session and later sign-ins ask for a code from the same app
-
-#### Scenario: Verify before enrolling
-- **WHEN** a `super_admin` with no factor calls verify without enrolling first
-- **THEN** the response is `409 CONFLICT` and no attempt is counted
-
-### Requirement: MFA codes are checked once, with limited attempts
-<!-- source: B23 · B25 -->
-A code SHALL be a 6-digit TOTP (RFC 6238, SHA-1, 30 s) accepted for the previous, current or next step, and a step already used by that user MUST be refused. A wrong code MUST answer `401 MFA_CODE_INVALID` with `attempts_left`; after 5 wrong codes, or 10 minutes, the `mfa_token` MUST answer `401 UNAUTHENTICATED`.
-
-#### Scenario: A wrong code
-- **WHEN** staff send a wrong code for a new `mfa_token`
-- **THEN** the response is `401 MFA_CODE_INVALID` with `attempts_left` 4
-
-#### Scenario: A code used twice
-- **WHEN** staff sign in again within the same 30 seconds and send the code they just used
-- **THEN** the response is `401 MFA_CODE_INVALID`
-
-#### Scenario: Too many wrong codes
-- **WHEN** a sixth code is sent for an `mfa_token` after five wrong ones
-- **THEN** the response is `401 UNAUTHENTICATED` and staff sign in with their password again
-
-### Requirement: Another super admin resets a lost factor
-<!-- source: D41 · B23 -->
-`POST /v1/staff/users/:id/mfa/reset` SHALL be allowed to a `super_admin` for another enabled `super_admin`, clear their factor and revoke their sessions and MFA challenges, so they enroll again at their next sign-in. Resetting oneself MUST answer `409 CONFLICT`; a company user's ID MUST answer `404 NOT_FOUND`; a company role MUST get `403 FORBIDDEN`.
-
-#### Scenario: A lost phone
-- **WHEN** one `super_admin` resets another's factor
-- **THEN** the other's sessions answer `401` and their next login returns `mfa_enrolled` false
-
-#### Scenario: Resetting oneself
-- **WHEN** a `super_admin` resets their own factor
-- **THEN** the response is `409 CONFLICT` and the factor stays
 
 ### Requirement: Staff manage the staff team
 <!-- source: D41 · Plan-v3.5 §4.6 -->
@@ -115,8 +63,8 @@ No route SHALL issue a token, session or link that acts as another user, and no 
 - **THEN** the response is `403 FORBIDDEN`
 
 ### Requirement: A staff invitation is accepted without a session
-<!-- source: D41 · B23 -->
-`POST /v1/invitations/accept` for a `super_admin` invitation SHALL create the `users` row with no `company_id` and answer `201` with `user` only, no `token`: the person then signs in and sets up TOTP (`POST /v1/auth/mfa/enroll`).
+<!-- source: D41 · product owner 16 Nov 2026 -->
+`POST /v1/invitations/accept` for a `super_admin` invitation SHALL create the `users` row with no `company_id` and answer `201` with `user` only, no `token`: the person then signs in with their password (`POST /v1/auth/login`).
 
 #### Scenario: A new staff member accepts
 - **WHEN** a staff invitation is accepted with a name and password

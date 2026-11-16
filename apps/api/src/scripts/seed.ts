@@ -32,7 +32,7 @@ async function main() {
       'admin-email': { type: 'string', default: 'admin@example.test' },
       'admin-name': { type: 'string', default: 'Company Admin' },
       'rotate-key': { type: 'boolean', default: false },
-      'staff-email': { type: 'string' }, // create a super_admin (no company); MFA is set up at first sign-in
+      'staff-email': { type: 'string' }, // create a super_admin (no company)
     },
   });
   const url = process.env.ADMIN_DATABASE_URL, secret = process.env.SECRETS_ENCRYPTION_KEY;
