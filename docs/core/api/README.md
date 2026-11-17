@@ -78,7 +78,8 @@ Rules that hold on every user route:
 ### Rate limits
 
 Per device key, licence key, user, and client IP for unauthenticated routes, with limits in
-`packages/shared`. Over the limit: `429 RATE_LIMITED` with `Retry-After`, and the request is not
+`packages/shared` (`apps/api/src/contract.ts`): 120 a minute per device key, 600 a minute per user
+session, 120 per IP without a credential, 20 per IP on the sign-in and licence routes. Over the limit: `429 RATE_LIMITED` with `Retry-After`, and the request is not
 processed ([`rate-limiting`][rate-limiting]).
 
 ### Pagination

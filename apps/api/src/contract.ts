@@ -19,6 +19,9 @@ export const LIMITS = {
   duplicateHeartbeatMinutes: 15, // D46
   // Per minute. Agents: heartbeat 1/5 min, policy 1/30 min, batch 1/10 min — far below.
   ratePerDeviceKey: 120,
+  // Portal session (Bearer): a page loads many reports at once. 600 keeps one session under about
+  // half of the 20 DB connections even at the 1 s report budget (17 Nov 2026).
+  ratePerSession: 600,
   ratePerIpLicense: 20,
   ratePerIp: 120,
 };

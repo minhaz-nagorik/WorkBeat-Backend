@@ -24,7 +24,7 @@ Contents: [Session](#session) · [Team & invitations](#team--invitations) ·
 
 ## Session
 
-Sign-in routes need no credential and are limited to 20 a minute per IP each (`429 RATE_LIMITED`,
+Signed-in requests are limited to 600 a minute per session. Sign-in routes need no credential and are limited to 20 a minute per IP each (`429 RATE_LIMITED`,
 no lockout, B25). Spec: [`user-authentication`][user-authentication], [`staff-accounts`][staff-accounts].
 
 | Route | Body | Answer |

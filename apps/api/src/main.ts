@@ -113,11 +113,13 @@ async function main() {
     timeWindow: 60_000,
     keyGenerator: (req) => {
       const tight = TIGHT.find((p) => req.url.startsWith(p));
-      const k = req.headers['x-device-key'] ?? req.headers.authorization;
-      if (typeof k === 'string' && !tight) return 'dev:' + sha256(k); // per device key or user session
+      const dev = req.headers['x-device-key'], auth = req.headers.authorization;
+      if (typeof dev === 'string' && !tight) return 'dev:' + sha256(dev); // per device key
+      if (typeof auth === 'string' && !tight) return 'usr:' + sha256(auth); // per user session (or enrollment token)
       return (tight ? `lic:${tight}:` : 'ip:') + req.ip; // one bucket per sensitive route group
     },
-    max: (_req, key) => (key.startsWith('dev:') ? LIMITS.ratePerDeviceKey : key.startsWith('lic:') ? LIMITS.ratePerIpLicense : LIMITS.ratePerIp),
+    max: (_req, key) => (key.startsWith('dev:') ? LIMITS.ratePerDeviceKey : key.startsWith('usr:') ? LIMITS.ratePerSession
+      : key.startsWith('lic:') ? LIMITS.ratePerIpLicense : LIMITS.ratePerIp),
     errorResponseBuilder: (_req, ctx) => ({ statusCode: 429, retryAfter: ctx.after }),
   });
 
