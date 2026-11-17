@@ -81,3 +81,11 @@ No route SHALL issue a token, session or link that acts as another user, and no 
 #### Scenario: Resending a staff invitation
 - **WHEN** staff resend an open invitation
 - **THEN** the old link answers `404 INVITATION_INVALID` and the new one works
+
+### Requirement: Staff reissue a Company Admin's password as temporary
+<!-- source: product owner 17 Nov 2026 -->
+`POST /v1/staff/users/:id/temporary-password` SHALL be allowed to `super_admin` only, for an enabled `company_admin`; any other ID MUST get `404 NOT_FOUND`. It MUST set a generated password of at least 12 readable characters, `must_change_password` and `password_expires_at` 72 hours ahead, end the user's sessions, answer `200 { temporary_password, expires_at }` with `Cache-Control: no-store`, and email the password to the user.
+
+#### Scenario: A staff member is the target
+- **WHEN** a super admin calls it with the ID of a `super_admin`
+- **THEN** the response is `404 NOT_FOUND` and the password is unchanged

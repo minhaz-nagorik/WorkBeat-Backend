@@ -14,9 +14,9 @@ const URL_FILTER = /^([a-z][a-z0-9+.-]*:\/\/)?\.?([a-z0-9-]+\.)*[a-z0-9-]+(:\d{1
 
 export const isBareHost = (p: string) => HOST.test(p) && !IPV4.test(p);
 
-// regex input → url rules: ^(www\.)?(a\.com|b\.com)/path(.*)?$ style only (block-rules spec).
+// regex input → url rules: ^(https?://)?(www\.)?(a\.com|b\.com)/path(.*)?$ style only (block-rules spec).
 export function compileRegex(re: string): string[] | null {
-  const m = /^\^?(?:\(www\\\.\)\?)?(\([^()]+\)|[a-z0-9\\.-]+)((?:\/[^()*+?[\]{}|^$\\]*)?)(?:\.\*)?\$?$/i.exec(re.trim());
+  const m = /^\^?(?:https\?:\/\/)?(?:\(www\\\.\)\?)?(\([^()]+\)|[a-z0-9\\.-]+)((?:\/[^()*+?[\]{}|^$\\]*)?)(?:\.\*)?\$?$/i.exec(re.trim());
   if (!m) return null;
   const hosts = (m[1].startsWith('(') ? m[1].slice(1, -1).split('|') : [m[1]]).map((h) => h.replace(/\\\./g, '.').toLowerCase());
   if (!hosts.every((h) => isBareHost(h) && !/\\/.test(h))) return null;

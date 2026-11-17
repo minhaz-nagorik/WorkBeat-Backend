@@ -109,6 +109,7 @@ One catalog for all clients, owned by this repository (B9, `packages/shared`).
 | 402 | `COMPANY_SUSPENDED` | agent | Company suspended (device-key routes) |
 | 402 | `LICENSE_SUSPENDED` | Downloader, agent | Company suspended (validate, enroll) |
 | 402 | `LICENSE_EXPIRED` | Downloader, agent | Company expired; body carries `blocking_ends_at` |
+| 403 | `PASSWORD_CHANGE_REQUIRED` | portal | Signed in with a temporary password; only `GET /v1/me`, `POST /v1/auth/password` and logout work until it is replaced |
 | 403 | `FORBIDDEN` | portal, staff, uninstaller | Role not allowed on the route; device key deactivating another device |
 | 404 | `PASSWORD_RESET_INVALID` | anyone | unknown reset token |
 | 410 | `PASSWORD_RESET_EXPIRED` | anyone | reset token used or past 30 minutes |

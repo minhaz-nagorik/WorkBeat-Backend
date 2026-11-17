@@ -29,10 +29,10 @@ INSERT INTO licenses (company_id, key_hash, key_ciphertext, key_last4, plan, sea
 INSERT INTO users (id, email, name, role, company_id) VALUES
   ('aaaaaaaa-0000-0000-0000-0000000000a1', 'admin@acme.test', 'Admin', 'company_admin', 'aaaaaaaa-0000-0000-0000-000000000001'),
   ('99999999-0000-0000-0000-000000000001', 'ops@workbeat.test', 'Ops', 'super_admin', NULL);
-INSERT INTO employees (id, company_id, name) VALUES
-  ('aaaaaaaa-0000-0000-0000-0000000000e1', 'aaaaaaaa-0000-0000-0000-000000000001', 'Nusrat'),
-  ('aaaaaaaa-0000-0000-0000-0000000000e2', 'aaaaaaaa-0000-0000-0000-000000000001', 'Arif'),
-  ('bbbbbbbb-0000-0000-0000-0000000000e1', 'bbbbbbbb-0000-0000-0000-000000000001', 'Other');
+INSERT INTO employees (id, company_id, name, email) VALUES
+  ('aaaaaaaa-0000-0000-0000-0000000000e1', 'aaaaaaaa-0000-0000-0000-000000000001', 'Nusrat', 'nusrat@test.example'),
+  ('aaaaaaaa-0000-0000-0000-0000000000e2', 'aaaaaaaa-0000-0000-0000-000000000001', 'Arif', 'arif@test.example'),
+  ('bbbbbbbb-0000-0000-0000-0000000000e1', 'bbbbbbbb-0000-0000-0000-000000000001', 'Other', 'other@test.example');
 
 SELECT pg_temp.ok((SELECT screenshot_interval_seconds FROM employee_monitoring_settings
   WHERE employee_id = 'aaaaaaaa-0000-0000-0000-0000000000e1') = 1800, 'new employee gets settings at the company tier');

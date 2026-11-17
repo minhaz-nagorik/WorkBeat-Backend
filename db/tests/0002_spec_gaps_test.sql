@@ -25,8 +25,8 @@ INSERT INTO licenses (id, company_id, key_hash, key_ciphertext, key_last4, plan,
   ('aaaaaaaa-0000-0000-0000-0000000000c1', 'aaaaaaaa-0000-0000-0000-000000000001', 'keyA', '\x00', 'AAAA', 'growth', 50, 'cus_123');
 INSERT INTO users (id, email, name, role, company_id) VALUES
   ('aaaaaaaa-0000-0000-0000-0000000000a1', 'admin@acme.test', 'Admin', 'company_admin', 'aaaaaaaa-0000-0000-0000-000000000001');
-INSERT INTO employees (id, company_id, name) VALUES
-  ('aaaaaaaa-0000-0000-0000-0000000000e1', 'aaaaaaaa-0000-0000-0000-000000000001', 'Nusrat');
+INSERT INTO employees (id, company_id, name, email) VALUES
+  ('aaaaaaaa-0000-0000-0000-0000000000e1', 'aaaaaaaa-0000-0000-0000-000000000001', 'Nusrat', 'nusrat@test.example');
 INSERT INTO devices (id, company_id, employee_id, key_hash, hostname, os, os_version, arch, hardware_id, agent_version) VALUES
   ('aaaaaaaa-0000-0000-0000-0000000000d1', 'aaaaaaaa-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-0000000000e1', 'dk1', 'h1', 'macos', '14', 'arm64', 'HW1', '1.0.0');
 INSERT INTO enrollment_tokens (company_id, license_id, token_hash, employee_id, expires_at, used_at) VALUES
@@ -34,8 +34,8 @@ INSERT INTO enrollment_tokens (company_id, license_id, token_hash, employee_id, 
   ('aaaaaaaa-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-0000000000c1', 'tOld', 'aaaaaaaa-0000-0000-0000-0000000000e1', now() - interval '1 hour', NULL),
   ('aaaaaaaa-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-0000000000c1', 'tNew', 'aaaaaaaa-0000-0000-0000-0000000000e1', now() + interval '1 day', NULL);
 
-INSERT INTO employees (id, company_id, name) VALUES
-  ('aaaaaaaa-0000-0000-0000-0000000000e2', 'aaaaaaaa-0000-0000-0000-000000000001', 'Arif');
+INSERT INTO employees (id, company_id, name, email) VALUES
+  ('aaaaaaaa-0000-0000-0000-0000000000e2', 'aaaaaaaa-0000-0000-0000-000000000001', 'Arif', 'arif@test.example');
 INSERT INTO notice_acknowledgements (company_id, device_id, employee_id, notice_version, acknowledged_at) VALUES
   ('aaaaaaaa-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-0000000000d1', 'aaaaaaaa-0000-0000-0000-0000000000e1', 3, now()),
   ('aaaaaaaa-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-0000000000d1', 'aaaaaaaa-0000-0000-0000-0000000000e2', 3, now());

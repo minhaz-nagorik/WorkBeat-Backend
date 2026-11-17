@@ -126,3 +126,35 @@ Every `/v1/staff/*` route with an ID in the path SHALL answer `404 NOT_FOUND`, a
 #### Scenario: A Growth company moves to Enterprise
 - **WHEN** staff patch a `growth` licence with `plan` `enterprise` and `seat_limit` 500
 - **THEN** the licence has plan `enterprise` and `seat_limit` 500
+
+### Requirement: Staff create a company with its first admin
+<!-- source: product owner 17 Nov 2026 · D41 -->
+`POST /v1/staff/companies` SHALL be allowed to `super_admin` only. In one transaction it MUST insert the `companies` row, its `licenses` row with a new key, the default sensitive domains and a `company_admin` invitation for `admin_email` with `invited_by` = the caller. It MUST answer `201 { company, invitation: { email, expires_at } }` and never the key or the invitation token.
+
+#### Scenario: Staff create a trial company
+- **WHEN** a super admin posts a valid body with `status` `trial` and `trial_days` 14
+- **THEN** the response is `201`, `company.status` is `trial`, `trial_ends_at` is 14 days ahead and the body holds no licence key
+
+### Requirement: A new company's admin gets the key and the link by email
+<!-- source: product owner 17 Nov 2026 · B6 -->
+After the company is created, the API SHALL send one email to `admin_email` with the company name, the licence key and the link `PORTAL_URL/invite?token=…`. Neither the key nor the token MUST be logged.
+
+#### Scenario: The admin accepts
+- **WHEN** the admin opens the link and accepts with a name and password
+- **THEN** they are a `company_admin` of the new company with a session
+
+### Requirement: Company creation refuses clashes and bad values
+<!-- source: product owner 17 Nov 2026 -->
+A taken `slug` MUST get `409 CONFLICT` with `fields` `["slug"]`; an `admin_email` of any `users` row or open invitation MUST get `409 CONFLICT` with `fields` `["admin_email"]`. A `null` `seat_limit` without `enterprise`, a `trial` without `trial_days` (1–90), an unknown `timezone` or any other bad value MUST get `422 VALIDATION_FAILED` naming each field.
+
+#### Scenario: Unlimited seats on Starter
+- **WHEN** a super admin posts `plan` `starter` with `seat_limit` `null`
+- **THEN** the response is `422` with `fields` `["seat_limit"]` and no company is created
+
+### Requirement: Staff list Company Admins across companies
+<!-- source: product owner 17 Nov 2026 · D41 -->
+`GET /v1/staff/company-admins` SHALL return to `super_admin` only the enabled `company_admin` users, newest first, as `{ id, name, email, company: { id, name, slug }, created_at, must_change_password }`, filtered by `q` (literal, case-insensitive on name, email, company name or slug) and `company_id`. No other role's user MUST appear.
+
+#### Scenario: Search by company slug
+- **WHEN** a super admin calls it with `q` equal to a company's slug
+- **THEN** only that company's enabled company admins are returned

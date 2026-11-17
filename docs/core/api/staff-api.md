@@ -132,6 +132,40 @@ newest company first, not paged.
 
 Errors: none route-specific.
 
+### `POST /v1/staff/companies`
+Roles: super_admin · Spec: [`staff-companies`][staff-companies]
+Create a company with its first Company Admin.
+Request:
+
+| field | type | required | notes |
+|---|---|---|---|
+| name | string | yes | 1–100 characters |
+| slug | string | yes | 3–32 characters, `^[a-z0-9]+(-[a-z0-9]+)*$` (the `companies.slug` rule), unique |
+| plan | enum(starter\|growth\|enterprise) | yes | |
+| seat_limit | int \| null | yes | ≥ 1; `null` = unlimited, `enterprise` only |
+| screenshot_tier | enum(off\|light\|standard\|intensive) | yes | |
+| status | enum(trial\|active) | yes | |
+| trial_days | int | when `trial` | 1–90; sets `trial_ends_at`; ignored for `active` |
+| timezone | string | yes | IANA zone |
+| data_retention_days | int | no | 1–365, default 90 |
+| admin_email | string | yes | the first Company Admin |
+
+Response `201`: `{ company, invitation: { email, expires_at } }`; `company` is a list row. Never the key or the token.
+Errors: `409 CONFLICT` with `fields` `["slug"]` (taken) or `["admin_email"]` (a user or an open invitation has it); `422 VALIDATION_FAILED` naming each bad field.
+Notes: one transaction: `companies`, `licenses` (new key, uninstall token), default sensitive domains (`company_defaults`), and a `company_admin` invitation (7 days, `invited_by` = caller). After commit one email to `admin_email` with the company name, the licence key and `PORTAL_URL/invite?token=…`. To resend: reissue the key, or invite again after expiry.
+
+### `GET /v1/staff/company-admins`
+Roles: super_admin · Spec: [`staff-companies`][staff-companies]
+Query: `q` (≤ 100, literal, case-insensitive on name, email, company name or slug), `company_id` uuid.
+Response `200`: array, newest first, enabled `company_admin` users only: `{ id, name, email, company: { id, name, slug }, created_at, must_change_password }`.
+
+### `POST /v1/staff/users/:id/temporary-password`
+Roles: super_admin · Spec: [`staff-accounts`][staff-accounts]
+Request: none.
+Response `200`, `Cache-Control: no-store`: `{ temporary_password, expires_at }`, shown once. 16 readable characters in four groups (`xxxx-xxxx-xxxx-xxxx`, no `0 O 1 l I i`).
+Errors: `404 NOT_FOUND` unless `:id` is an enabled `company_admin`.
+Notes: sets the password, `must_change_password`, `password_expires_at` = now + 72 hours; ends every session of the user; after commit emails the temporary password to the user. Never logged.
+
 ### `GET /v1/staff/companies/:id`
 Roles: super_admin · Spec: [`staff-companies`][staff-companies]
 One company.
@@ -276,12 +310,12 @@ Notes: sets `withdrawn_at`; withdrawing again returns it unchanged. A withdrawn 
 
 ## Unspecified
 
-Nothing is left open; the staff API is specified but **not built yet**. Settled (16 Nov 2026):
+Nothing is left open; the staff API is built (17 Nov 2026). Settled (16 Nov 2026):
 
 - **Staff team:** `GET /v1/staff/team` → `{ users: [{ id, name, email, created_at }], invitations: [{ id, email, created_at, expires_at }] }`.
 - **Staff invitation accept:** `201 { user }`, no session; the person then signs in with their password.
 - **Resend:** `POST /v1/staff/invitations/:id/resend` → `200 { id, email, role, expires_at }`, same codes as the company team's resend.
-- **Upload URL:** `POST /v1/staff/agent-releases/upload-url { product, platform, arch, version }` → `200 { upload_url, storage_path, expires_at }`.
+- **Upload URL:** `POST /v1/staff/agent-releases/upload-url { product, platform, arch, version }` → `200 { upload_url, storage_path, expires_at }`. Upload with `PUT upload_url`, `Content-Type: application/octet-stream`, body = the file (≤ 300 MB, URL valid 1 hour), then publish with that `storage_path`.
 - **404:** every staff route answers `404 NOT_FOUND` for an ID of no row of its kind ([`staff-companies`][staff-companies]).
 
 [user-authentication]: ../../openspec/changes/authenticate-users/specs/user-authentication/spec.md

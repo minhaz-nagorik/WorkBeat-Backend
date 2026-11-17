@@ -5,6 +5,7 @@ import { Controller, Get, Inject, Param, Query, Req, Res } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ADMIN_MANAGER, ALL, employeeFor, portalUser, scopeEmployeeIds, User } from '../auth';
 import { ApiError, Db, Tx } from '../core';
+import { textPdf } from '../pdf';
 import { alerts, listDevices } from './devices.controller';
 
 const BROWSERS = ['safari', 'google chrome', 'chrome', 'microsoft edge', 'msedge', 'firefox', 'brave browser', 'brave', 'arc', 'opera', 'chromium', 'vivaldi'];
@@ -223,6 +224,11 @@ export class ReportsController {
 
   @Get('employees/:id/timesheet')
   async timesheet(@Req() req: FastifyRequest, @Param('id') id: string, @Query('week') week: string) {
+    const { timezone: _tz, ...data } = await this.sheet(req, id, week);
+    return { data };
+  }
+
+  private async sheet(req: FastifyRequest, id: string, week: string) {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ADMIN_MANAGER);
       const e = await employeeFor(c, u, id);
@@ -230,17 +236,41 @@ export class ReportsController {
       if (!isDay(week) || new Date(week + 'T00:00:00Z').getUTCDay() !== 1) throw bad('week', 'week must be a Monday, YYYY-MM-DD');
       const to = addDays(week, 6);
       const rows = dayRows(await daily(c, { ids: [e.id], from: week, to }), days(week, to), await pausedDays(c, e.id, week, to));
-      const { rows: [co] } = await c.query('SELECT name FROM companies');
+      const { rows: [co] } = await c.query('SELECT name, timezone FROM companies');
       const sum = (k: keyof (typeof rows)[0]) => rows.reduce((a, x) => a + (x[k] as number), 0);
       const act = await c.query(
         'SELECT coalesce(sum(active_samples), 0)::int AS a, coalesce(sum(total_samples), 0)::int AS t FROM activity_buckets WHERE employee_id = $1 AND bucket_start >= $2::date AND bucket_start < $3::date + 1',
         [e.id, week, to]);
-      return { data: {
+      return {
+        timezone: co.timezone as string, // for the PDF's clock times only
         employee: { name: e.name, email: e.email }, company: { name: co.name }, week, days: rows,
         totals: { tracked_seconds: sum('tracked_seconds'), activity_percent: pct(act.rows[0].a, act.rows[0].t), productive_seconds: sum('productive_seconds'),
           neutral_seconds: sum('neutral_seconds'), unproductive_seconds: sum('unproductive_seconds') },
-      } };
+      };
     });
+  }
+
+  // The JSON timesheet as a one-page PDF, built per request, never stored.
+  @Get('employees/:id/timesheet.pdf')
+  async timesheetPdf(@Req() req: FastifyRequest, @Param('id') id: string, @Query('week') week: string, @Res() res: FastifyReply) {
+    const t = await this.sheet(req, id, week);
+    const hm = (s: number) => `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+    const clock = (v: Date | null) => (v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: t.timezone }) : '-');
+    const pctTxt = (p: number | null) => (p === null ? '-' : `${p}%`);
+    const cols = [50, 130, 185, 240, 310, 370, 440, 510];
+    const row = (cells: string[], bold = false) => cells.map((text, i) => ({ text, x: cols[i], bold, gap: i ? 0 : 18 }));
+    const pdf = textPdf([
+      { text: `Timesheet - ${t.employee.name}`, size: 16, bold: true, gap: 0 },
+      { text: `${t.company.name} · week of ${t.week} · ${t.employee.email ?? ''}`, gap: 22 },
+      ...row(['Date', 'First', 'Last', 'Tracked', 'Activity', 'Productive', 'Neutral', 'Unprod.'], true),
+      ...t.days.flatMap((d: any) => row([d.date + (d.paused ? ' *' : ''), clock(d.first_activity_at), clock(d.last_activity_at), hm(d.tracked_seconds),
+        pctTxt(d.activity_percent), hm(d.productive_seconds), hm(d.neutral_seconds), hm(d.unproductive_seconds)])),
+      ...row(['Total', '', '', hm(t.totals.tracked_seconds), pctTxt(t.totals.activity_percent), hm(t.totals.productive_seconds),
+        hm(t.totals.neutral_seconds), hm(t.totals.unproductive_seconds)], true),
+      { text: `* monitoring was paused on that day. Times in ${t.timezone}.`, size: 8, gap: 28 },
+    ]);
+    const name = `timesheet-${t.employee.name.replace(/[^\w.-]+/g, '-')}-${t.week}.pdf`;
+    return res.status(200).type('application/pdf').header('Content-Disposition', `attachment; filename="${name}"`).send(pdf);
   }
 
   // ------------------------------------------------------------ exports

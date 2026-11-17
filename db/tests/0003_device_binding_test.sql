@@ -23,9 +23,9 @@ INSERT INTO companies (id, name, slug, status, uninstall_token_hash, uninstall_t
   ('aaaaaaaa-0000-0000-0000-000000000001', 'Acme', 'acme', 'active', 'u1', '\x00', 'notice');
 INSERT INTO licenses (company_id, key_hash, key_ciphertext, key_last4, plan, seat_limit) VALUES
   ('aaaaaaaa-0000-0000-0000-000000000001', 'keyA', '\x00', 'AAAA', 'starter', 5);
-INSERT INTO employees (id, company_id, name) VALUES
-  ('aaaaaaaa-0000-0000-0000-0000000000e1', 'aaaaaaaa-0000-0000-0000-000000000001', 'Karim'),
-  ('aaaaaaaa-0000-0000-0000-0000000000e2', 'aaaaaaaa-0000-0000-0000-000000000001', 'Nadia');
+INSERT INTO employees (id, company_id, name, email) VALUES
+  ('aaaaaaaa-0000-0000-0000-0000000000e1', 'aaaaaaaa-0000-0000-0000-000000000001', 'Karim', 'karim@test.example'),
+  ('aaaaaaaa-0000-0000-0000-0000000000e2', 'aaaaaaaa-0000-0000-0000-000000000001', 'Nadia', 'nadia@test.example');
 INSERT INTO devices (id, company_id, employee_id, key_hash, hostname, os, os_version, arch, hardware_id, agent_version) VALUES
   ('aaaaaaaa-0000-0000-0000-0000000000d1', 'aaaaaaaa-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-0000000000e1', 'kKarim', 'lt-017', 'windows', '11', 'x64', 'DEV-1', '1.0.0');
 

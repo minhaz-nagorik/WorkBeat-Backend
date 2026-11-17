@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 // Agent contract: limits and zod schemas (docs/core/api/agent-contract.md).
 // shortcut: lives in apps/api, not packages/shared; move it there when the web platform or the
 // agents start importing it.
@@ -140,3 +141,21 @@ export const uuid = z.string().uuid();
 
 // Licence key as stored and hashed: WB-XXXX-XXXX-XXXX-XXXX, upper case (license-key spec).
 export const normaliseLicenceKey = (k: string) => k.trim().toUpperCase();
+
+// WB-XXXX-XXXX-XXXX-XXXX from an unambiguous alphabet (no 0/O, 1/I/L): 16 × 5 bits = 80 bits.
+const KEY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export function newLicenceKey() {
+  const chars = [...randomBytes(16)].map((b) => KEY_ALPHABET[b % KEY_ALPHABET.length]).join('');
+  return 'WB-' + chars.match(/.{4}/g)!.join('-');
+}
+
+// A new company's monitoring notice until its admin edits it.
+export const DEFAULT_NOTICE =
+  'This computer is monitored by your employer with WorkBeat: apps and websites used, active time and, if enabled, screenshots.';
+
+// Temporary password: 16 readable characters in 4 groups (no 0/O, 1/l/I/i), about 89 bits.
+const PW_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+export function temporaryPassword() {
+  const chars = [...randomBytes(16)].map((b) => PW_ALPHABET[b % PW_ALPHABET.length]).join('');
+  return chars.match(/.{4}/g)!.join('-');
+}

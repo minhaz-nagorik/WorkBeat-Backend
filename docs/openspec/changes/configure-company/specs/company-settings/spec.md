@@ -59,7 +59,7 @@ email recipients — and the onboarding checklist that tracks the first install.
 
 ### Requirement: Alert email recipients are configurable
 <!-- source: Plan-v3.5 §4.4 "Tamper event processing" · data-model.md "companies" -->
-`alert_email` SHALL be `{ roles, types, delivery }` where `roles` is a subset of `company_admin`, `manager` and `it_admin`, `types` a subset of the tamper `event_type` values including `offline`, and `delivery` one of `instant`, `hourly`, `daily`. Any other value MUST get `422 VALIDATION_FAILED`.
+`alert_email` SHALL be `{ roles, types, delivery }` where `roles` is a non-empty subset of `company_admin`, `manager` and `it_admin`, `types` a subset of the tamper `event_type` values including `offline`, and `delivery` one of `instant`, `hourly`, `daily`. Any other value MUST get `422 VALIDATION_FAILED`.
 
 #### Scenario: Daily digest for IT
 - **WHEN** a company admin sets `{ "roles": ["it_admin"], "types": ["offline"], "delivery": "daily" }`
@@ -67,7 +67,7 @@ email recipients — and the onboarding checklist that tracks the first install.
 
 #### Scenario: Nobody is to be emailed
 - **WHEN** a company admin sets `roles` to `[]`
-- **THEN** the value is saved and no alert email is sent
+- **THEN** the response is `422 VALIDATION_FAILED` with `fields` `["alert_email.roles"]` and the stored value is unchanged
 
 #### Scenario: Staff as a recipient role
 - **WHEN** a company admin sets `roles` to `["super_admin"]`

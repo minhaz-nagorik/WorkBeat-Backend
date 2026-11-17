@@ -1,4 +1,4 @@
-// Signed-URL endpoints of the local storage (storage.ts): agents PUT screenshots, GET packages.
+// Signed-URL endpoints of the local storage (storage.ts): agents PUT screenshots and GET packages, staff PUT packages.
 import { Controller, Get, Inject, Param, Put, Query, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ApiError } from './core';
@@ -16,6 +16,16 @@ export class StorageController {
     if (req.headers['content-type'] !== 'image/jpeg' || !Buffer.isBuffer(req.body) || !req.body.length)
       throw new ApiError(422, 'VALIDATION_FAILED', 'Body must be an image/jpeg', { fields: ['content-type'] });
     await this.storage.put('screenshots', path, req.body);
+    return res.status(200).send();
+  }
+
+  // Staff upload an installer to the URL from POST /v1/staff/agent-releases/upload-url.
+  @Put('agents/*')
+  async putPackage(@Param('*') path: string, @Query('exp') exp: string, @Query('sig') sig: string, @Req() req: FastifyRequest, @Res() res: FastifyReply) {
+    if (!this.storage.verify('PUT', 'agents', path, exp, sig)) throw denied();
+    if (!Buffer.isBuffer(req.body) || !req.body.length)
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Body must be application/octet-stream', { fields: ['content-type'] });
+    await this.storage.put('agents', path, req.body);
     return res.status(200).send();
   }
 

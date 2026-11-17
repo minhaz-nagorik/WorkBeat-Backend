@@ -118,3 +118,15 @@ A company user's request SHALL run in `tenant` scope with `app.company_id` from 
 #### Scenario: A user of a suspended company
 - **WHEN** an enabled company admin of a `suspended` company calls `GET /v1/me`
 - **THEN** the response is `200` with `company.status` `suspended`
+
+### Requirement: A temporary password must be replaced first
+<!-- source: product owner 17 Nov 2026 -->
+Login and `GET /v1/me` SHALL carry `user.must_change_password`. While it is true every route except `GET /v1/me`, `POST /v1/auth/password` and `POST /v1/auth/logout` MUST answer `403 PASSWORD_CHANGE_REQUIRED`. After `password_expires_at` the temporary password MUST answer `401 UNAUTHENTICATED`. A password change or reset MUST clear the flag; a `new_password` equal to the current one MUST get `422` naming `new_password`.
+
+#### Scenario: First sign-in with a temporary password
+- **WHEN** the admin signs in with it and calls `GET /v1/employees`
+- **THEN** the response is `403` with `code` `PASSWORD_CHANGE_REQUIRED`
+
+#### Scenario: The new password is set
+- **WHEN** the admin calls `POST /v1/auth/password` with the temporary password and a new one
+- **THEN** `must_change_password` is false and the current session keeps working

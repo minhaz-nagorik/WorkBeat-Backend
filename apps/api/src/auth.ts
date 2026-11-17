@@ -35,7 +35,7 @@ export async function newSession(c: Tx, userId: string) {
 }
 
 export type Role = 'company_admin' | 'manager' | 'it_admin';
-export type User = { id: string; company_id: string; role: Role; email: string; name: string; session_id: string };
+export type User = { id: string; company_id: string; role: Role; email: string; name: string; session_id: string; must_change_password?: boolean };
 export const ADMIN: Role[] = ['company_admin'];
 export const ADMIN_IT: Role[] = ['company_admin', 'it_admin'];
 export const ADMIN_MANAGER: Role[] = ['company_admin', 'manager'];
@@ -51,11 +51,13 @@ export const NO_ID = '00000000-0000-0000-0000-000000000000';
 export const idOrNone = (v: string) => (isUuid(v) ? v : NO_ID); // a malformed path ID answers 404, not 500
 
 // Role check before any data is read (role-access). super_admin never reaches company routes.
-export async function portalUser(c: Tx, req: FastifyRequest, roles: Role[], opts: { allowStaff?: boolean } = {}): Promise<User> {
+// passwordChange: the route stays open while a temporary password must be replaced (GET /v1/me, POST /v1/auth/password).
+export async function portalUser(c: Tx, req: FastifyRequest, roles: Role[], opts: { allowStaff?: boolean; passwordChange?: boolean } = {}): Promise<User> {
   const t = bearer(req);
   const u = t ? (await c.query('SELECT * FROM auth_session($1)', [sha256(t)])).rows[0] : null;
   if (!u || (u.role !== 'super_admin' && !u.company_id)) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in required');
-  const user: User = { id: u.user_id, company_id: u.company_id, role: u.role, email: u.email, name: u.name, session_id: u.session_id };
+  const user: User = { id: u.user_id, company_id: u.company_id, role: u.role, email: u.email, name: u.name, session_id: u.session_id, must_change_password: u.must_change_password };
+  if (u.must_change_password && !opts.passwordChange) throw new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Choose a new password first');
   if (u.role === 'super_admin') {
     if (!opts.allowStaff) throw new ApiError(403, 'FORBIDDEN', 'Not allowed');
     await c.query("SELECT set_config('app.scope', 'staff', true)"); // staff never get tenant scope (D41)

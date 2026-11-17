@@ -31,7 +31,7 @@ no lockout, B25). Spec: [`user-authentication`][user-authentication], [`staff-ac
 |---|---|---|
 | `POST /v1/auth/login` | `email`, `password` | `{ token, expires_at, user }` for every user, `super_admin` included; wrong → `401 UNAUTHENTICATED` |
 | `POST /v1/auth/logout` | — (Bearer) | `204` |
-| `POST /v1/auth/password` | `current_password`, `new_password` (Bearer) | `{ changed: true }`; other sessions end; wrong current → `422` |
+| `POST /v1/auth/password` | `current_password`, `new_password` (Bearer) | `{ changed: true }`; other sessions end; wrong current → `422`; new equal to current → `422` naming `new_password`; clears `must_change_password` |
 | `POST /v1/auth/password-reset/request` | `email` | always `204`; emails a 30-minute single-use link to `<PORTAL_URL>/reset-password?token=…` |
 | `POST /v1/auth/password-reset/confirm` | `token`, `new_password` | `{ changed: true }`, every session ends; `404 PASSWORD_RESET_INVALID`, `410 PASSWORD_RESET_EXPIRED` |
 
@@ -48,9 +48,14 @@ Response `200`:
 | name | string | |
 | role | enum(company_admin\|manager\|it_admin\|super_admin) | from `app_metadata` |
 | company | object \| null | `{ id: uuid, name: string, slug: string, status: enum(trial\|active\|suspended\|expired) }`; `null` for `super_admin` |
+| must_change_password | bool | true after staff set a temporary password; also on the login `user` |
 
 Errors: `401 UNAUTHENTICATED` (no token, expired, disabled user, role/company mismatch, company role without `company_id`).
 Notes: open to a `super_admin` too, with `company: null` ([staff-api.md](staff-api.md#get-v1me)).
+
+**Temporary password.** While `must_change_password` is true, every route except `GET /v1/me`,
+`POST /v1/auth/password` and `POST /v1/auth/logout` answers `403 PASSWORD_CHANGE_REQUIRED`. The
+temporary password stops working 72 hours after it was set (`401 UNAUTHENTICATED`, like a wrong one).
 
 ### `POST /v1/invitations/lookup`
 Roles: none (no credential) · Spec: [`team-invitations`][team-invitations]
@@ -321,7 +326,7 @@ Request:
 |---|---|---|---|
 | domain | string | yes | stored lower case |
 
-Response `200`: the `GET /v1/company/custom-domain` object. **Not built yet.**
+Response `200`: the `GET /v1/company/custom-domain` object.
 Errors:
 
 | status | code | when |
@@ -336,7 +341,7 @@ Notes: sets `custom_domain_status` `pending`, a new `custom_domain_token`, clear
 Roles: company_admin · Spec: [`custom-domains`][custom-domains]
 Remove the custom domain.
 Request: none.
-Response `204`. **Not built yet.**
+Response `204`.
 Errors: `403 FORBIDDEN`.
 Notes: clears every `custom_domain*` column.
 
@@ -370,6 +375,7 @@ Response `200`:
 | seat_limit | int \| null | null = unlimited |
 | seats_used | int | devices neither deactivated nor released |
 | key_reset_at | ISO-8601 datetime \| null | last staff reissue |
+| min_agent_version | string \| null | `x.y.z` set by `PUT /v1/deployment/min-agent-version` (admin round 4) |
 
 Errors: `403 FORBIDDEN` (manager).
 
@@ -1067,7 +1073,7 @@ Nothing is left open (round 3 of the WorkBeat Admin requests, 16 Nov 2026). Sett
 - **Portal writes while suspended or expired:** never refused for billing
   ([`company-status`](../../openspec/changes/provision-companies/specs/company-status/spec.md)).
 - **`EXPORT_TOO_LARGE`:** `422` with `cap` (the row limit, 100,000).
-- **Not built yet:** Stripe billing writes, custom domains, `timesheet.pdf`.
+- **Not built yet:** Stripe billing writes (`PUT /v1/billing/screenshot-tier`, `POST /v1/billing/portal-session`) and `/cron/domain-verify`, so a custom domain stays `pending` for now.
 
 [user-authentication]: ../../openspec/changes/authenticate-users/specs/user-authentication/spec.md
 [role-access]: ../../openspec/changes/authenticate-users/specs/role-access/spec.md

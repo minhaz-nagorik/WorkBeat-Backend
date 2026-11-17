@@ -18,9 +18,12 @@ import { EmployeesController } from './portal/employees.controller';
 import { PolicyController } from './portal/policy.controller';
 import { ReportsController } from './portal/reports.controller';
 import { SessionController } from './portal/session.controller';
+import { StaffController } from './portal/staff.controller';
 
 // Unauthenticated routes that guess secrets get the tight per-IP limit.
 const TIGHT = ['/v1/license/validate', '/v1/auth/', '/api/v1/license/validate', '/v1/invitations/'];
+
+const AGENT_PACKAGE_MAX_BYTES = 300 * 1024 * 1024;
 
 const cfg = config();
 
@@ -55,7 +58,7 @@ class AllErrors implements ExceptionFilter {
 
 @Module({
   controllers: [InstallController, AgentsController, StorageController, SessionController, CompanyController,
-    EmployeesController, DevicesController, PolicyController, ReportsController],
+    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController],
   providers: [
     { provide: Db, useValue: new Db(cfg.DATABASE_URL) },
     { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY) },
@@ -82,8 +85,11 @@ async function main() {
   f.addHook('onRoute', (r) => {
     if (r.url === '/v1/agents/activity') r.bodyLimit = LIMITS.activityBodyBytes;
     if (r.url.startsWith('/v1/storage/screenshots')) r.bodyLimit = LIMITS.screenshotMaxBytes;
+    if (r.url.startsWith('/v1/storage/agents')) r.bodyLimit = AGENT_PACKAGE_MAX_BYTES;
   });
   f.addContentTypeParser('image/jpeg', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  // shortcut: the whole installer is buffered in memory; stream to disk (or presign S3) if packages grow past ~100 MB.
+  f.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
   f.addContentTypeParser('text/csv', { parseAs: 'string', bodyLimit: 2 * 1024 * 1024 }, (_req, body, done) => done(null, body)); // employee import
   f.addHook('onRequest', async (req, reply) => {
     reply.header('X-Request-Id', req.id);

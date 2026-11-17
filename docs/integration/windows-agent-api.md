@@ -410,8 +410,8 @@ Example `401 DEVICE_RELEASED` body:
   tunnel restarts. Debug builds need a rule that allows it (or a configurable base URL); this is the
   agent's build setting (Q6), not a backend one.
 
-- `package_url` / `update_package_url` are `null` until agent releases are published (staff release
-  routes are not built yet).
+- `package_url` / `update_package_url` are `null` until staff publish an agent release
+  (`POST /v1/staff/agent-releases`, built 17 Nov 2026).
 - Screenshots are stored on the API's disk behind its own signed URLs; when a bucket (S3 or
   similar) is chosen, `upload_url` will point there instead. The flow (request, `PUT`, confirm) stays
   the same — always use the URL you are given, never build one.

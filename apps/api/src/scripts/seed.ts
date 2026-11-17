@@ -6,19 +6,9 @@ import { randomBytes } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { Client } from 'pg';
 import { hashPassword } from '../auth';
-import { normaliseLicenceKey } from '../contract';
+import { DEFAULT_NOTICE, newLicenceKey, normaliseLicenceKey } from '../contract';
 import { encrypt, sha256, token } from '../core';
 
-const DEFAULT_NOTICE =
-  'This computer is monitored by your employer with WorkBeat: apps and websites used, active time and, if enabled, screenshots.';
-const DEFAULT_SENSITIVE = ['chase.com', 'paypal.com', 'mail.google.com', 'outlook.live.com', 'mychart.com'];
-
-// WB-XXXX-XXXX-XXXX-XXXX from an unambiguous alphabet (no 0/O, 1/I/L): 16 × 5 bits = 80 bits.
-const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-function newLicenceKey() {
-  const chars = [...randomBytes(16)].map((b) => ALPHABET[b % ALPHABET.length]).join('');
-  return 'WB-' + chars.match(/.{4}/g)!.join('-');
-}
 
 async function main() {
   const { values: a } = parseArgs({
@@ -80,8 +70,8 @@ async function main() {
        VALUES ($1, $2, $3, $4, $5, $6, $7, now() + interval '14 days')`,
       [co.id, sha256(normaliseLicenceKey(licenceKey)), encrypt(licenceKey, secret), licenceKey.slice(-4), a.plan, a.plan === 'enterprise' ? null : Number(a.seats), a.tier],
     );
-    for (const p of DEFAULT_SENSITIVE)
-      await c.query('INSERT INTO sensitive_domains (company_id, pattern, is_default) VALUES ($1, $2, true)', [co.id, p]);
+    await c.query("SELECT set_config('app.scope', 'system', true)");
+    await c.query('SELECT company_defaults($1)', [co.id]); // default sensitive domains (0007)
     const names = a.employees!.split(',').map((n) => n.trim()).filter(Boolean);
     for (const n of names)
       await c.query('INSERT INTO employees (company_id, name, email) VALUES ($1, $2, $3)',

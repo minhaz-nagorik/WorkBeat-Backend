@@ -1,12 +1,14 @@
 // Company status, billing (read-only, no Stripe yet), settings, setup, licence and deployment.
-import { Body, Controller, Get, Inject, Patch, Post, Put, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ADMIN, ADMIN_IT, ALL, portalUser } from '../auth';
-import { ApiError, config, Db, decrypt, parse } from '../core';
+import { ApiError, config, Db, decrypt, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { cmpVersion } from '../device';
 import { Storage } from '../storage';
+import { isBareHost } from './policy.controller';
 
 const EVENT_TYPES = ['process_restart', 'hosts_modified', 'config_changed', 'clock_tampered', 'permission_revoked', 'offline', 'duplicate_device_id'] as const;
 const settingsPatch = z.object({
@@ -14,7 +16,7 @@ const settingsPatch = z.object({
   data_retention_days: z.number().int().min(1).max(365).optional(),
   idle_threshold_seconds: z.number().int().min(60).max(3600).optional(),
   alert_email: z.object({
-    roles: z.array(z.enum(['company_admin', 'manager', 'it_admin'])),
+    roles: z.array(z.enum(['company_admin', 'manager', 'it_admin'])).min(1),
     types: z.array(z.enum(EVENT_TYPES)),
     delivery: z.enum(['instant', 'hourly', 'daily']),
   }).optional(),
@@ -23,6 +25,16 @@ const settingsPatch = z.object({
 const SETTINGS = 'name, slug, data_retention_days, idle_threshold_seconds, alert_email, timezone';
 const SEATS_USED = '(SELECT count(*)::int FROM devices WHERE deactivated_at IS NULL AND released_at IS NULL)';
 const DOWNLOAD_URL_SECONDS = 15 * 60;
+const CNAME_TARGET = 'proxy.workbeat.io';
+
+async function customDomain(c: Tx) {
+  const { rows: [r] } = await c.query(
+    'SELECT custom_domain AS domain, custom_domain_status AS status, custom_domain_token AS token, custom_domain_checked_at AS checked_at, custom_domain_verified_at AS verified_at FROM companies',
+  );
+  if (!r.domain) return null;
+  const { token, ...rest } = r;
+  return { ...rest, cname_target: CNAME_TARGET, txt_name: `_workbeat.${r.domain}`, txt_value: `verify-${token}` };
+}
 
 @Controller('v1')
 export class CompanyController {
@@ -113,8 +125,9 @@ export class CompanyController {
   async license(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN_IT);
-      const { rows: [r] } = await c.query(`SELECT key_last4, plan, seat_limit, ${SEATS_USED} AS seats_used, key_reset_at FROM licenses`);
-      return { data: { key_masked: `WB-••••-••••-••••-${r.key_last4}`, plan: r.plan, seat_limit: r.seat_limit, seats_used: r.seats_used, key_reset_at: r.key_reset_at } };
+      const { rows: [r] } = await c.query(`SELECT key_last4, plan, seat_limit, ${SEATS_USED} AS seats_used, key_reset_at, (SELECT min_agent_version FROM companies) FROM licenses`);
+      return { data: { key_masked: `WB-••••-••••-••••-${r.key_last4}`, plan: r.plan, seat_limit: r.seat_limit, seats_used: r.seats_used, key_reset_at: r.key_reset_at,
+        min_agent_version: r.min_agent_version } };
     });
   }
 
@@ -180,5 +193,56 @@ export class CompanyController {
       return { data: r };
     });
   }
-}
 
+  // ------------------------------------------------------------ custom domain (custom-domains)
+
+  @Get('company/custom-domain')
+  async getDomain(@Req() req: FastifyRequest) {
+    return this.db.tx(async (c) => {
+      await portalUser(c, req, ADMIN);
+      return { data: await customDomain(c) };
+    });
+  }
+
+  @Put('company/custom-domain')
+  async putDomain(@Req() req: FastifyRequest, @Body() raw: unknown) {
+    return this.db.tx(async (c) => {
+      await portalUser(c, req, ADMIN);
+      const b = parse(z.object({ domain: z.string().max(253) }), raw);
+      const domain = b.domain.trim().toLowerCase().replace(/\.$/, '');
+      if (!isBareHost(domain) || !domain.includes('.') || domain === 'workbeat.io' || domain.endsWith('.workbeat.io'))
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Not a host name you can use', { fields: ['domain'] });
+      // The same domain again keeps its status and token. custom_domain UNIQUE → 23505 → 409 for another company's.
+      await c.query(
+        `UPDATE companies SET custom_domain = $1, custom_domain_status = 'pending', custom_domain_token = $2,
+                custom_domain_checked_at = NULL, custom_domain_verified_at = NULL
+          WHERE id = app_company_id() AND custom_domain IS DISTINCT FROM $1::citext`,
+        [domain, randomBytes(16).toString('hex')],
+      );
+      return { data: await customDomain(c) };
+    });
+  }
+
+  @Delete('company/custom-domain')
+  async deleteDomain(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
+    await this.db.tx(async (c) => {
+      await portalUser(c, req, ADMIN);
+      await c.query(`UPDATE companies SET custom_domain = NULL, custom_domain_status = NULL, custom_domain_token = NULL,
+        custom_domain_checked_at = NULL, custom_domain_verified_at = NULL WHERE id = app_company_id()`);
+    });
+    res.status(204);
+  }
+
+  // No credential: the sign-in page shows whose page it is. Only through company_by_host (B3).
+  @Get('hosts/resolve')
+  async resolveHost(@Query('host') host: string) {
+    if (typeof host !== 'string' || !host || host.length > 253) throw new ApiError(422, 'VALIDATION_FAILED', 'host is required', { fields: ['host'] });
+    return this.db.tx(async (c) => {
+      const { rows: [r] } = await c.query('SELECT company_by_host($1) AS id', [host.trim().toLowerCase()]);
+      if (!r.id) throw new ApiError(404, 'NOT_FOUND', 'Unknown host');
+      await c.tenant(r.id);
+      const { rows: [co] } = await c.query('SELECT name, slug FROM companies');
+      return { data: co };
+    });
+  }
+}

@@ -16,7 +16,7 @@ async function me(c: Tx, u: User) {
   const company = u.company_id
     ? (await c.query('SELECT id, name, slug, status, timezone FROM companies WHERE id = $1', [u.company_id])).rows[0] ?? null
     : null;
-  return { id: u.id, email: u.email, name: u.name, role: u.role, company };
+  return { id: u.id, email: u.email, name: u.name, role: u.role, company, must_change_password: !!u.must_change_password };
 }
 
 async function mailInvitation(c: Tx, inviteToken: string, to: string, role: string) {
@@ -42,7 +42,8 @@ export class SessionController {
     const b = parse(z.object({ email, password: z.string().max(200) }), raw);
     return this.db.tx(async (c) => {
       const { rows: [u] } = await c.query('SELECT * FROM auth_login($1)', [b.email]);
-      if (!(await verifyPassword(b.password, u?.password_hash)) || (u.role !== 'super_admin' && !u.company_id))
+      const expired = u?.must_change_password && !(u.password_expires_at > new Date()); // a temporary password works 72 hours
+      if (!(await verifyPassword(b.password, u?.password_hash)) || expired || (u.role !== 'super_admin' && !u.company_id))
         throw new ApiError(401, 'UNAUTHENTICATED', 'Wrong email or password');
       // Staff sign in with password only, like company users (MFA removed by the product owner, 16 Nov 2026).
       return { data: await this.session(c, u.user_id) };
@@ -52,6 +53,7 @@ export class SessionController {
   private async session(c: Tx, userId: string) {
     const s = await newSession(c, userId);
     const { rows: [full] } = await c.query('SELECT * FROM auth_session($1)', [sha256(s.token)]);
+    if (full.company_id) await c.tenant(full.company_id); // companies is under RLS: without it `company` comes back null
     return { ...s, user: await me(c, { ...full, id: full.user_id }) };
   }
 
@@ -89,7 +91,7 @@ export class SessionController {
       else await c.query("SELECT set_config('app.scope', 'staff', true)");
       const claimed = await c.query('UPDATE password_resets SET used_at = now() WHERE id = $1 AND used_at IS NULL', [r.reset_id]);
       if (!claimed.rowCount) throw new ApiError(410, 'PASSWORD_RESET_EXPIRED', 'Reset link used or expired');
-      await c.query('UPDATE users SET password_hash = $2 WHERE id = $1', [r.user_id, hash]);
+      await c.query('UPDATE users SET password_hash = $2, must_change_password = false, password_expires_at = NULL WHERE id = $1', [r.user_id, hash]);
       await c.query('UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [r.user_id]);
       await c.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [r.user_id]);
       return { data: { changed: true } };
@@ -107,10 +109,11 @@ export class SessionController {
   async changePassword(@Req() req: FastifyRequest, @Body() raw: unknown) {
     const b = parse(z.object({ current_password: z.string().max(200), new_password: password }), raw);
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ALL, { allowStaff: true });
+      const u = await portalUser(c, req, ALL, { allowStaff: true, passwordChange: true });
       const { rows: [row] } = await c.query('SELECT * FROM auth_login($1)', [u.email]);
       if (!(await verifyPassword(b.current_password, row?.password_hash))) throw new ApiError(422, 'VALIDATION_FAILED', 'Current password is wrong', { fields: ['current_password'] });
-      await c.query('UPDATE users SET password_hash = $2 WHERE id = $1', [u.id, await hashPassword(b.new_password)]);
+      if (b.new_password === b.current_password) throw new ApiError(422, 'VALIDATION_FAILED', 'Choose a password different from the current one', { fields: ['new_password'] });
+      await c.query('UPDATE users SET password_hash = $2, must_change_password = false, password_expires_at = NULL WHERE id = $1', [u.id, await hashPassword(b.new_password)]);
       await c.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL', [u.id, u.session_id]);
       return { data: { changed: true } };
     });
@@ -118,7 +121,7 @@ export class SessionController {
 
   @Get('me')
   async getMe(@Req() req: FastifyRequest) {
-    return this.db.tx(async (c) => ({ data: await me(c, await portalUser(c, req, ALL, { allowStaff: true })) }));
+    return this.db.tx(async (c) => ({ data: await me(c, await portalUser(c, req, ALL, { allowStaff: true, passwordChange: true })) }));
   }
 
   @Post('invitations/lookup')
@@ -147,18 +150,20 @@ export class SessionController {
         [inv.email, b.name, inv.role, inv.company_id, hash],
       );
       await c.query('UPDATE invitations SET accepted_at = now() WHERE id = $1', [inv.invitation_id]);
-      const s = await newSession(c, u.id);
       res.status(201);
-      return { data: { ...s, user: await me(c, { id: u.id, email: inv.email, name: b.name, role: inv.role, company_id: inv.company_id, session_id: '' }) } };
+      const user = await me(c, { id: u.id, email: inv.email, name: b.name, role: inv.role, company_id: inv.company_id, session_id: '' });
+      if (!inv.company_id) return { data: { user } }; // staff: no session, they sign in with their password
+      return { data: { ...(await newSession(c, u.id)), user } };
     });
   }
 
-  // Company invitations only; staff invitations belong to the staff API (not built yet).
+  // Company invitations bind the tenant; staff invitations (no company) run in staff scope.
   private async invitation(c: Tx, t: string) {
     const { rows: [inv] } = await c.query('SELECT * FROM auth_invitation($1)', [sha256(t)]);
-    if (!inv || !inv.company_id) throw new ApiError(404, 'INVITATION_INVALID', 'Invitation not found');
+    if (!inv) throw new ApiError(404, 'INVITATION_INVALID', 'Invitation not found');
     if (!inv.usable) throw new ApiError(410, 'INVITATION_EXPIRED', 'Invitation no longer valid');
-    await c.tenant(inv.company_id);
+    if (inv.company_id) await c.tenant(inv.company_id);
+    else await c.query("SELECT set_config('app.scope', 'staff', true)");
     return inv;
   }
 
