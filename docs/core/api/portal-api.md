@@ -914,7 +914,8 @@ Response `200`:
 | items[].captured_at | ISO-8601 datetime | |
 | items[].device_id | uuid | |
 | items[].hostname | string | |
-| items[].view_url | string | signed, 5 minutes (`packages/shared`) |
+| items[].view_url | string | R2 presigned, 5 minutes (`packages/shared`); for `<img>` |
+| items[].download_url | string | same object and expiry; R2 answers it as `attachment; filename="<hostname>-<YYYY-MM-DD>-<HHMM>.jpg"` (company time), `image/jpeg`. No CORS needed |
 | items[].expires_at | ISO-8601 datetime | |
 
 Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND` (outside team or other company; no URL issued).

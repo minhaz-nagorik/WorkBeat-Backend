@@ -301,7 +301,7 @@ Three calls per capture. JPEG only, max 4 MiB (4,194,304 bytes).
 
 ```json
 { "data": { "id": "0196f5a2-…", "status": "pending",
-            "upload_url": "https://…/v1/storage/screenshots/…/0196f5a2-….jpg?exp=…&sig=…",
+            "upload_url": "https://<account>.r2.cloudflarestorage.com/<bucket>/…/0196f5a2-….jpg?X-Amz-…&X-Amz-Signature=…",
             "expires_at": "2026-11-16T07:24:03.000Z" } }
 ```
 
@@ -412,8 +412,8 @@ Example `401 DEVICE_RELEASED` body:
 
 - `package_url` / `update_package_url` are `null` until staff publish an agent release
   (`POST /v1/staff/agent-releases`, built 17 Nov 2026).
-- Screenshots are stored on the API's disk behind its own signed URLs; when a bucket (S3 or
-  similar) is chosen, `upload_url` will point there instead. The flow (request, `PUT`, confirm) stays
+- Screenshots are stored in Cloudflare R2: `upload_url` is an R2 presigned URL (an expired one
+  returns `403` with an XML body, not JSON). The flow (request, `PUT`, confirm) stays
   the same — always use the URL you are given, never build one.
 - Exact payload schemas are owned by this repository for now (`apps/api/src/contract.ts`); a shared
   package for the agents may follow.

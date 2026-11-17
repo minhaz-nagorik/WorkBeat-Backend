@@ -321,7 +321,8 @@ export class EmployeesController {
       const { rows: [l] } = await c.query('SELECT screenshot_tier FROM licenses');
       if (l.screenshot_tier === 'off') return { data: { screenshots_enabled: false, items: [] } };
       const { rows } = await c.query(
-        `SELECT s.id, s.captured_at, s.device_id, d.hostname, s.storage_path
+        `SELECT s.id, s.captured_at, s.device_id, d.hostname, s.storage_path,
+                to_char(s.captured_at AT TIME ZONE co.timezone, 'YYYY-MM-DD-HH24MI') AS local_time
            FROM screenshots s JOIN devices d ON d.id = s.device_id, companies co
           WHERE s.employee_id = $1 AND s.status = 'uploaded'
             AND s.captured_at >= ($2::date)::timestamp AT TIME ZONE co.timezone
@@ -330,8 +331,11 @@ export class EmployeesController {
         [e.id, date],
       );
       const exp = Math.floor(Date.now() / 1000) + SCREENSHOT_VIEW_SECONDS;
-      return { data: { screenshots_enabled: true, items: rows.map(({ storage_path, ...r }) => ({
-        ...r, view_url: this.storage.sign(baseUrl(req), 'GET', 'screenshots', storage_path, exp), expires_at: new Date(exp * 1000),
+      const sign = (path: string, download?: string) => this.storage.sign(baseUrl(req), 'GET', 'screenshots', path, exp, download);
+      return { data: { screenshots_enabled: true, items: rows.map(({ storage_path, local_time, ...r }) => ({
+        ...r, view_url: sign(storage_path),
+        download_url: sign(storage_path, `${r.hostname.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 150) || 'screenshot'}-${local_time}.jpg`),
+        expires_at: new Date(exp * 1000),
       })) } };
     });
   }

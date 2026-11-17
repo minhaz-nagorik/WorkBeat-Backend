@@ -129,7 +129,7 @@ async function main() {
   assert.equal(r.status, 422);
   const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: jpeg });
   assert.equal(put.status, 200);
-  const badSig = await fetch(uploadUrl.replace(/sig=[^&]+/, 'sig=AAAA'), { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: jpeg });
+  const badSig = await fetch(uploadUrl.replace(/(sig|Signature)=[^&]+/, '$1=' + '0'.repeat(64)), { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: jpeg });
   assert.equal(badSig.status, 403);
   r = await call('POST', `/v1/agents/screenshots/${shotId}/confirm`, dk());
   assert.equal(r.status, 200); assert.equal(r.json.data.status, 'uploaded');

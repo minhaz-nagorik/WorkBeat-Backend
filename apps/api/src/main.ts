@@ -63,7 +63,9 @@ class AllErrors implements ExceptionFilter {
     EmployeesController, DevicesController, PolicyController, ReportsController, StaffController, ChangesController],
   providers: [
     { provide: Db, useValue: new Db(cfg.DATABASE_URL) },
-    { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY) },
+    { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY, {
+      endpoint: cfg.R2_ENDPOINT, accessKeyId: cfg.R2_ACCESS_KEY_ID, secretAccessKey: cfg.R2_SECRET_ACCESS_KEY, bucket: cfg.R2_SCREENSHOTS_BUCKET,
+    }) },
   ],
 })
 class AppModule {}
@@ -87,10 +89,8 @@ async function main() {
 
   f.addHook('onRoute', (r) => {
     if (r.url === '/v1/agents/activity') r.bodyLimit = LIMITS.activityBodyBytes;
-    if (r.url.startsWith('/v1/storage/screenshots')) r.bodyLimit = LIMITS.screenshotMaxBytes;
     if (r.url.startsWith('/v1/storage/agents')) r.bodyLimit = AGENT_PACKAGE_MAX_BYTES;
   });
-  f.addContentTypeParser('image/jpeg', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
   // shortcut: the whole installer is buffered in memory; stream to disk (or presign S3) if packages grow past ~100 MB.
   f.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
   f.addContentTypeParser('text/csv', { parseAs: 'string', bodyLimit: 2 * 1024 * 1024 }, (_req, body, done) => done(null, body)); // employee import

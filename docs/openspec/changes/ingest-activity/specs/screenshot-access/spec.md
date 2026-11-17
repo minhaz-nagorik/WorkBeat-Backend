@@ -7,7 +7,7 @@ URL that shows each image lives.
 
 ### Requirement: The admin and the employee's manager see a day's timeline
 <!-- source: PRD "Permission matrix" · PRD "Screenshots" · Plan-v3.5 §4.4 "Reports and data lifecycle" -->
-`GET /v1/employees/:id/screenshots?date=YYYY-MM-DD` SHALL return, for a `company_admin` or the employee's manager, the employee's `uploaded` screenshots captured on that day in the company's `timezone`, oldest first, each with `id`, `captured_at`, `device_id`, the device's `hostname`, `view_url` and `expires_at`. `pending` screenshots MUST NOT be listed.
+`GET /v1/employees/:id/screenshots?date=YYYY-MM-DD` SHALL return, for a `company_admin` or the employee's manager, the employee's `uploaded` screenshots captured on that day in the company's `timezone`, oldest first, each with `id`, `captured_at`, `device_id`, the device's `hostname`, `view_url`, `download_url` and `expires_at`. `pending` screenshots MUST NOT be listed.
 
 #### Scenario: A manager opens their report's screenshots
 - **WHEN** a manager requests a day for an employee on their team
@@ -27,7 +27,7 @@ URL that shows each image lives.
 
 ### Requirement: View URLs are short-lived
 <!-- source: PRD "Screenshots" · PRD "Risks" -->
-Each `view_url` SHALL be a signed URL valid for 5 minutes (value from `packages/shared`) and MUST NOT be logged.
+Each `view_url` and `download_url` SHALL be a signed URL valid for 5 minutes (value from `packages/shared`) and MUST NOT be logged.
 
 #### Scenario: A link is shared later
 - **WHEN** a `view_url` is opened 10 minutes after the response
@@ -36,6 +36,18 @@ Each `view_url` SHALL be a signed URL valid for 5 minutes (value from `packages/
 #### Scenario: A link at its expiry
 - **WHEN** a response is returned
 - **THEN** each item's `expires_at` is 5 minutes after the signing time
+
+### Requirement: Every screenshot can be saved as a file
+<!-- source: WorkBeat Admin backend requests round 7 (17 Nov 2026) -->
+Screenshots SHALL be stored only in Cloudflare R2. Each item's `download_url` SHALL be an R2 presigned URL for the same object and expiry as its `view_url`, with `response-content-disposition=attachment; filename="<hostname>-<YYYY-MM-DD>-<HHMM>.jpg"` (capture time in the company's `timezone`; characters outside `A-Z a-z 0-9 . _ -` in the hostname become `-`) and `response-content-type=image/jpeg` inside the signature.
+
+#### Scenario: An admin saves a screenshot
+- **WHEN** a screenshot of `NG-LT-0141` captured at 09:30 on 17 Nov 2026 company time is downloaded
+- **THEN** storage answers `Content-Disposition: attachment; filename="NG-LT-0141-2026-11-17-0930.jpg"`
+
+#### Scenario: The file name is changed in the link
+- **WHEN** the `response-content-disposition` value of a `download_url` is edited
+- **THEN** storage refuses the link
 
 ### Requirement: Other roles never see screenshots
 <!-- source: PRD "Permission matrix" · D41 -->

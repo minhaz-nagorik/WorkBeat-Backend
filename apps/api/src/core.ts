@@ -10,6 +10,11 @@ const env = z
     DATABASE_URL: z.string().url(), // the API login role (member of workbeat_api, never a superuser)
     SECRETS_ENCRYPTION_KEY: z.string().refine((v) => Buffer.from(v, 'base64').length === 32, '32 bytes, base64'),
     STORAGE_DIR: z.string().default('./storage'),
+    // Screenshots live only in Cloudflare R2.
+    R2_ENDPOINT: z.string().url(), // https://<account_id>.r2.cloudflarestorage.com
+    R2_ACCESS_KEY_ID: z.string().min(1),
+    R2_SECRET_ACCESS_KEY: z.string().min(1),
+    R2_SCREENSHOTS_BUCKET: z.string().min(1),
     PUBLIC_BASE_URL: z.string().url().optional(), // else taken from the request host (tunnel)
     PORT: z.coerce.number().int().default(3000),
     RESEND_API_KEY: z.string().optional(), // unset: emails go to STORAGE_DIR/outbox (local only)

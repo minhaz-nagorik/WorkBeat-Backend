@@ -81,7 +81,7 @@ grant to `workbeat_api` (read through the parent only).
 is the idempotency key. Paths and signed URLs are never logged.
 
 **Viewing:** `GET /v1/employees/:id/screenshots?date=` returns that day (company `timezone`) of
-`uploaded` screenshots, oldest first, each with a 5-minute signed `view_url`. `company_admin` and
+`uploaded` screenshots, oldest first, each with a 5-minute R2 `view_url` and `download_url`. `company_admin` and
 the employee's manager only; `it_admin` and staff `403`; outside the team `404`. While the tier is
 `off`: `screenshots_enabled` false, no items, no URL issued.
 
