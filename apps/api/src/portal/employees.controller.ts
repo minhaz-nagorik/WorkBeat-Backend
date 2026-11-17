@@ -36,7 +36,6 @@ async function withPresence(c: Tx, rows: any[]) {
 }
 
 const FULL = 'id, name, email, department, manager_user_id, archived_at';
-const LIMITED = 'id, name, email, department'; // it_admin (B18)
 const IMPORT_MAX_ROWS = 5000;
 const SCREENSHOT_VIEW_SECONDS = 5 * 60;
 const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
@@ -94,12 +93,12 @@ export class EmployeesController {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ALL);
       const { rows } = await c.query(
-        `SELECT ${u.role === 'it_admin' ? LIMITED : FULL} FROM employees
+        `SELECT ${FULL} FROM employees
           WHERE ($1 OR archived_at IS NULL) AND ($2 <> 'manager' OR manager_user_id = $3)
             AND ($4::uuid IS NULL OR manager_user_id = $4) ORDER BY name, id`,
         [archived === 'true', u.role, u.id, managerId ? idOrNone(managerId) : null],
       );
-      return { data: u.role === 'it_admin' ? rows : await withPresence(c, rows) };
+      return { data: await withPresence(c, rows) };
     });
   }
 
@@ -157,7 +156,7 @@ export class EmployeesController {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ALL);
       const e = await employeeFor(c, u, id);
-      return { data: u.role === 'it_admin' ? { id: e.id, name: e.name, email: e.email, department: e.department } : (await withPresence(c, [e]))[0] };
+      return { data: (await withPresence(c, [e]))[0] };
     });
   }
 
@@ -210,7 +209,7 @@ export class EmployeesController {
   @Get(':id/monitoring-settings')
   async getSettings(@Req() req: FastifyRequest, @Param('id') id: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_MANAGER);
+      const u = await portalUser(c, req, ALL);
       const e = await employeeFor(c, u, id);
       const { rows: [s] } = await c.query(
         'SELECT activity, app_usage, window_titles, website_visits, screenshot_interval_seconds FROM employee_monitoring_settings WHERE employee_id = $1',
@@ -246,7 +245,7 @@ export class EmployeesController {
   @Get(':id/pauses')
   async pauses(@Req() req: FastifyRequest, @Param('id') id: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_MANAGER);
+      const u = await portalUser(c, req, ALL);
       const e = await employeeFor(c, u, id);
       return { data: (await c.query(`SELECT ${PAUSE} FROM monitoring_pauses WHERE employee_id = $1 ORDER BY starts_at DESC`, [e.id])).rows };
     });

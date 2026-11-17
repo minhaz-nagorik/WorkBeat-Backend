@@ -242,6 +242,28 @@ Errors: `403 FORBIDDEN`.
 
 ---
 
+## Approvals
+
+Since 17 Nov 2026 (product owner) an `it_admin` may call the employee, import, monitoring-settings,
+pause, device release/deactivate, alert resolve, block-rule, sensitive-domain and productivity-rule
+**write** routes, but nothing is applied: the request is validated as for a `company_admin` (so
+`400`/`404`/`409`/`422` come back at once), then stored and answered **`202 { change }`**. A
+`company_admin`'s writes still apply at once. Spec: [`change-approvals`][change-approvals].
+
+Change: `{ id, status: pending|approved|rejected|cancelled|failed, resource: employee|employee_import|monitoring_settings|pause|device|alert|block_rule|sensitive_domain|productivity_rule, action: create|update|delete|release|deactivate|resolve|cancel|import, target_id, summary, requested_by: { id, name }, requested_at, decided_by: { id, name } | null, decided_at, reason, error: { code, message } | null }`.
+
+| Route | Roles | Answer |
+|---|---|---|
+| `GET /v1/changes?status=&resource=` | company_admin (all), it_admin (own) | array, newest first, ≤ 500; manager `403` |
+| `POST /v1/changes/:id/approve` | company_admin | `200 { change }`: the stored request is replayed as the approver; `approved`, or `failed` with `error`. Not pending → `409` |
+| `POST /v1/changes/:id/reject` | company_admin | body `{ reason? }` (≤ 500) → `200 { change }`. Not pending → `409` |
+| `DELETE /v1/changes/:id` | the it_admin who asked | `204`; someone else's → `404`; not pending → `409` |
+
+Emails: every enabled company admin when a change waits (at most one per 15 minutes per company);
+the requester when their change is approved, rejected or failed.
+
+---
+
 ## Settings & domain
 
 ### `GET /v1/company/settings`
@@ -279,7 +301,7 @@ Errors: `403 FORBIDDEN`; `422 VALIDATION_FAILED` (out of range, unknown zone, ba
 Notes: `slug` is not writable. An `idle_threshold_seconds` change raises `companies.policy_version`. Old data is removed by the next `/cron/cleanup`, not here.
 
 ### `GET /v1/company/setup`
-Roles: company_admin, it_admin · Spec: [`company-settings`][company-settings]
+Roles: company_admin (it_admin `403` since round 6) · Spec: [`company-settings`][company-settings]
 The onboarding checklist.
 Request: none.
 Response `200`: the steps `download_downloader`, `copy_license_key`, `install_first_device`, `first_device_seen`, each with `done` bool. Shape: `[{ step, done }]` in that order.
@@ -287,7 +309,7 @@ Errors: `403 FORBIDDEN` (manager).
 Notes: the first two come from `setup_completed_steps`; `install_first_device` is true once the company has a device row, `first_device_seen` once one has `last_heartbeat_at`.
 
 ### `POST /v1/company/setup/steps`
-Roles: company_admin, it_admin · Spec: [`company-settings`][company-settings]
+Roles: company_admin (it_admin `403` since round 6) · Spec: [`company-settings`][company-settings]
 Mark a manual checklist step done.
 Request:
 
@@ -363,7 +385,7 @@ Notes: resolved only through `company_by_host`. Never selects the company of an 
 ## Licence & deployment
 
 ### `GET /v1/license`
-Roles: company_admin, it_admin · Spec: [`license-key`][license-key]
+Roles: company_admin (it_admin `403` since round 6) · Spec: [`license-key`][license-key]
 The masked licence key and seats.
 Request: none.
 Response `200`:
@@ -380,7 +402,7 @@ Response `200`:
 Errors: `403 FORBIDDEN` (manager).
 
 ### `POST /v1/license/reveal`
-Roles: company_admin, it_admin · Spec: [`license-key`][license-key]
+Roles: company_admin (it_admin `403` since round 6) · Spec: [`license-key`][license-key]
 Show the full licence key.
 Request: none.
 Response: `key` string (`WB-XXXX-XXXX-XXXX-XXXX`), with `Cache-Control: no-store`. Status `200`: `{ key }`.
@@ -388,7 +410,7 @@ Errors: `403 FORBIDDEN` (manager).
 Notes: decrypts `key_ciphertext`; never logged. No company route changes the key.
 
 ### `POST /v1/license/uninstall-token/reveal`
-Roles: company_admin, it_admin · Spec: [`license-key`][license-key]
+Roles: company_admin (it_admin `403` since round 6) · Spec: [`license-key`][license-key]
 Show the uninstall token IT needs to remove an agent.
 Request: none.
 Response `200`: `{ uninstall_token }` (`wbu_…`), with `Cache-Control: no-store`.
@@ -416,7 +438,7 @@ Errors: `403 FORBIDDEN` (manager, super_admin).
 Notes: a platform/arch with no live release is left out. URLs never logged.
 
 ### `PUT /v1/deployment/min-agent-version`
-Roles: company_admin, it_admin · Spec: [`agent-updates`][agent-updates]
+Roles: company_admin (it_admin `403` since round 6) · Spec: [`agent-updates`][agent-updates]
 Set the company's minimum agent version.
 Request:
 
@@ -433,7 +455,7 @@ Notes: sets `companies.min_agent_version` and raises `companies.policy_version`.
 ## Employees
 
 ### `GET /v1/employees`
-Roles: company_admin (all fields), it_admin (`id`, `name`, `email`, `department` only), manager (own team) · Spec: [`employee-directory`][employee-directory], B18
+Roles: company_admin and it_admin (all fields, round 6), manager (own team) · Spec: [`employee-directory`][employee-directory], B18
 The employee directory.
 Query:
 
@@ -453,7 +475,7 @@ Response `200`: array<object>:
 | archived_at | ISO-8601 datetime \| null | |
 
 Errors: none route-specific.
-Notes: see Unspecified for B18's narrower field list for `it_admin`.
+Notes: B18's narrower `it_admin` field list ended with round 6 (17 Nov 2026).
 
 ### `POST /v1/employees`
 Roles: company_admin · Spec: [`employee-directory`][employee-directory], [`manager-teams`][manager-teams], [`monitoring-settings`][monitoring-settings]
@@ -1084,6 +1106,7 @@ Nothing is left open (round 3 of the WorkBeat Admin requests, 16 Nov 2026). Sett
 [license-key]: ../../openspec/changes/provision-companies/specs/license-key/spec.md
 [company-settings]: ../../openspec/changes/configure-company/specs/company-settings/spec.md
 [custom-domains]: ../../openspec/changes/configure-company/specs/custom-domains/spec.md
+[change-approvals]: ../../openspec/changes/approve-it-admin-changes/specs/change-approvals/spec.md
 [installer-downloads]: ../../openspec/changes/distribute-agents/specs/installer-downloads/spec.md
 [agent-updates]: ../../openspec/changes/distribute-agents/specs/agent-updates/spec.md
 [agent-releases]: ../../openspec/changes/distribute-agents/specs/agent-releases/spec.md

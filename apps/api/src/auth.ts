@@ -3,6 +3,7 @@ import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { FastifyRequest } from 'fastify';
 import { ApiError, sha256, token, Tx } from './core';
+import { deferAsChange, isApprovalRoute } from './changes';
 import { tag } from './http';
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number, opts: object) => Promise<Buffer>;
@@ -64,8 +65,10 @@ export async function portalUser(c: Tx, req: FastifyRequest, roles: Role[], opts
     tag(req, { scope: 'staff' });
     return user;
   }
-  if (!roles.includes(u.role)) throw new ApiError(403, 'FORBIDDEN', 'Not allowed for your role');
+  const approval = u.role === 'it_admin' && isApprovalRoute(req); // runs, is rolled back, waits for a company_admin
+  if (!roles.includes(u.role) && !approval) throw new ApiError(403, 'FORBIDDEN', 'Not allowed for your role');
   await c.tenant(u.company_id);
+  if (approval) deferAsChange(c, req, user);
   tag(req, { company_id: u.company_id });
   return user;
 }

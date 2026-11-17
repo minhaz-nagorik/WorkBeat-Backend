@@ -6,12 +6,14 @@ import rateLimit from '@fastify/rate-limit';
 import { randomUUID } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AgentsController } from './agents.controller';
+import { setInjector } from './changes';
 import { LIMITS } from './contract';
 import { ApiError, config, Db, fromDbError, sha256 } from './core';
 import type { LogCtx } from './http';
 import { InstallController } from './install.controller';
 import { Storage } from './storage';
 import { StorageController } from './storage.controller';
+import { ChangesController } from './portal/changes.controller';
 import { CompanyController } from './portal/company.controller';
 import { DevicesController } from './portal/devices.controller';
 import { EmployeesController } from './portal/employees.controller';
@@ -58,7 +60,7 @@ class AllErrors implements ExceptionFilter {
 
 @Module({
   controllers: [InstallController, AgentsController, StorageController, SessionController, CompanyController,
-    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController],
+    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController, ChangesController],
   providers: [
     { provide: Db, useValue: new Db(cfg.DATABASE_URL) },
     { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY) },
@@ -81,6 +83,7 @@ async function main() {
   });
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, { logger: ['error', 'warn'] });
   const f = app.getHttpAdapter().getInstance();
+  setInjector((o) => f.inject(o as any) as any);
 
   f.addHook('onRoute', (r) => {
     if (r.url === '/v1/agents/activity') r.bodyLimit = LIMITS.activityBodyBytes;

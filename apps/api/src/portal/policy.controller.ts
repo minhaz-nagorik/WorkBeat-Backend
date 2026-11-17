@@ -92,7 +92,7 @@ export class PolicyController {
   @Get('sensitive-domains')
   async sensitive(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_MANAGER);
+      await portalUser(c, req, ALL);
       return { data: (await c.query('SELECT id, pattern, is_default, created_at FROM sensitive_domains ORDER BY lower(pattern)')).rows };
     });
   }
@@ -124,7 +124,7 @@ export class PolicyController {
   @Get('productivity-rules')
   async productivity(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_MANAGER);
+      await portalUser(c, req, ALL);
       return { data: (await c.query('SELECT id, match_type, pattern, category FROM productivity_rules ORDER BY match_type, lower(pattern)')).rows };
     });
   }

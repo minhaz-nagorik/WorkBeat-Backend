@@ -93,7 +93,7 @@ export class CompanyController {
   @Get('company/setup')
   async setup(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, ADMIN);
       const { rows: [r] } = await c.query(
         `SELECT setup_completed_steps AS s, EXISTS (SELECT 1 FROM devices) AS installed,
                 EXISTS (SELECT 1 FROM devices WHERE last_heartbeat_at IS NOT NULL) AS seen FROM companies`,
@@ -110,7 +110,7 @@ export class CompanyController {
   @Post('company/setup/steps')
   async setupStep(@Req() req: FastifyRequest, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     await this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, ADMIN);
       const b = parse(z.object({ step: z.enum(['download_downloader', 'copy_license_key']) }), raw, 422);
       await c.query(
         `UPDATE companies SET setup_completed_steps = array_append(setup_completed_steps, $1)
@@ -124,7 +124,7 @@ export class CompanyController {
   @Get('license')
   async license(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, ADMIN);
       const { rows: [r] } = await c.query(`SELECT key_last4, plan, seat_limit, ${SEATS_USED} AS seats_used, key_reset_at, (SELECT min_agent_version FROM companies) FROM licenses`);
       return { data: { key_masked: `WB-••••-••••-••••-${r.key_last4}`, plan: r.plan, seat_limit: r.seat_limit, seats_used: r.seats_used, key_reset_at: r.key_reset_at,
         min_agent_version: r.min_agent_version } };
@@ -134,7 +134,7 @@ export class CompanyController {
   @Post('license/reveal')
   async revealKey(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, ADMIN);
       const { rows: [r] } = await c.query('SELECT key_ciphertext FROM licenses');
       res.status(200).header('Cache-Control', 'no-store');
       return { data: { key: decrypt(r.key_ciphertext, config().SECRETS_ENCRYPTION_KEY) } };
@@ -144,7 +144,7 @@ export class CompanyController {
   @Post('license/uninstall-token/reveal')
   async revealUninstall(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, ADMIN);
       const { rows: [r] } = await c.query('SELECT uninstall_token_ciphertext FROM companies');
       res.status(200).header('Cache-Control', 'no-store');
       return { data: { uninstall_token: decrypt(r.uninstall_token_ciphertext, config().SECRETS_ENCRYPTION_KEY) } };
@@ -187,7 +187,7 @@ export class CompanyController {
   @Put('deployment/min-agent-version')
   async minVersion(@Req() req: FastifyRequest, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, ADMIN);
       const b = parse(z.object({ min_agent_version: z.string().regex(/^\d+\.\d+\.\d+$/).nullable() }), raw, 422);
       const { rows: [r] } = await c.query('UPDATE companies SET min_agent_version = $1 WHERE id = app_company_id() RETURNING min_agent_version', [b.min_agent_version]);
       return { data: r };

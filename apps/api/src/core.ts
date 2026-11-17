@@ -42,7 +42,7 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
-  body() {
+  body(): Record<string, unknown> {
     return { error: this.message, code: this.code, ...this.extra };
   }
 }
@@ -96,7 +96,8 @@ export function decrypt(blob: Buffer, keyB64: string): string {
 
 types.setTypeParser(20, Number); // bigint (policy_version) fits a JS number
 
-export type Tx = PoolClient & { tenant(companyId: string): Promise<void> };
+// dryRun: set for a write that must wait for approval (changes.ts); called after the rollback.
+export type Tx = PoolClient & { tenant(companyId: string): Promise<void>; dryRun?: (result: unknown) => Promise<never> };
 
 export class Db {
   pool: Pool;
@@ -114,12 +115,19 @@ export class Db {
     try {
       await c.query(opts.snapshot ? 'BEGIN ISOLATION LEVEL REPEATABLE READ' : 'BEGIN');
       const r = await fn(c);
+      if (c.dryRun) {
+        await c.query('ROLLBACK');
+        const store = c.dryRun;
+        c.dryRun = undefined;
+        return await store(r);
+      }
       await c.query('COMMIT');
       return r;
     } catch (e) {
-      await c.query('ROLLBACK').catch(() => {});
+      if (!(e as { status?: number })?.status || (e as { status: number }).status !== 202) await c.query('ROLLBACK').catch(() => {});
       throw e;
     } finally {
+      c.dryRun = undefined; // pooled clients are reused: never carry a deferral into the next request
       c.release();
     }
   }

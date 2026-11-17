@@ -224,7 +224,7 @@ async function main() {
   assert.ok(mine.some((e: any) => e.id === ada.id) && !mine.some((e: any) => e.id === bob.id));
   expect(await call('GET', `/v1/employees/${bob.id}`, mgr.token), 404, 'NOT_FOUND');
   const itList = expect(await call('GET', '/v1/employees', it.token), 200);
-  assert.deepEqual(Object.keys(itList[0]).sort(), ['department', 'email', 'id', 'name']);
+  assert.ok('presence' in itList[0] && 'manager_user_id' in itList[0], 'it_admin sees the admin fields (round 6)');
   expect(await call('PATCH', `/v1/employees/${bob.id}`, admin, { department: 'Ops' }), 200);
   const csv = `name,email,department,manager email\nCara ${run},cara-${run}@example.test,Sales,${mgr.email}\nAda again,ada-${run}@example.test,,\n`;
   const imp = expect(await call('POST', '/v1/employees/import', admin, csv, { 'content-type': 'text/csv' }), 201);
@@ -238,7 +238,7 @@ async function main() {
   expect(await call('PUT', `/v1/employees/${ada.id}/monitoring-settings`, admin, { ...all, screenshot_interval_seconds: 600 }), 422);
   expect(await call('PUT', `/v1/employees/${ada.id}/monitoring-settings`, admin, { ...all, screenshot_interval_seconds: 1800 }), 200);
   expect(await call('PUT', `/v1/employees/${ada.id}/monitoring-settings`, mgr.token, { ...all, screenshot_interval_seconds: 0 }), 403);
-  expect(await call('GET', `/v1/employees/${ada.id}/monitoring-settings`, it.token), 403);
+  expect(await call('GET', `/v1/employees/${ada.id}/monitoring-settings`, it.token), 200); // round 6: it_admin reads settings
   const start = new Date(Date.now() + 86400_000), end = new Date(Date.now() + 2 * 86400_000);
   const pause = expect(await call('POST', `/v1/employees/${ada.id}/pauses`, admin, { starts_at: start.toISOString(), ends_at: end.toISOString(), reason: 'annual_leave' }), 201);
   assert.equal(pause.status, 'scheduled'); assert.equal(pause.created_by_name, me.name);
@@ -250,9 +250,31 @@ async function main() {
 
   // policy
   const dom = `blocked-${run}.example`;
-  expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: dom.toUpperCase() }), 201);
-  expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: dom }), 409);
-  expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: 'https://x.com/a' }), 422);
+  const pendingRule = expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: dom.toUpperCase() }), 202).change;
+  assert.equal(pendingRule.status, 'pending'); assert.equal(pendingRule.summary, `Block website ${dom.toUpperCase()}`);
+  expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: 'https://x.com/a' }), 422); // validated at once
+  assert.ok(!expect(await call('GET', '/v1/block-rules', admin), 200).some((r: any) => r.pattern === dom), 'nothing applied before approval');
+  const appliedRule = expect(await call('POST', `/v1/changes/${pendingRule.id}/approve`, admin), 200).change;
+  assert.equal(appliedRule.status, 'approved'); assert.equal(appliedRule.decided_by.name, me.name);
+  assert.ok(expect(await call('GET', '/v1/block-rules', admin), 200).some((r: any) => r.pattern === dom), 'applied on approval');
+  expect(await call('POST', `/v1/changes/${pendingRule.id}/approve`, admin), 409, 'CONFLICT');
+  expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: dom }), 409); // conflicts show at once
+  const again = expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: `x-${dom}` }), 202).change;
+  const rej = expect(await call('POST', `/v1/changes/${again.id}/reject`, admin, { reason: 'Not now' }), 200).change;
+  assert.equal(rej.status, 'rejected'); assert.equal(rej.reason, 'Not now');
+  const mine2 = expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: `y-${dom}` }), 202).change;
+  expect(await call('DELETE', `/v1/changes/${mine2.id}`, admin), 403);
+  expect(await call('DELETE', `/v1/changes/${mine2.id}`, it.token), 204);
+  expect(await call('DELETE', `/v1/changes/${mine2.id}`, it.token), 409, 'CONFLICT');
+  expect(await call('GET', '/v1/changes', mgr.token), 403);
+  const itChanges = expect(await call('GET', '/v1/changes', it.token), 200);
+  assert.deepEqual(itChanges.slice(0, 3).map((x: any) => x.status), ['cancelled', 'rejected', 'approved']);
+  assert.ok(expect(await call('GET', '/v1/changes?status=pending', admin), 200).every((x: any) => x.status === 'pending'));
+  const delay = expect(await call('POST', '/v1/employees', it.token, { name: `Late ${run}`, email: `late-${run}@example.test` }), 202).change;
+  expect(await call('POST', '/v1/employees', admin, { name: `Late ${run}`, email: `late-${run}@example.test` }), 201);
+  const failed = expect(await call('POST', `/v1/changes/${delay.id}/approve`, admin), 200).change;
+  assert.equal(failed.status, 'failed'); assert.equal(failed.error.code, 'CONFLICT');
+  ok('change approvals: 202 pending, validated at once, approve applies, reject, cancel, failed replay');
   const fromRegex = expect(await call('POST', '/v1/block-rules', admin, { type: 'regex', pattern: `^(www\\.)?(a-${run}\\.com|b-${run}\\.com)/games.*$` }), 201);
   assert.deepEqual(fromRegex.map((r: any) => r.pattern), [`a-${run}.com/games`, `b-${run}.com/games`]);
   expect(await call('POST', '/v1/block-rules', admin, { type: 'regex', pattern: '.*evil.*' }), 422);
@@ -260,7 +282,7 @@ async function main() {
   expect(await call('GET', '/v1/block-rules', mgr.token), 200);
   const sd = expect(await call('POST', '/v1/sensitive-domains', admin, { pattern: `bank-${run}.example` }), 201);
   expect(await call('POST', '/v1/sensitive-domains', admin, { pattern: '*.bank' }), 422);
-  expect(await call('GET', '/v1/sensitive-domains', it.token), 403);
+  expect(await call('GET', '/v1/sensitive-domains', it.token), 200);
   expect(await call('DELETE', `/v1/sensitive-domains/${sd.id}`, admin), 204);
   expect(await call('POST', '/v1/productivity-rules', admin, { match_type: 'app', pattern: `Code${run}`, category: 'productive' }), 201);
   expect(await call('POST', '/v1/productivity-rules', admin, { match_type: 'domain', pattern: `fun-${run}.example`, category: 'unproductive' }), 201);
@@ -271,8 +293,10 @@ async function main() {
   ok('block rules (domain, regex → url), sensitive domains, productivity rules, notice version');
 
   // licence, settings, setup
-  const lic = expect(await call('GET', '/v1/license', it.token), 200);
-  const key = expect(await call('POST', '/v1/license/reveal', it.token), 200).key;
+  expect(await call('GET', '/v1/license', it.token), 403); // round 6: no Deployment area for it_admin
+  expect(await call('POST', '/v1/license/reveal', it.token), 403);
+  const lic = expect(await call('GET', '/v1/license', admin), 200);
+  const key = expect(await call('POST', '/v1/license/reveal', admin), 200).key;
   assert.ok(key.endsWith(lic.key_masked.slice(-4)));
   expect(await call('POST', '/v1/license/reveal', mgr.token), 403);
   expect(await call('POST', '/v1/license/uninstall-token/reveal', admin), 200);
@@ -280,7 +304,8 @@ async function main() {
   expect(await call('PATCH', '/v1/company/settings', admin, { timezone: 'Asia/Dhaka', idle_threshold_seconds: 300 }), 200);
   expect(await call('PATCH', '/v1/company/settings', it.token, { name: 'x' }), 403);
   expect(await call('POST', '/v1/company/setup/steps', admin, { step: 'copy_license_key' }), 204);
-  assert.ok(expect(await call('GET', '/v1/company/setup', it.token), 200).find((s: any) => s.step === 'copy_license_key').done);
+  assert.ok(expect(await call('GET', '/v1/company/setup', admin), 200).find((s: any) => s.step === 'copy_license_key').done);
+  expect(await call('GET', '/v1/company/setup', it.token), 403);
   expect(await call('GET', '/v1/company/status', mgr.token), 200);
   expect(await call('GET', '/v1/billing', admin), 200);
   ok('licence reveal, settings (timezone check), setup, status, billing');
@@ -326,8 +351,11 @@ async function main() {
   const alert = feed.items.find((a: any) => a.device_id === dev.device_id);
   assert.ok(alert);
   expect(await call('POST', `/v1/alerts/${alert.id}/resolve`, mgr.token), 403);
-  const resolved = expect(await call('POST', `/v1/alerts/${alert.id}/resolve`, it.token), 200);
-  assert.ok(resolved.resolved_at); assert.equal(resolved.resolved_by_name, 'Test it_admin');
+  const askResolve = expect(await call('POST', `/v1/alerts/${alert.id}/resolve`, it.token), 202).change;
+  assert.equal(askResolve.resource, 'alert'); assert.equal(askResolve.target_id, alert.id);
+  expect(await call('POST', `/v1/changes/${askResolve.id}/approve`, admin), 200);
+  const resolved = expect(await call('GET', `/v1/alerts?q=${encodeURIComponent(`MAC-${run}`)}`, admin), 200).items.find((a: any) => a.id === alert.id);
+  assert.ok(resolved.resolved_at); assert.equal(resolved.resolved_by_name, me.name, 'attributed to the approving admin');
   assert.ok(expect(await call('GET', `/v1/alerts?q=${encodeURIComponent(`MAC-${run}`)}`, mgr.token), 200).items.some((a: any) => a.id === alert.id));
   assert.ok(expect(await call('GET', `/v1/alerts?q=${encodeURIComponent(`Ada ${run}`)}`, admin), 200).items.length >= 1);
   assert.equal(expect(await call('GET', '/v1/alerts?q=%25no-such-thing_', admin), 200).items.length, 0);
@@ -361,7 +389,10 @@ async function main() {
 
   expect(await call('DELETE', `/v1/employees/${ada.id}`, admin), 409, 'EMPLOYEE_HAS_DEVICES');
   expect(await call('POST', `/v1/devices/${dev.device_id}/release`, mgr.token), 403);
-  expect(await call('POST', `/v1/devices/${dev.device_id}/release`, it.token), 200);
+  const askRelease = expect(await call('POST', `/v1/devices/${dev.device_id}/release`, it.token), 202).change;
+  assert.match(askRelease.summary, /^Release computer \S+/);
+  expect(await call('POST', '/v1/agents/heartbeat', undefined, { agent_version: '1.0.0' }, dk), 200); // not released yet
+  assert.equal(expect(await call('POST', `/v1/changes/${askRelease.id}/approve`, admin), 200).change.status, 'approved');
   expect(await call('POST', '/v1/agents/heartbeat', undefined, { agent_version: '1.0.0' }, dk), 401, 'DEVICE_RELEASED');
   expect(await call('POST', `/v1/devices/${dev.device_id}/release`, it.token), 409, 'CONFLICT');
   expect(await call('POST', `/v1/devices/${dev.device_id}/deactivate`, it.token), 409, 'CONFLICT');

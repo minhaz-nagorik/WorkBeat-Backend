@@ -24,7 +24,7 @@ Every portal and staff route SHALL declare the roles it allows, and the API MUST
 
 ### Requirement: Areas follow the permission matrix
 <!-- source: Plan-v3.5 §4.5 · PRD "Permission matrix", "Users and roles" -->
-Routes SHALL allow: onboarding, deployment and devices to `company_admin` and `it_admin`; the block list to `company_admin` and `it_admin`, read by `manager`; employees, reports and screenshots to `company_admin` and to `manager` (own team, read only); productivity rules and sensitive domains to `company_admin`, read by `manager`; alerts to all three company roles (manager: own team).
+Routes SHALL allow: onboarding and deployment to `company_admin`; installer downloads and devices to `company_admin` and `it_admin`; employees, the block list, productivity rules and sensitive domains to `company_admin` and `it_admin` (writes by `it_admin` wait for approval, `change-approvals`), read by `manager`; reports and screenshots to `company_admin` and `manager` (own team); alerts to all three (manager: own team).
 
 #### Scenario: An IT admin asks for a report
 - **WHEN** an `it_admin` calls a usage report route
@@ -44,15 +44,19 @@ Routes SHALL allow: onboarding, deployment and devices to `company_admin` and `i
 
 ### Requirement: Company-admin-only areas and the IT admin's limits
 <!-- source: Plan-v3.5 §4.5 · PRD "Roles" · B18 · D48 · Plan-v3.5 §4.4 "Device binding" -->
-Settings, billing, team and custom domain SHALL be reachable by `company_admin` only. `it_admin` SHALL be able to list employees (`id`, `name`, `email`, `department` only) to see whom a device is bound to, and MUST reach no report, timesheet, screenshot, pause or monitoring setting.
+Settings, billing, team, custom domain, licence key, uninstall token, minimum agent version and setup checklist SHALL be reachable by `company_admin` only. `it_admin` SHALL read employees with the `company_admin` fields, monitoring settings and pauses, and MUST reach no report, calendar, timesheet, screenshot, export or notice acknowledgement.
 
 #### Scenario: An IT admin opens billing
 - **WHEN** an `it_admin` calls `GET /v1/billing`
 - **THEN** the response is `403 FORBIDDEN`
 
-#### Scenario: An IT admin lists employees to see a device's binding
+#### Scenario: An IT admin lists employees
 - **WHEN** an `it_admin` calls `GET /v1/employees`
-- **THEN** each employee carries `id`, `name`, `email` and `department` and nothing else
+- **THEN** each employee carries the `company_admin` fields, `presence` and `manager_user_id` included
+
+#### Scenario: An IT admin reveals the licence key
+- **WHEN** an `it_admin` calls `POST /v1/license/reveal`
+- **THEN** the response is `403 FORBIDDEN`
 
 ### Requirement: Company routes and staff routes never cross
 <!-- source: D41 · Plan-v3.5 §4.5, §4.6 -->
