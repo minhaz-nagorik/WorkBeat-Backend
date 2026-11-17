@@ -9,8 +9,11 @@ import { Storage } from '../storage';
 import { isDay } from './reports.controller';
 import { listDevices } from './devices.controller';
 
-const RECENT_MINUTES = 15;
-// presence (admin request 1.2): paused > no_device > tamper > active / idle (latest bucket in 15 min) > offline.
+// Buckets are 10 minutes, keyed by their start, and arrive with the agent's 10-minute sync, so the
+// newest one is 13-23 minutes old when read: look back 25 minutes for it.
+const RECENT_MINUTES = 25;
+// presence (admin request 1.2): paused > no_device > tamper > offline (no live device online) >
+// active (latest bucket in 25 min has active samples) > idle (online, no recent active bucket).
 // A live binding is a device neither released nor deactivated.
 async function withPresence(c: Tx, rows: any[]) {
   if (!rows.length) return rows;
@@ -30,7 +33,7 @@ async function withPresence(c: Tx, rows: any[]) {
     const mine = devs.filter((d) => d.employee.id === r.id);
     const live = mine.filter((d) => d.status !== 'deactivated');
     const presence = s?.paused ? 'paused' : !live.length ? 'no_device' : live.some((d) => d.status === 'tamper') ? 'tamper'
-      : s?.recent_active === true ? 'active' : s?.recent_active === false ? 'idle' : 'offline';
+      : !live.some((d) => d.status === 'online') ? 'offline' : s?.recent_active === true ? 'active' : 'idle';
     return { ...r, presence, devices: mine.map((d) => ({ id: d.id, hostname: d.hostname, os: d.os, status: d.status, last_heartbeat_at: d.last_heartbeat_at })) };
   });
 }

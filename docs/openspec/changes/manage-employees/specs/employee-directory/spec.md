@@ -157,7 +157,7 @@ An import with any invalid row (no `name`, a malformed email, an unknown manager
 
 ### Requirement: Employees carry a derived presence
 <!-- source: Plan-v3.5 §4.5 "Employees" · B12 · B18 -->
-`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` and `deactivated_at` NULL), `tamper` (one such device is `tamper`), `active` or `idle` (the latest `activity_buckets` row in the last 15 minutes has active samples, or none), else `offline`. It MUST never be stored.
+`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` and `deactivated_at` NULL), `tamper` (one such device is `tamper`), `offline` (none of them is `online`), `active` (the latest `activity_buckets` row in the last 25 minutes has active samples), else `idle`. It MUST never be stored.
 
 #### Scenario: A paused employee with a tampered laptop
 - **WHEN** an employee has a pause in force and a device with an open tamper event
@@ -170,6 +170,14 @@ An import with any invalid row (no `name`, a malformed email, an unknown manager
 #### Scenario: Working right now
 - **WHEN** the employee's newest activity bucket from 4 minutes ago has 3 active samples
 - **THEN** `presence` is `active`
+
+#### Scenario: An online computer whose newest bucket arrived with the last sync
+- **WHEN** the device heartbeated 3 minutes ago and the newest bucket started 18 minutes ago with active samples
+- **THEN** `presence` is `active`
+
+#### Scenario: No device online
+- **WHEN** every live device of the employee is `offline`
+- **THEN** `presence` is `offline`, whatever the buckets say
 
 #### Scenario: The IT admin's list
 - **WHEN** an `it_admin` lists employees
