@@ -40,7 +40,7 @@ marked `approved` or `failed`; it is not literally one transaction. You will not
 
 ## Emails
 
-Sent through the temporary SMTP until Resend.
+Sent through Resend (SMTP removed 17 Nov 2026). Until WorkBeat has its own verified domain the sender is a borrowed `trymamoru.com` address.
 
 - To every enabled Company Admin, at most once per 15 minutes per company:
   subject **"A change is waiting for your approval in WorkBeat"**, body: who asked, the summary, and

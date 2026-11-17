@@ -1,11 +1,8 @@
-// Outgoing email through Resend, or SMTP until Resend is set up. With neither (local dev) messages
-// are written to STORAGE_DIR/outbox instead, never to the log (they carry invitation links).
+// Outgoing email through Resend. Without RESEND_API_KEY (local dev, smoke tests) messages are
+// written to STORAGE_DIR/outbox instead, never to the log (they carry invitation links).
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createTransport, type Transporter } from 'nodemailer';
 import { config } from './core';
-
-let smtp: Transporter | undefined;
 
 export async function sendMail(to: string, subject: string, text: string) {
   const cfg = config();
@@ -16,14 +13,6 @@ export async function sendMail(to: string, subject: string, text: string) {
       body: JSON.stringify({ from: cfg.EMAIL_FROM, to: [to], subject, text }),
     });
     if (!r.ok) throw new Error(`resend ${r.status}`);
-    return;
-  }
-  if (cfg.SMTP_USER && cfg.SMTP_PASS) {
-    smtp ??= createTransport({
-      host: cfg.SMTP_HOST, port: cfg.SMTP_PORT, secure: cfg.SMTP_PORT === 465,
-      auth: { user: cfg.SMTP_USER, pass: cfg.SMTP_PASS },
-    });
-    await smtp.sendMail({ from: cfg.EMAIL_FROM, to, subject, text });
     return;
   }
   const dir = join(cfg.STORAGE_DIR, 'outbox');
