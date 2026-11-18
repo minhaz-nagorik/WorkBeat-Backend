@@ -6,7 +6,7 @@ import { ADMIN, ADMIN_MANAGER, ALL, employeeFor, idOrNone, portalUser, User } fr
 import { ApiError, Db, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { Storage } from '../storage';
-import { isDay } from './reports.controller';
+import { isDay, localTime } from './reports.controller';
 import { listDevices } from './devices.controller';
 
 // Buckets are 10 minutes, keyed by their start, and arrive with the agent's 10-minute sync, so the
@@ -41,6 +41,8 @@ async function withPresence(c: Tx, rows: any[]) {
 const FULL = 'id, name, email, department, manager_user_id, archived_at';
 const IMPORT_MAX_ROWS = 5000;
 const SCREENSHOT_VIEW_SECONDS = 5 * 60;
+// Every tile loads the full JPEG (no thumbnails), so pages stay small.
+const SCREENSHOT_PAGE = 24, SCREENSHOT_PAGE_MAX = 60;
 const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
 const employeeBody = z.object({
   name: z.string().trim().min(1).max(200),
@@ -315,27 +317,45 @@ export class EmployeesController {
 
   // ------------------------------------------------------------ screenshots
 
+  // screenshot-access: a range of company days, newest first, in pages (cursor = captured_at|id of the last item).
   @Get(':id/screenshots')
-  async screenshots(@Req() req: FastifyRequest, @Param('id') id: string, @Query('date') date: string) {
+  async screenshots(@Req() req: FastifyRequest, @Param('id') id: string, @Query() q: Record<string, string | undefined>) {
     return this.db.tx(async (c) => {
       const u: User = await portalUser(c, req, ADMIN_MANAGER);
       const e = await employeeFor(c, u, id);
-      if (!isDay(date)) throw new ApiError(422, 'VALIDATION_FAILED', 'date must be YYYY-MM-DD', { fields: ['date'] });
+      const bad = (field: string, msg: string) => new ApiError(422, 'VALIDATION_FAILED', msg, { fields: [field] });
+      const from = q.from ?? q.date, to = q.to ?? q.date;
+      if (!isDay(from)) throw bad(q.from === undefined && q.date !== undefined ? 'date' : 'from', 'from must be YYYY-MM-DD');
+      if (!isDay(to)) throw bad(q.to === undefined && q.date !== undefined ? 'date' : 'to', 'to must be YYYY-MM-DD');
+      if (to! < from!) throw bad('to', 'to is before from');
+      if (Date.parse(to!) - Date.parse(from!) > 365 * 86400_000) throw bad('to', 'range over 366 days');
+      const limit = q.limit === undefined ? SCREENSHOT_PAGE : Number(q.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > SCREENSHOT_PAGE_MAX) throw bad('limit', `limit must be 1–${SCREENSHOT_PAGE_MAX}`);
+      let curAt: string | null = null, curId: string | null = null;
+      if (q.cursor) {
+        [curAt, curId] = Buffer.from(q.cursor, 'base64url').toString().split('|');
+        if (!curAt || isNaN(Date.parse(curAt)) || idOrNone(curId ?? '') !== curId) throw bad('cursor', 'cursor is not valid');
+      }
+      const { first } = await localTime(c); // sets the transaction TimeZone to the company's
+      const range = { from: from! < first ? first : from!, to: to! };
       const { rows: [l] } = await c.query('SELECT screenshot_tier FROM licenses');
-      if (l.screenshot_tier === 'off') return { data: { screenshots_enabled: false, items: [] } };
+      if (l.screenshot_tier === 'off') return { data: { screenshots_enabled: false, ...range, total: 0, items: [], next_cursor: null } };
+      const where = `s.employee_id = $1 AND s.status = 'uploaded' AND s.captured_at >= $2::date AND s.captured_at < $3::date + 1`;
+      const { rows: [{ total }] } = await c.query(`SELECT count(*)::int AS total FROM screenshots s WHERE ${where}`, [e.id, range.from, range.to]);
       const { rows } = await c.query(
         `SELECT s.id, s.captured_at, s.device_id, d.hostname, s.storage_path,
-                to_char(s.captured_at AT TIME ZONE co.timezone, 'YYYY-MM-DD-HH24MI') AS local_time
-           FROM screenshots s JOIN devices d ON d.id = s.device_id, companies co
-          WHERE s.employee_id = $1 AND s.status = 'uploaded'
-            AND s.captured_at >= ($2::date)::timestamp AT TIME ZONE co.timezone
-            AND s.captured_at < ($2::date + 1)::timestamp AT TIME ZONE co.timezone
-          ORDER BY s.captured_at`,
-        [e.id, date],
+                to_char(s.captured_at, 'YYYY-MM-DD-HH24MI') AS local_time,
+                to_char(s.captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
+           FROM screenshots s JOIN devices d ON d.id = s.device_id
+          WHERE ${where} AND ($4::timestamptz IS NULL OR (s.captured_at, s.id) < ($4, $5::uuid))
+          ORDER BY s.captured_at DESC, s.id DESC LIMIT $6`,
+        [e.id, range.from, range.to, curAt, curId, limit + 1],
       );
+      const page = rows.slice(0, limit), last = page[page.length - 1];
+      const next_cursor = rows.length > limit && last ? Buffer.from(`${last.cursor_at}|${last.id}`).toString('base64url') : null;
       const exp = Math.floor(Date.now() / 1000) + SCREENSHOT_VIEW_SECONDS;
       const sign = (path: string, download?: string) => this.storage.sign(baseUrl(req), 'GET', 'screenshots', path, exp, download);
-      return { data: { screenshots_enabled: true, items: rows.map(({ storage_path, local_time, ...r }) => ({
+      return { data: { screenshots_enabled: true, ...range, total, next_cursor, items: page.map(({ storage_path, local_time, cursor_at, ...r }) => ({
         ...r, view_url: sign(storage_path),
         download_url: sign(storage_path, `${r.hostname.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 150) || 'screenshot'}-${local_time}.jpg`),
         expires_at: new Date(exp * 1000),

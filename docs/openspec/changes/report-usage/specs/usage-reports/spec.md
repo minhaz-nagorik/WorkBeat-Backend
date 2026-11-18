@@ -50,6 +50,18 @@ Every report SHALL take `from` and `to` dates (inclusive, in `companies.timezone
 - **WHEN** a company admin calls a report with `department` `Nobody`
 - **THEN** the response is `200` with zero totals
 
+### Requirement: Totals leave out archived employees
+<!-- source: WorkBeat Admin request (18 Nov 2026) -->
+A report or export without `employee_id` SHALL count only employees whose `archived_at` is null, whether the scope is the caller's, a `manager_user_id` or a `department`. With `employee_id` an archived employee's retained history MUST still be returned.
+
+#### Scenario: A company total after an archive
+- **WHEN** an employee with 5 hours tracked this week is archived and an admin reads this week's productivity without a scope
+- **THEN** the totals do not include those 5 hours
+
+#### Scenario: A department with an archived member
+- **WHEN** a company admin reads a report with `department` `Sales` and one Sales employee is archived
+- **THEN** only the Sales employees who are not archived are counted
+
 ### Requirement: Ranges are validated and clamped to retention
 <!-- source: B13 · PRD "Retention and suspension" · Plan-v3.5 §6.3 -->
 A range with a malformed date, `to` before `from`, or more than 366 days SHALL get `422 VALIDATION_FAILED`. A `from` older than the company's `data_retention_days` MUST be moved to the first retained day, and every report MUST return the effective `from` and `to`. Periods with no rows, including paused periods, MUST count as zero.
@@ -109,6 +121,30 @@ The API SHALL categorise each `app_sessions` row by `app_name` against `producti
 #### Scenario: Equal seconds
 - **WHEN** two apps have the same `seconds`
 - **THEN** they are ordered by `app_name`, so the order is the same on every call
+
+### Requirement: App and website reports page by offset
+<!-- source: WorkBeat Admin request (18 Nov 2026) -->
+`GET /v1/reports/apps` and `/reports/websites` SHALL accept `offset` (integer, 0 to 100000, default 0) and return `next_offset`: the `offset` of the next page in the same order, or `null` when no row follows the page. An `offset` out of range MUST return `422 VALIDATION_FAILED`.
+
+#### Scenario: Paging through websites
+- **WHEN** a range has 230 domains and pages of 100 are read by following `next_offset`
+- **THEN** the pages hold 100, 100 and 30 domains, none twice, and the last page's `next_offset` is `null`
+
+#### Scenario: A bad offset
+- **WHEN** `offset` is -1 or `abc`
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED`
+
+### Requirement: App and website reports filter by category
+<!-- source: WorkBeat Admin request (18 Nov 2026) · D1 -->
+Both routes SHALL accept `category` (`productive`, `neutral` or `unproductive`) and then rank, limit and page only rows of that category, as the rules resolve it for the response. Any other `category` MUST return `422 VALIDATION_FAILED`.
+
+#### Scenario: Unproductive sites past the top 100
+- **WHEN** an employee has 150 domains of which 5 rank below 100 and are unproductive
+- **THEN** `category=unproductive` lists all unproductive domains, those 5 included
+
+#### Scenario: An unknown category
+- **WHEN** `category` is `fun`
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED`
 
 ### Requirement: The activity report shows tracked time, activity percent and idle beside it
 <!-- source: D1 · PRD "Activity levels, productivity, calendar and timesheets" · prototype "Activity by hour" -->

@@ -1,17 +1,17 @@
 ## Purpose
 
-Who can see an employee's screenshots, how a day's timeline is returned, and how long the signed
+Who can see an employee's screenshots, how a range of days is returned in pages, and how long the signed
 URL that shows each image lives.
 
 ## ADDED Requirements
 
-### Requirement: The admin and the employee's manager see a day's timeline
-<!-- source: PRD "Permission matrix" · PRD "Screenshots" · Plan-v3.5 §4.4 "Reports and data lifecycle" -->
-`GET /v1/employees/:id/screenshots?date=YYYY-MM-DD` SHALL return, for a `company_admin` or the employee's manager, the employee's `uploaded` screenshots captured on that day in the company's `timezone`, oldest first, each with `id`, `captured_at`, `device_id`, the device's `hostname`, `view_url`, `download_url` and `expires_at`. `pending` screenshots MUST NOT be listed.
+### Requirement: The admin and the employee's manager see a range of days
+<!-- source: PRD "Permission matrix" · PRD "Screenshots" · Plan-v3.5 §4.4 "Reports and data lifecycle" · B19 -->
+`GET /v1/employees/:id/screenshots?from=&to=` SHALL return, for a `company_admin` or the employee's manager, the employee's `uploaded` screenshots captured from `from` through `to` in the company's `timezone`, newest first, each with `id`, `captured_at`, `device_id`, the device's `hostname`, `view_url`, `download_url` and `expires_at`. `pending` screenshots MUST NOT be listed.
 
 #### Scenario: A manager opens their report's screenshots
-- **WHEN** a manager requests a day for an employee on their team
-- **THEN** that day's uploaded screenshots are returned with signed view URLs
+- **WHEN** a manager requests a range for an employee on their team
+- **THEN** that range's uploaded screenshots are returned newest first with signed view URLs
 
 #### Scenario: A device changed hands by release
 - **WHEN** a device bound to employee A was released at noon and set up again for employee B
@@ -68,7 +68,7 @@ An `it_admin` and a `super_admin` SHALL get `403 FORBIDDEN`. A manager asking fo
 
 ### Requirement: The timeline is hidden while the tier is off
 <!-- source: PRD "Screenshots" · PRD "Pricing" -->
-While the company's `screenshot_tier` is `off`, the route SHALL return `screenshots_enabled` false and no items, and MUST issue no signed URL. Otherwise it MUST return `screenshots_enabled` true.
+While the company's `screenshot_tier` is `off`, the route SHALL return `screenshots_enabled` false, no items, `total` 0 and `next_cursor` null, and MUST issue no signed URL. Otherwise it MUST return `screenshots_enabled` true.
 
 #### Scenario: The add-on was cancelled
 - **WHEN** a company with stored screenshots moves to tier `off`
@@ -78,14 +78,46 @@ While the company's `screenshot_tier` is `off`, the route SHALL return `screensh
 - **WHEN** the tier moves from `off` back to `standard`
 - **THEN** screenshots stored before are listed again with `screenshots_enabled` true
 
-### Requirement: The date names one company day
+### Requirement: The range names company days
 <!-- source: B19 · PRD "Screenshots" -->
-`date` SHALL be a `YYYY-MM-DD` calendar date naming [00:00, next 00:00) in `companies.timezone`, matched on `captured_at`. A missing, malformed or impossible `date` MUST return `400 VALIDATION_FAILED` and issue no signed URL.
+`from` and `to` SHALL be inclusive `YYYY-MM-DD` dates naming [`from` 00:00, the day after `to` 00:00) in `companies.timezone`, matched on `captured_at`. `date=D` MUST mean `from=D&to=D`. A missing, malformed or impossible date, `to` before `from`, or a range over 366 days MUST return `422 VALIDATION_FAILED` and issue no signed URL.
 
 #### Scenario: Either side of local midnight
 - **WHEN** a company in `Asia/Dhaka` has screenshots at 23:59 and 00:00 local time
-- **THEN** the 23:59 one is listed under the first date and the 00:00 one under the next
+- **THEN** a request for the first date lists only the 23:59 one and a request for the next date only the 00:00 one
 
 #### Scenario: An impossible date
 - **WHEN** an admin requests `date=2026-02-30`
-- **THEN** the response is `400` with `code` `VALIDATION_FAILED`
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED`
+
+#### Scenario: A reversed range
+- **WHEN** an admin requests `from=2026-11-18&to=2026-11-17`
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED`
+
+### Requirement: The range stops at retention
+<!-- source: Plan-v3.5 §4.4 "Reports and data lifecycle" · usage-reports -->
+A `from` before the first retained day (today minus `data_retention_days` plus one, company time) SHALL be moved to that day. The response MUST return the `from` and `to` it used.
+
+#### Scenario: A range reaching past retention
+- **WHEN** retention is 30 days and an admin asks from 60 days ago to today
+- **THEN** the response `from` is 29 days ago and no older screenshot is listed
+
+### Requirement: The range comes back in pages
+<!-- source: WorkBeat Admin request (18 Nov 2026) · alerts feed paging -->
+The route SHALL return at most `limit` items (1–60, default 24) and `next_cursor`, an opaque string for the next page or `null` on the last. `cursor` MUST continue strictly after the last item returned, newest first, with ties on `captured_at` ordered by `id`. A `limit` out of range or a malformed `cursor` MUST return `422 VALIDATION_FAILED`.
+
+#### Scenario: Paging through a range
+- **WHEN** a range holds 50 screenshots and pages of 24 are read by following `next_cursor`
+- **THEN** the pages hold 24, 24 and 2 items, none twice, and the last page's `next_cursor` is `null`
+
+#### Scenario: A bad limit
+- **WHEN** an admin requests `limit=0` or `limit=61`
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED`
+
+### Requirement: Every page carries the range total
+<!-- source: WorkBeat Admin request (18 Nov 2026) -->
+Every response SHALL include `total`, the number of `uploaded` screenshots in the whole range regardless of `cursor` and `limit`. Signed URLs MUST be issued only for the items of the page returned.
+
+#### Scenario: A later page
+- **WHEN** an admin reads the second page of a 50-screenshot range
+- **THEN** `total` is 50 and 24 items carry signed URLs

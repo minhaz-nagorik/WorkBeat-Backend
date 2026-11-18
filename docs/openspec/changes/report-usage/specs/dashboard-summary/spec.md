@@ -31,7 +31,7 @@ The response SHALL carry `devices` with `online`, `offline` and `tamper` counts 
 
 ### Requirement: Today's activity is shown to report readers only
 <!-- source: D1 · PRD "Users and roles" · Plan-v3.5 §4.5 "Dashboard" -->
-For `company_admin` and `manager` the response SHALL carry `today` with `tracked_seconds` and `activity_percent` for the caller's scope from local midnight in `companies.timezone`, computed as `usage-reports` computes them. For `it_admin` the response MUST NOT carry `today`.
+For `company_admin` and `manager` the response SHALL carry `today` with `tracked_seconds` and `activity_percent` for the caller's scope, archived employees left out, from local midnight in `companies.timezone`, computed as `usage-reports` computes them. For `it_admin` the response MUST NOT carry `today`.
 
 #### Scenario: An IT admin's dashboard
 - **WHEN** an `it_admin` opens the dashboard
@@ -40,6 +40,10 @@ For `company_admin` and `manager` the response SHALL carry `today` with `tracked
 #### Scenario: Just after local midnight
 - **WHEN** a company in `Asia/Dhaka` opens the dashboard at 00:05 Dhaka time
 - **THEN** `today` covers only the five minutes since Dhaka midnight
+
+#### Scenario: An archived employee worked this morning
+- **WHEN** an employee tracked 2 hours today and is then archived
+- **THEN** `today.tracked_seconds` no longer includes those 2 hours
 
 ### Requirement: Recent alerts come from the alerts feed
 <!-- source: Plan-v3.5 §4.5 "Dashboard" · PRD "Users and roles" -->

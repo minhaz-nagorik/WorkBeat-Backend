@@ -897,19 +897,28 @@ Notes: sets `resolved_at`, `resolved_by`. Repeating returns it unchanged. With n
 
 ### `GET /v1/employees/:id/screenshots`
 Roles: company_admin, manager (own team) · Spec: [`screenshot-access`][screenshot-access]
-One day's screenshot timeline.
+A range of company days, newest first, in pages.
 Query:
 
 | field | type | required | notes |
 |---|---|---|---|
-| date | string `YYYY-MM-DD` | yes | day in the company `timezone` |
+| from | string `YYYY-MM-DD` | yes¹ | inclusive, company `timezone`; moved up to the first retained day |
+| to | string `YYYY-MM-DD` | yes¹ | inclusive; at most 366 days after `from` |
+| date | string `YYYY-MM-DD` | — | shorthand for `from=date&to=date` |
+| limit | int | no | 1–60, default 24. Every tile loads the full JPEG, so pages stay small |
+| cursor | string | no | `next_cursor` of the previous page |
+
+¹ Or `date`.
 
 Response `200`:
 
 | field | type | notes |
 |---|---|---|
 | screenshots_enabled | bool | false while `screenshot_tier` is `off` |
-| items | array<object> | `uploaded` only, oldest first; empty when disabled. Key `items` |
+| from, to | string `YYYY-MM-DD` | the range used (`from` after the retention clamp) |
+| total | int | `uploaded` screenshots in the whole range, whatever the page; 0 when disabled |
+| next_cursor | string \| null | opaque; `null` on the last page |
+| items | array<object> | `uploaded` only, newest first (ties by `id`); empty when disabled. Key `items` |
 | items[].id | uuid | |
 | items[].captured_at | ISO-8601 datetime | |
 | items[].device_id | uuid | |
@@ -918,8 +927,8 @@ Response `200`:
 | items[].download_url | string | same object and expiry; R2 answers it as `attachment; filename="<hostname>-<YYYY-MM-DD>-<HHMM>.jpg"` (company time), `image/jpeg`. No CORS needed |
 | items[].expires_at | ISO-8601 datetime | |
 
-Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND` (outside team or other company; no URL issued).
-Notes: no signed URL is issued while the tier is `off`. URLs never logged.
+Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND` (outside team or other company; no URL issued); `422 VALIDATION_FAILED` (bad or reversed dates, range over 366 days, `limit`, `cursor`).
+Notes: signed URLs are issued only for the page returned, and none while the tier is `off`. URLs never logged.
 
 ---
 
@@ -939,6 +948,7 @@ Common query:
 | department | string | no | |
 
 Every response carries the effective `from` and `to` (a `from` before retention moves to the first retained day). Periods with no rows, paused ones included, count as zero.
+Without `employee_id`, totals (and exports) count only employees who are not archived; with `employee_id` an archived employee's history is still returned. The dashboard's `today` follows the same rule.
 Common errors:
 
 | status | code | when |
@@ -952,15 +962,15 @@ Productivity is resolved at read time: app sessions by `app_name` (`match_type` 
 ### `GET /v1/reports/apps`
 Roles: company_admin, manager · Spec: [`usage-reports`][usage-reports]
 Top apps by foreground time.
-Query: common, plus `limit` int (default 10, max 100).
-Response `200`: `from`, `to`, and apps ranked by `seconds`: `{ app_name: string, seconds: int, category: enum(productive|neutral|unproductive) }`. List key `apps`.
+Query: common, plus `limit` int (default 10, max 100), `offset` int (0–100000, default 0), `category` enum(productive|neutral|unproductive) (optional; ranks, limits and pages only that category).
+Response `200`: `from`, `to`, and apps ranked by `seconds`, ties by `app_name`: `{ app_name: string, seconds: int, category: enum(productive|neutral|unproductive) }`. List key `apps`. `next_offset` int \| null: the next page's `offset`, `null` on the last page.
 Errors: common.
 
 ### `GET /v1/reports/websites`
 Roles: company_admin, manager · Spec: [`usage-reports`][usage-reports]
 Top domains by visit time.
-Query: common, plus `limit` int (default 10, max 100).
-Response `200`: `from`, `to`, and domains ranked by `seconds`: `{ domain: string, seconds: int, category }`. List key `websites`.
+Query: common, plus `limit` int (default 10, max 100), `offset` int (0–100000, default 0), `category` enum(productive|neutral|unproductive) (optional; ranks, limits and pages only that category).
+Response `200`: `from`, `to`, and domains ranked by `seconds`, ties by `domain`: `{ domain: string, seconds: int, category }`. List key `websites`. `next_offset` int \| null: the next page's `offset`, `null` on the last page.
 Errors: common.
 
 ### `GET /v1/reports/activity`

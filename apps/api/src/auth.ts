@@ -93,8 +93,8 @@ export async function employeeFor(c: Tx, u: User, id: string) {
   return e;
 }
 
-// Employee IDs the caller's scope covers (a manager: own team only).
+// Employee IDs the caller's totals cover (a manager: own team only); archived employees are left out (usage-reports, dashboard-summary).
 export async function scopeEmployeeIds(c: Tx, u: User): Promise<string[]> {
-  const { rows } = await c.query("SELECT id FROM employees WHERE $1 <> 'manager' OR manager_user_id = $2", [u.role, u.id]);
+  const { rows } = await c.query("SELECT id FROM employees WHERE ($1 <> 'manager' OR manager_user_id = $2) AND archived_at IS NULL", [u.role, u.id]);
   return rows.map((r) => r.id);
 }

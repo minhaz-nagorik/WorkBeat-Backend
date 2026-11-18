@@ -10,6 +10,7 @@ import { alerts, listDevices } from './devices.controller';
 
 const BROWSERS = ['safari', 'google chrome', 'chrome', 'microsoft edge', 'msedge', 'firefox', 'brave browser', 'brave', 'arc', 'opera', 'chromium', 'vivaldi'];
 const EXPORT_ROW_CAP = 100_000;
+const CATEGORIES = ['productive', 'neutral', 'unproductive'];
 const APP_CAT = `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'app' AND lower(r.pattern) = lower(a.app_name) LIMIT 1), 'neutral')`;
 const DOM_CAT = `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'domain'
   AND (lower(v.domain) = lower(r.pattern) OR lower(v.domain) LIKE '%.' || lower(r.pattern)) ORDER BY length(r.pattern) DESC LIMIT 1), 'neutral')`;
@@ -24,7 +25,7 @@ const days = (from: string, to: string) => { const out = []; for (let d = from; 
 const pct = (act: number, tot: number) => (tot > 0 ? Math.round((act / tot) * 1000) / 10 : null);
 
 // Company timezone for the transaction; returns the first retained day.
-async function localTime(c: Tx) {
+export async function localTime(c: Tx) {
   const { rows: [co] } = await c.query('SELECT timezone, data_retention_days FROM companies');
   await c.query("SELECT set_config('timezone', $1, true)", [co.timezone]);
   const { rows: [r] } = await c.query("SELECT to_char(now()::date - $1::int + 1, 'YYYY-MM-DD') AS first, to_char(now()::date, 'YYYY-MM-DD') AS today", [co.data_retention_days]);
@@ -45,7 +46,7 @@ async function reportRange(c: Tx, u: User, q: Record<string, string | undefined>
   if (q.employee_id) ids = [(await employeeFor(c, u, q.employee_id)).id];
   else {
     const { rows } = await c.query(
-      `SELECT id FROM employees WHERE ($1 <> 'manager' OR manager_user_id = $2)
+      `SELECT id FROM employees WHERE ($1 <> 'manager' OR manager_user_id = $2) AND archived_at IS NULL -- totals leave out archived
          AND ($3::text IS NULL OR manager_user_id::text = $3) AND ($4::text IS NULL OR department = $4)`,
       [u.role, u.id, q.manager_user_id ?? null, q.department ?? null],
     );
@@ -153,13 +154,23 @@ export class ReportsController {
       const r = await reportRange(c, u, q);
       const limit = q.limit === undefined ? 10 : Number(q.limit);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw bad('limit', 'limit must be 1–100');
-      const sql = kind === 'apps'
+      const offset = q.offset === undefined ? 0 : Number(q.offset);
+      if (!/^\d+$/.test(q.offset ?? '0') || offset > 100_000) throw bad('offset', 'offset must be 0–100000');
+      const category = q.category ?? null;
+      if (category !== null && !CATEGORIES.includes(category)) throw bad('category', 'category must be productive, neutral or unproductive');
+      // Category is resolved per row from the rules, so filter after it is computed; ties by name keep pages stable.
+      const inner = kind === 'apps'
         ? `SELECT a.app_name, sum(a.duration_seconds)::int AS seconds, ${APP_CAT} AS category FROM app_sessions a
-            WHERE a.employee_id = ANY ($1) AND a.started_at >= $2::date AND a.started_at < $3::date + 1 GROUP BY a.app_name ORDER BY seconds DESC LIMIT $4`
+            WHERE a.employee_id = ANY ($1) AND a.started_at >= $2::date AND a.started_at < $3::date + 1 GROUP BY a.app_name`
         : `SELECT v.domain, sum(v.duration_seconds)::int AS seconds, ${DOM_CAT} AS category FROM url_visits v
-            WHERE v.employee_id = ANY ($1) AND v.visited_at >= $2::date AND v.visited_at < $3::date + 1 GROUP BY v.domain ORDER BY seconds DESC LIMIT $4`;
-      const { rows } = await c.query(sql, [r.ids, r.from, r.to, limit]);
-      return { data: { from: r.from, to: r.to, [kind]: rows } };
+            WHERE v.employee_id = ANY ($1) AND v.visited_at >= $2::date AND v.visited_at < $3::date + 1 GROUP BY v.domain`;
+      const name = kind === 'apps' ? 'app_name' : 'domain';
+      const { rows } = await c.query(
+        `SELECT * FROM (${inner}) t WHERE ($4::text IS NULL OR t.category = $4) ORDER BY t.seconds DESC, t.${name} LIMIT $5 OFFSET $6`,
+        [r.ids, r.from, r.to, category, limit + 1, offset],
+      );
+      const next_offset = rows.length > limit ? offset + limit : null;
+      return { data: { from: r.from, to: r.to, [kind]: rows.slice(0, limit), next_offset } };
     });
   }
 
