@@ -8,7 +8,7 @@ and checked every five minutes (Plan-v3.5 §4.4, §6.4, PRD "Tenants and custom 
 
 ## What Changes
 
-- **Company settings** read and write: `name`, `data_retention_days` (1–365),
+- **Company settings** read and write: `name`, `data_retention_days` (30, 60 or 90),
   `idle_threshold_seconds`, `alert_email`.
 - **Setup checklist**: two steps marked by the admin, two derived from devices.
 - **Custom domain**: set, read with the DNS records to create, remove; the `/cron/domain-verify`

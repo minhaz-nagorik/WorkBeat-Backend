@@ -1,7 +1,7 @@
 ## Purpose
 
 What the nightly `/cron/cleanup` creates and deletes: future partitions, each company's activity
-and screenshots past its retention, old idempotency rows, and partitions past the 365-day maximum.
+and screenshots past its retention, old idempotency rows, and partitions past the 90-day maximum.
 
 ## ADDED Requirements
 
@@ -33,8 +33,8 @@ For each company, cleanup SHALL delete `app_sessions`, `url_visits`, `activity_b
 - **WHEN** a device was released 10 days ago in a company keeping 90 days
 - **THEN** its rows stay until each passes 90 days, like any other device's
 
-#### Scenario: Retention lowered from 365 to 30 days
-- **WHEN** a company with a year of data lowers `data_retention_days` to 30 and the backlog exceeds one run's budget
+#### Scenario: Retention lowered from 90 to 30 days
+- **WHEN** a company with 90 days of data lowers `data_retention_days` to 30 and the backlog exceeds one run's budget
 - **THEN** the run deletes oldest first, returns `more` = `true`, and later runs finish the backlog
 
 #### Scenario: Retention raised from 30 to 90 days
@@ -108,18 +108,18 @@ Cleanup MUST NOT delete `notice_acknowledgements`, `employees`, `devices`, `user
 
 ### Requirement: Partitions past the maximum are dropped
 <!-- source: B13 · Plan-v3.5 §4.4 "Reports and data lifecycle" -->
-After the per-company deletes, cleanup SHALL call `cron_drop_old_partitions(365)`, dropping every monthly partition that ends more than 365 days ago, and MUST report the number dropped.
+After the per-company deletes, cleanup SHALL call `cron_drop_old_partitions(90)`, dropping every monthly partition that ends more than 90 days ago, and MUST report the number dropped.
 
-#### Scenario: A partition ends 400 days ago
+#### Scenario: A partition ends 120 days ago
 - **WHEN** cleanup runs
 - **THEN** that partition is dropped and counted in `rows_affected`
 
 #### Scenario: A partition partly inside the window
-- **WHEN** a monthly partition ends 360 days ago and began 390 days ago
+- **WHEN** a monthly partition ends 85 days ago and began 115 days ago
 - **THEN** it is kept
 
 #### Scenario: Nothing to drop
-- **WHEN** no partition ends more than 365 days ago
+- **WHEN** no partition ends more than 90 days ago
 - **THEN** the run reports 0 partitions dropped
 
 ### Requirement: An interrupted cleanup loses nothing and resumes

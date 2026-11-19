@@ -6,7 +6,7 @@ import { ADMIN, ADMIN_MANAGER, ALL, employeeFor, idOrNone, portalUser, User } fr
 import { ApiError, Db, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { Storage } from '../storage';
-import { isDay, localTime } from './reports.controller';
+import { isDay, localTime, MAX_RANGE_DAYS } from './reports.controller';
 import { listDevices } from './devices.controller';
 
 // Buckets are 10 minutes, keyed by their start, and arrive with the agent's 10-minute sync, so the
@@ -355,7 +355,7 @@ export class EmployeesController {
       if (!isDay(from)) throw bad(q.from === undefined && q.date !== undefined ? 'date' : 'from', 'from must be YYYY-MM-DD');
       if (!isDay(to)) throw bad(q.to === undefined && q.date !== undefined ? 'date' : 'to', 'to must be YYYY-MM-DD');
       if (to! < from!) throw bad('to', 'to is before from');
-      if (Date.parse(to!) - Date.parse(from!) > 365 * 86400_000) throw bad('to', 'range over 366 days');
+      if (Date.parse(to!) - Date.parse(from!) > (MAX_RANGE_DAYS - 1) * 86400_000) throw bad('to', `range over ${MAX_RANGE_DAYS} days`);
       const limit = q.limit === undefined ? SCREENSHOT_PAGE : Number(q.limit);
       if (!Number.isInteger(limit) || limit < 1 || limit > SCREENSHOT_PAGE_MAX) throw bad('limit', `limit must be 1–${SCREENSHOT_PAGE_MAX}`);
       let curAt: string | null = null, curId: string | null = null;

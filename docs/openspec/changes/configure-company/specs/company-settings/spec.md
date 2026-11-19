@@ -25,20 +25,20 @@ email recipients — and the onboarding checklist that tracks the first install.
 - **WHEN** a company admin patches `{ "slug": "new-slug" }`
 - **THEN** `slug` is unchanged
 
-### Requirement: Retention is 1 to 365 days
+### Requirement: Retention is 30, 60 or 90 days
 <!-- source: B13 · PRD "Retention and suspension" -->
-`data_retention_days` SHALL accept a whole number from 1 to 365 and MUST refuse any other value with `422 VALIDATION_FAILED`. Data older than the new value is removed by the next retention run (`run-scheduled-jobs`, `data-retention`), not by this route.
+`data_retention_days` SHALL accept only 30, 60 or 90, default 90, and MUST refuse any other value with `422 VALIDATION_FAILED`. Data older than the new value is removed by the next retention run (`run-scheduled-jobs`, `data-retention`), not by this route.
 
 #### Scenario: Retention over the maximum
-- **WHEN** a company admin sets `data_retention_days` to 366
+- **WHEN** a company admin sets `data_retention_days` to 180 or 365
 - **THEN** the response is `422 VALIDATION_FAILED` naming `data_retention_days`
 
-#### Scenario: The boundaries
-- **WHEN** a company admin sets `data_retention_days` to 1, 365, 0 and 30.5
-- **THEN** 1 and 365 are saved and 0 and 30.5 get `422 VALIDATION_FAILED`
+#### Scenario: The three choices
+- **WHEN** a company admin sets `data_retention_days` to 30, 60, 90, 45, 0 and 30.5
+- **THEN** 30, 60 and 90 are saved and 45, 0 and 30.5 get `422 VALIDATION_FAILED`
 
-#### Scenario: Retention lowered from 365 to 30
-- **WHEN** a company admin lowers `data_retention_days` from 365 to 30
+#### Scenario: Retention lowered from 90 to 30
+- **WHEN** a company admin lowers `data_retention_days` from 90 to 30
 - **THEN** the response is `200` at once and no activity row is deleted by the request
 
 ### Requirement: The idle threshold reaches every device

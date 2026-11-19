@@ -377,6 +377,10 @@ async function main() {
   expect(await call('GET', `/v1/reports/apps?${q}`, it.token), 403);
   expect(await call('GET', `/v1/reports/apps?from=${today}&to=${today}&employee_id=${bob.id}`, mgr.token), 404);
   expect(await call('GET', `/v1/reports/apps?from=2026-02-30&to=${today}`, admin), 422);
+  const daysAgo = (n: number) => new Date(Date.parse(today + 'T00:00:00Z') - n * 86400_000).toISOString().slice(0, 10);
+  expect(await call('GET', `/v1/reports/productivity?from=${daysAgo(89)}&to=${today}`, admin), 200); // 90 days
+  expect(await call('GET', `/v1/reports/productivity?from=${daysAgo(90)}&to=${today}`, admin), 422); // 91 days
+  expect(await call('GET', `/v1/employees/${ada.id}/screenshots?from=${daysAgo(90)}&to=${today}`, admin), 422);
   const cal = expect(await call('GET', `/v1/employees/${ada.id}/calendar?view=week&date=${today}`, admin), 200);
   assert.equal(cal.find((r: any) => r.date === today).tracked_seconds, 3000);
   const exp = await call('GET', `/v1/exports/app-sessions.csv?${q}`, admin);

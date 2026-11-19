@@ -12,7 +12,7 @@ three times (rule 8). The mechanism is specified in `run-scheduled-jobs` (`cron-
 | `/cron/domain-verify` | `*/5 * * * *` | Looks up TXT `_workbeat.{domain}` for every `pending` custom domain; `active` on match, `failed` after the cut-off | `configure-company` (`custom-domains`) | Seconds; bounded by the per-lookup DNS timeout × pending domains |
 | `/cron/token-expiry` | `0 * * * *` | Deletes unused enrollment tokens past `expires_at`; used tokens stay | `run-scheduled-jobs` (`cron-routes`) | Under a second |
 | `/cron/alert-digest` | `0 * * * *` | Hourly digests; daily digests at the run that falls at 09:00 in each company's `timezone`; retries failed instant emails under 24 h old | `process-tamper-alerts` (`alert-emails`) | Seconds; one Resend call per recipient |
-| `/cron/cleanup` | `0 2 * * *` | Ensures monthly partitions, deletes each company's activity and screenshots past retention in batches, deletes old `ingest_batches` and resolved old tamper events, drops partitions past 365 days | `run-scheduled-jobs` (`data-retention`) | Up to the time budget in `packages/shared`; may return `more: true` |
+| `/cron/cleanup` | `0 2 * * *` | Ensures monthly partitions, deletes each company's activity and screenshots past retention in batches, deletes old `ingest_batches` and resolved old tamper events, drops partitions past 90 days | `run-scheduled-jobs` (`data-retention`) | Up to the time budget in `packages/shared`; may return `more: true` |
 
 Runtimes are expectations until the load test measures them (`data-retention` task 3.5).
 

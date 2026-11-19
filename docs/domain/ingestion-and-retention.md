@@ -87,7 +87,7 @@ the employee's manager only; `it_admin` and staff `403`; outside the team `404`.
 
 ## Retention (B13)
 
-Each company keeps activity for `data_retention_days`, 1–365, default 90. Changing it deletes
+Each company keeps activity for `data_retention_days`: 30, 60 or 90, default 90. Changing it deletes
 nothing at once; the next cleanup does.
 
 ### `/cron/cleanup` (B15)

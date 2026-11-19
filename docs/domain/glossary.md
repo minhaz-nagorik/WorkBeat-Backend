@@ -84,5 +84,5 @@ are [backend decisions](../decisions/backend-decisions.md). The schema is
 | **Badge** | `outdated`, `permission_pending`, `browser_access_pending`, `paused` | "status" |
 | **Batch** | One sealed activity upload, `batch_id` = `Idempotency-Key` (D13) | "sync" |
 | **Time window** | Records outside [now − 8 days, now + 1 day] are dropped and counted (B7) | — |
-| **Retention** | `companies.data_retention_days`, 1–365 (B13) | — |
+| **Retention** | `companies.data_retention_days`: 30, 60 or 90 (B13) | — |
 | **Company timezone** | `companies.timezone`, IANA, default `UTC`; bounds days and digests (B19) | — |

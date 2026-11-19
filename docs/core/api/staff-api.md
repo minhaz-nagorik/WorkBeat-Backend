@@ -147,7 +147,7 @@ Request:
 | status | enum(trial\|active) | yes | |
 | trial_days | int | when `trial` | 1–90; sets `trial_ends_at`; ignored for `active` |
 | timezone | string | yes | IANA zone |
-| data_retention_days | int | no | 1–365, default 90 |
+| data_retention_days | int | no | 30, 60 or 90, default 90 |
 | admin_email | string | yes | the first Company Admin |
 
 Response `201`: `{ company, invitation: { email, expires_at } }`; `company` is a list row. Never the key or the token.

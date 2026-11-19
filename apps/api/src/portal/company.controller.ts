@@ -13,7 +13,7 @@ import { isBareHost } from './policy.controller';
 const EVENT_TYPES = ['process_restart', 'hosts_modified', 'config_changed', 'clock_tampered', 'permission_revoked', 'offline', 'duplicate_device_id'] as const;
 const settingsPatch = z.object({
   name: z.string().trim().min(1).max(100).optional(),
-  data_retention_days: z.number().int().min(1).max(365).optional(),
+  data_retention_days: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
   idle_threshold_seconds: z.number().int().min(60).max(3600).optional(),
   alert_email: z.object({
     roles: z.array(z.enum(['company_admin', 'manager', 'it_admin'])).min(1),

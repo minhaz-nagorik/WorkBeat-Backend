@@ -7,7 +7,7 @@
 
 `app_sessions`, `url_visits`, `activity_buckets` and `idle_intervals` take every device's batch
 every 10 minutes; at 100,000 employees that is most of the roughly 555 requests per second in
-Plan-v3.5 §6.3. Retention is per company, 1 to 365 days (B13), so old rows must go every night,
+Plan-v3.5 §6.3. Retention is per company, 30, 60 or 90 days (B13), so old rows must go every night,
 and partitions cannot be dropped per company. Agents retry a batch until a 2xx, so the same batch
 arrives more than once (D13), and an agent's clock can be wrong.
 
@@ -31,7 +31,7 @@ partitions past 365 days (`cron_drop_old_partitions()`). `ingest_batches` rows a
 Inserts stay cheap; a 365-day drop is a `DROP TABLE`, not a delete. The time window keeps every
 record inside an existing partition. The cost: a bug in the guard could store a row with a wrong
 device or employee and nothing in the schema would refuse it; rows cannot be addressed one by one,
-so corrections are by time range; per-company retention under 365 days is still row deletes; and
+so corrections are by time range; per-company retention under 90 days is still row deletes; and
 an agent offline more than 8 days loses those records (it keeps at most 7, D7).
 
 ## Alternatives considered

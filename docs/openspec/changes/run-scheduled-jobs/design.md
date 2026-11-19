@@ -20,7 +20,7 @@ calls `pg_try_advisory_xact_lock` for its job; when it is held, the run stops an
 
 ### A run stops at a time budget
 A run deletes batch after batch until nothing is left or the budget in `packages/shared` is
-spent, then answers `more: true`. A backlog (a company lowering retention from 365 to 30 days)
+spent, then answers `more: true`. A backlog (a company lowering retention from 90 to 30 days)
 finishes over the following nights or by calling the route again; no in-process loop.
 
 ### Storage objects are deleted before their rows

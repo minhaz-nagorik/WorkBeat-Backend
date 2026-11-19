@@ -64,18 +64,18 @@ A report or export without `employee_id` SHALL count only employees whose `archi
 
 ### Requirement: Ranges are validated and clamped to retention
 <!-- source: B13 · PRD "Retention and suspension" · Plan-v3.5 §6.3 -->
-A range with a malformed date, `to` before `from`, or more than 366 days SHALL get `422 VALIDATION_FAILED`. A `from` older than the company's `data_retention_days` MUST be moved to the first retained day, and every report MUST return the effective `from` and `to`. Periods with no rows, including paused periods, MUST count as zero.
+A range with a malformed date, `to` before `from`, or more than 90 days SHALL get `422 VALIDATION_FAILED`. A `from` older than the company's `data_retention_days` MUST be moved to the first retained day, and every report MUST return the effective `from` and `to`. Periods with no rows, including paused periods, MUST count as zero.
 
 #### Scenario: The range starts before retention
-- **WHEN** a company keeping 7 days asks for the last 30 days
-- **THEN** the report covers the last 7 days and returns that `from`
+- **WHEN** a company keeping 30 days asks for the last 60 days
+- **THEN** the report covers the last 30 days and returns that `from`
 
 #### Scenario: The range is reversed
 - **WHEN** `to` is before `from`
 - **THEN** the response is `422` with `code` `VALIDATION_FAILED` naming `to`
 
-#### Scenario: Exactly 366 days
-- **WHEN** a range spans 366 days, and another 367 days
+#### Scenario: Exactly 90 days
+- **WHEN** a range spans 90 days, and another 91 days
 - **THEN** the first is served and the second gets `422 VALIDATION_FAILED`
 
 #### Scenario: A range across a partition boundary

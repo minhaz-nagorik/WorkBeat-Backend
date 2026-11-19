@@ -6,7 +6,7 @@
 ## 1. Schema and shared contract
 
 - [x] 1.1 `db/migrations/0002_spec_gaps.sql` `db/migrations/0002_company_timezone.sql`: `companies.timezone text NOT NULL DEFAULT 'UTC'` with a CHECK that it is a known `pg_timezone_names` name; self-check in `db/tests/`
-- [ ] 1.2 `packages/shared`: report query schema (`from`, `to`, one of `employee_id` / `manager_user_id` / `department`, `limit`), response schemas, browser app list, export row cap, 366-day span limit
+- [ ] 1.2 `packages/shared`: report query schema (`from`, `to`, one of `employee_id` / `manager_user_id` / `department`, `limit`), response schemas, browser app list, export row cap, 90-day span limit
 - [ ] 1.3 Codes `FORBIDDEN` (if `authenticate-users` has not added it) and `EXPORT_TOO_LARGE` in the catalog
 
 ## 2. usage-reports
@@ -18,7 +18,7 @@
 - [ ] 2.5 Tests: it_admin and super_admin → 403; manager outside team → 404; tenant isolation with two companies; rule edit re-categorises history; idle not subtracted; browser hour counted once; reversed range → 422; clamp to retention
 - [ ] 2.6 Load test: one employee, one week, every report < 1 s on the 5,000-device data set
 - [ ] 2.7 Clamp `to` to today in `companies.timezone`; tie-break ranking by name; domain rule match on equality or `.`-suffix, longest pattern wins
-- [ ] 2.8 Tests (edge cases): manager with no team → zeros; archived employee report → 200; two scope params → 422; empty department → zeros; 366 days ok, 367 → 422; range across the Oct/Nov partition boundary counts each row once; range wholly before retention → zeros with effective range; future `to` clamped; `Europe/London` fall-back day = 25 h, no row lost or doubled; case-insensitive app rule; `limit` 0 / 101 → 422; tie order stable; no samples → `activity_percent` null; subdomain match, longest pattern wins, look-alike domain neutral
+- [ ] 2.8 Tests (edge cases): manager with no team → zeros; archived employee report → 200; two scope params → 422; empty department → zeros; 90 days ok, 91 → 422; range across the Oct/Nov partition boundary counts each row once; range wholly before retention → zeros with effective range; future `to` clamped; `Europe/London` fall-back day = 25 h, no row lost or doubled; case-insensitive app rule; `limit` 0 / 101 → 422; tie order stable; no samples → `activity_percent` null; subdomain match, longest pattern wins, look-alike domain neutral
 
 ## 3. calendar-and-timesheets
 

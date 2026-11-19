@@ -107,7 +107,7 @@ Unique open invite: `(company_id, email) WHERE accepted_at IS NULL AND revoked_a
 | suspended_reason | text NULL | `payment_failed` (D29) \| `staff` |
 | suspended_at | timestamptz NULL | |
 | expired_blocking_grace_days | int NOT NULL DEFAULT 30 | staff-editable (D36) |
-| data_retention_days | int NOT NULL DEFAULT 90 | CHECK 1–365 |
+| data_retention_days | int NOT NULL DEFAULT 90 | CHECK 30, 60 or 90 (0009) |
 | idle_threshold_seconds | int NOT NULL DEFAULT 300 | D15 |
 | min_agent_version | text NULL | company override; effective = max(this, global) |
 | uninstall_token_hash | text NOT NULL | sent in policy (D19) |
@@ -365,7 +365,7 @@ Also the alerts feed. `id uuid PK` (agent's; server-made for `offline`), `compan
 ## 7. Retention
 
 Nightly `/cron/cleanup`: per company, delete ingested rows and screenshot files older than
-`data_retention_days` (batched deletes); drop whole monthly partitions older than the 365-day
+`data_retention_days` (batched deletes); drop whole monthly partitions older than the 90-day
 maximum; delete `ingest_batches` older than 14 days and expired, unused `enrollment_tokens`.
 
 ## Added by 0002_spec_gaps.sql

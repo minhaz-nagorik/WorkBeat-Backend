@@ -80,7 +80,7 @@ While the company's `screenshot_tier` is `off`, the route SHALL return `screensh
 
 ### Requirement: The range names company days
 <!-- source: B19 · PRD "Screenshots" -->
-`from` and `to` SHALL be inclusive `YYYY-MM-DD` dates naming [`from` 00:00, the day after `to` 00:00) in `companies.timezone`, matched on `captured_at`. `date=D` MUST mean `from=D&to=D`. A missing, malformed or impossible date, `to` before `from`, or a range over 366 days MUST return `422 VALIDATION_FAILED` and issue no signed URL.
+`from` and `to` SHALL be inclusive `YYYY-MM-DD` dates naming [`from` 00:00, the day after `to` 00:00) in `companies.timezone`, matched on `captured_at`. `date=D` MUST mean `from=D&to=D`. A missing, malformed or impossible date, `to` before `from`, or a range over 90 days MUST return `422 VALIDATION_FAILED` and issue no signed URL.
 
 #### Scenario: Either side of local midnight
 - **WHEN** a company in `Asia/Dhaka` has screenshots at 23:59 and 00:00 local time

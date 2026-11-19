@@ -63,7 +63,7 @@ if any staff response contains seeded employee data.
 
 | Data | Kept |
 |---|---|
-| Activity (four tables) and screenshots | The company's `data_retention_days`, 1–365 (B13); nightly cleanup. Partitions past 365 days dropped |
+| Activity (four tables) and screenshots | The company's `data_retention_days`: 30, 60 or 90 (B13); nightly cleanup. Partitions past 90 days dropped |
 | `ingest_batches` | 14 days |
 | Resolved tamper events | Company retention; unresolved ones are kept |
 | `notice_acknowledgements`, directory and settings rows | Never deleted by cleanup (legal evidence, D25) |

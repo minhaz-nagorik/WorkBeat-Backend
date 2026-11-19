@@ -24,7 +24,7 @@ const newCompany = z.object({
   plan: z.enum(['starter', 'growth', 'enterprise']), seat_limit: z.number().int().min(1).nullable(),
   screenshot_tier: z.enum(['off', 'light', 'standard', 'intensive']), status: z.enum(['trial', 'active']),
   trial_days: z.number().int().min(1).max(90).optional(), timezone: z.string().min(1).max(64),
-  data_retention_days: z.number().int().min(1).max(365).optional(), admin_email: email,
+  data_retention_days: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(), admin_email: email,
 }).superRefine((b, ctx) => {
   if (b.seat_limit === null && b.plan !== 'enterprise') ctx.addIssue({ code: 'custom', path: ['seat_limit'], message: 'unlimited needs enterprise' });
   if (b.status === 'trial' && b.trial_days === undefined) ctx.addIssue({ code: 'custom', path: ['trial_days'], message: 'required for a trial' });

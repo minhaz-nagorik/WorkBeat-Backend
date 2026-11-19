@@ -10,6 +10,8 @@ import { alerts, listDevices } from './devices.controller';
 
 const BROWSERS = ['safari', 'google chrome', 'chrome', 'microsoft edge', 'msedge', 'firefox', 'brave browser', 'brave', 'arc', 'opera', 'chromium', 'vivaldi'];
 const EXPORT_ROW_CAP = 100_000;
+// A range is at most 90 days, the longest retention (B13); `to` at most 89 days after `from`.
+export const MAX_RANGE_DAYS = 90;
 const CATEGORIES = ['productive', 'neutral', 'unproductive'];
 const APP_CAT = `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'app' AND lower(r.pattern) = lower(a.app_name) LIMIT 1), 'neutral')`;
 const DOM_CAT = `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'domain'
@@ -38,7 +40,7 @@ async function reportRange(c: Tx, u: User, q: Record<string, string | undefined>
   if (!isDay(q.from)) throw bad('from', 'from must be YYYY-MM-DD');
   if (!isDay(q.to)) throw bad('to', 'to must be YYYY-MM-DD');
   if (q.to! < q.from!) throw bad('to', 'to is before from');
-  if (Date.parse(q.to!) - Date.parse(q.from!) > 365 * 86400_000) throw bad('to', 'range over 366 days');
+  if (Date.parse(q.to!) - Date.parse(q.from!) > (MAX_RANGE_DAYS - 1) * 86400_000) throw bad('to', `range over ${MAX_RANGE_DAYS} days`);
   const scopes = ['employee_id', 'manager_user_id', 'department'].filter((k) => q[k]);
   if (scopes.length > 1) throw bad(scopes[1], 'at most one of employee_id, manager_user_id, department');
   if (q.manager_user_id && u.role === 'manager' && q.manager_user_id !== u.id) throw new ApiError(403, 'FORBIDDEN', 'Managers see only their own team');

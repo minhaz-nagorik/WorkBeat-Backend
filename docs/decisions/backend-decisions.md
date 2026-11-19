@@ -17,7 +17,7 @@ its D-numbers; a disagreement is a defect. Cite them as `B<n>` in specs.
 | B10 | `/cron/*` routes authenticate with a shared secret header from the scheduler and run in `system` scope | Plan §3 "Scheduled jobs" |
 | B11 | `screenshot_interval_seconds` is one of 0, 600, 1800, 3600, and not more frequent than the company's tier | The agents accept only these values |
 | B12 | An employee has at most one manager | Prototype "Manager teams"; the PRD's many-to-many is not used |
-| B13 | Data retention is per company, 1–365 days; partitions older than 365 days are dropped | PRD "Retention and suspension"; partitions cannot be dropped per company |
+| B13 | Data retention is per company, 30, 60 or 90 days (default 90); partitions older than 90 days are dropped, and report, export and screenshot ranges are at most 90 days. Was 1–365 (ranges up to 366 days) until 19 Nov 2026, when the product owner limited it to these three choices (migration 0009) | PRD "Retention and suspension"; partitions cannot be dropped per company |
 | B14 | Company status adds `trial` beside `active`, `suspended` and `expired` | Prototype staff area; PRD Starter plan has a 14-day trial |
 | B15 | `/cron/cleanup` commits each delete batch in its own short transaction under a per-job advisory transaction lock, and stops at a time budget. Amends B2 for that route only | A retention run can delete millions of rows; one transaction would hold a pooled connection for minutes |
 | B16 | `update_package_url` is signed once per release per UTC day and valid to the end of the next day | A fresh signature per request would change the policy ETag every time, so `304` would never happen |

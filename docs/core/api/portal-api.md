@@ -276,7 +276,7 @@ Response `200`:
 |---|---|---|
 | name | string | |
 | slug | string | read-only |
-| data_retention_days | int | 1–365 |
+| data_retention_days | int | 30, 60 or 90 |
 | idle_threshold_seconds | int | 60–3600 |
 | alert_email | object | `{ roles: array<enum(company_admin\|manager\|it_admin)>, types: array<enum(process_restart\|hosts_modified\|config_changed\|clock_tampered\|permission_revoked\|offline\|duplicate_device_id)>, delivery: enum(instant\|hourly\|daily) }` |
 | timezone | string | IANA name, default `UTC` |
@@ -291,7 +291,7 @@ Request (all optional):
 | field | type | required | notes |
 |---|---|---|---|
 | name | string | no | 1–100 characters |
-| data_retention_days | int | no | 1–365 |
+| data_retention_days | int | no | 30, 60 or 90 |
 | idle_threshold_seconds | int | no | 60–3600 |
 | alert_email | object | no | shape as in GET |
 | timezone | string | no | known IANA name |
@@ -924,7 +924,7 @@ Query:
 | field | type | required | notes |
 |---|---|---|---|
 | from | string `YYYY-MM-DD` | yes¹ | inclusive, company `timezone`; moved up to the first retained day |
-| to | string `YYYY-MM-DD` | yes¹ | inclusive; at most 366 days after `from` |
+| to | string `YYYY-MM-DD` | yes¹ | inclusive; the range is at most 90 days (`to` at most 89 days after `from`) |
 | date | string `YYYY-MM-DD` | — | shorthand for `from=date&to=date` |
 | limit | int | no | 1–60, default 24. Every tile loads the full JPEG, so pages stay small |
 | cursor | string | no | `next_cursor` of the previous page |
@@ -948,7 +948,7 @@ Response `200`:
 | items[].download_url | string | same object and expiry; R2 answers it as `attachment; filename="<hostname>-<YYYY-MM-DD>-<HHMM>.jpg"` (company time), `image/jpeg`. No CORS needed |
 | items[].expires_at | ISO-8601 datetime | |
 
-Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND` (outside team or other company; no URL issued); `422 VALIDATION_FAILED` (bad or reversed dates, range over 366 days, `limit`, `cursor`).
+Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND` (outside team or other company; no URL issued); `422 VALIDATION_FAILED` (bad or reversed dates, range over 90 days, `limit`, `cursor`).
 Notes: signed URLs are issued only for the page returned, and none while the tier is `off`. URLs never logged.
 
 ---
@@ -976,7 +976,7 @@ Common errors:
 |---|---|---|
 | 403 | `FORBIDDEN` | it_admin; manager passing another `manager_user_id` |
 | 404 | `NOT_FOUND` | `employee_id` outside the caller's scope |
-| 422 | `VALIDATION_FAILED` | malformed date, `to` before `from`, range over 366 days |
+| 422 | `VALIDATION_FAILED` | malformed date, `to` before `from`, range over 90 days |
 
 Productivity is resolved at read time: app sessions by `app_name` (`match_type` `app`), URL visits by `domain`, case-insensitive; no match = `neutral`.
 

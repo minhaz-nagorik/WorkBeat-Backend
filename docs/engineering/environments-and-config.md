@@ -75,7 +75,7 @@ repositories and to browsers.
 ## Deliberately not configurable
 
 - **The scope model** (`tenant`, `staff`, `system`). There is no flag that lets a route skip it.
-- **The retention range** 1–365 days (B13). Companies choose inside it; operators cannot widen it.
+- **The retention choices** 30, 60 or 90 days (B13). Companies pick one; operators cannot add others.
 - **The B7 window** (now − 8 days to now + 1 day).
 - **Logging of bodies or secrets.** There is no debug level that turns it on.
 
