@@ -12,6 +12,7 @@ const BROWSERS = ['safari', 'google chrome', 'chrome', 'microsoft edge', 'msedge
 const EXPORT_ROW_CAP = 100_000;
 // A range is at most 90 days, the longest retention (B13); `to` at most 89 days after `from`.
 export const MAX_RANGE_DAYS = 90;
+export const PDF_MAX_DAYS = 31;
 const CATEGORIES = ['productive', 'neutral', 'unproductive'];
 // Category of an app name or domain from the rules, at read time (never stored, PRD).
 const appCat = (col: string) => `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'app' AND lower(r.pattern) = lower(${col}) LIMIT 1), 'neutral')`;
@@ -272,26 +273,34 @@ export class ReportsController {
   }
 
   @Get('employees/:id/timesheet')
-  async timesheet(@Req() req: FastifyRequest, @Param('id') id: string, @Query('week') week: string) {
-    const { timezone: _tz, ...data } = await this.sheet(req, id, week);
+  async timesheet(@Req() req: FastifyRequest, @Param('id') id: string, @Query() q: Record<string, string | undefined>) {
+    const { timezone: _tz, ...data } = await this.sheet(req, id, q);
     return { data };
   }
 
-  private async sheet(req: FastifyRequest, id: string, week: string) {
+  // A Monday `week` (seven days), or any `from`..`to` of at most MAX_RANGE_DAYS days.
+  private async sheet(req: FastifyRequest, id: string, q: Record<string, string | undefined>, maxDays = MAX_RANGE_DAYS) {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, 'reports');
       const e = await employeeFor(c, u, id);
       await localTime(c);
-      if (!isDay(week) || new Date(week + 'T00:00:00Z').getUTCDay() !== 1) throw bad('week', 'week must be a Monday, YYYY-MM-DD');
-      const to = addDays(week, 6);
-      const raw = await daily(c, { ids: [e.id], from: week, to });
-      const rows = dayRows(raw, days(week, to), await pausedDays(c, e.id, week, to));
+      const week = q.from || q.to ? null : q.week;
+      if (!q.from && !q.to && (!isDay(week!) || new Date(week + 'T00:00:00Z').getUTCDay() !== 1)) throw bad('week', 'week must be a Monday, YYYY-MM-DD');
+      const from = week ?? q.from!, to = week ? addDays(week, 6) : q.to!;
+      if (!week) {
+        if (!isDay(from)) throw bad('from', 'from must be YYYY-MM-DD');
+        if (!isDay(to)) throw bad('to', 'to must be YYYY-MM-DD');
+        if (to < from) throw bad('to', 'to is before from');
+        if (Date.parse(to) - Date.parse(from) > (maxDays - 1) * 86400_000) throw bad('to', `range over ${maxDays} days`);
+      }
+      const raw = await daily(c, { ids: [e.id], from, to });
+      const rows = dayRows(raw, days(from, to), await pausedDays(c, e.id, from, to));
       const { rows: [co] } = await c.query('SELECT name, timezone FROM companies');
       const sum = (k: keyof (typeof rows)[0]) => rows.reduce((a, x) => a + (x[k] as number), 0);
       const act = { a: raw.reduce((s, x) => s + x.act, 0), t: raw.reduce((s, x) => s + x.tot, 0) };
       return {
         timezone: co.timezone as string, // for the PDF's clock times only
-        employee: { name: e.name, email: e.email }, company: { name: co.name }, week, days: rows,
+        employee: { name: e.name, email: e.email }, company: { name: co.name }, week, from, to, days: rows,
         totals: { tracked_seconds: sum('tracked_seconds'), activity_percent: pct(act.a, act.t), productive_seconds: sum('productive_seconds'),
           neutral_seconds: sum('neutral_seconds'), unproductive_seconds: sum('unproductive_seconds') },
       };
@@ -299,9 +308,10 @@ export class ReportsController {
   }
 
   // The JSON timesheet as a one-page PDF, built per request, never stored.
+  // shortcut: one page holds about 31 day rows, so the PDF takes at most 31 days; paginate in pdf.ts for longer.
   @Get('employees/:id/timesheet.pdf')
-  async timesheetPdf(@Req() req: FastifyRequest, @Param('id') id: string, @Query('week') week: string, @Res() res: FastifyReply) {
-    const t = await this.sheet(req, id, week);
+  async timesheetPdf(@Req() req: FastifyRequest, @Param('id') id: string, @Query() q: Record<string, string | undefined>, @Res() res: FastifyReply) {
+    const t = await this.sheet(req, id, q, PDF_MAX_DAYS);
     const hm = (s: number) => `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
     const clock = (v: Date | null) => (v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: t.timezone }) : '-');
     const pctTxt = (p: number | null) => (p === null ? '-' : `${p}%`);
@@ -309,7 +319,7 @@ export class ReportsController {
     const row = (cells: string[], bold = false) => cells.map((text, i) => ({ text, x: cols[i], bold, gap: i ? 0 : 18 }));
     const pdf = textPdf([
       { text: `Timesheet - ${t.employee.name}`, size: 16, bold: true, gap: 0 },
-      { text: `${t.company.name} · week of ${t.week} · ${t.employee.email ?? ''}`, gap: 22 },
+      { text: `${t.company.name} · ${t.week ? `week of ${t.week}` : `${t.from} to ${t.to}`} · ${t.employee.email ?? ''}`, gap: 22 },
       ...row(['Date', 'First', 'Last', 'Tracked', 'Activity', 'Productive', 'Neutral', 'Unprod.'], true),
       ...t.days.flatMap((d: any) => row([d.date + (d.paused ? ' *' : ''), clock(d.first_activity_at), clock(d.last_activity_at), hm(d.tracked_seconds),
         pctTxt(d.activity_percent), hm(d.productive_seconds), hm(d.neutral_seconds), hm(d.unproductive_seconds)])),
@@ -317,7 +327,7 @@ export class ReportsController {
         hm(t.totals.neutral_seconds), hm(t.totals.unproductive_seconds)], true),
       { text: `* monitoring was paused on that day. Times in ${t.timezone}.`, size: 8, gap: 28 },
     ]);
-    const name = `timesheet-${t.employee.name.replace(/[^\w.-]+/g, '-')}-${t.week}.pdf`;
+    const name = `timesheet-${t.employee.name.replace(/[^\w.-]+/g, '-')}-${t.week ?? `${t.from}-${t.to}`}.pdf`;
     return res.status(200).type('application/pdf').header('Content-Disposition', `attachment; filename="${name}"`).send(pdf);
   }
 

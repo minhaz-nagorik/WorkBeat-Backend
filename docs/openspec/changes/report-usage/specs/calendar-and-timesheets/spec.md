@@ -45,9 +45,13 @@ Every calendar, timesheet and dashboard day SHALL run from local midnight to mid
 - **WHEN** a pause overlapping a day was cancelled
 - **THEN** that day's row has `paused` = `false`
 
-### Requirement: The timesheet covers one employee for one week
+### Requirement: The timesheet covers one employee for a week or a date range
 <!-- source: PRD "Activity levels, productivity, calendar and timesheets" · prototype "Weekly timesheet" -->
-`GET /v1/employees/:id/timesheet?week=YYYY-MM-DD` SHALL return the employee's name and email, the company name and seven day rows with `date`, `first_activity_at`, `last_activity_at`, `tracked_seconds`, `activity_percent`, the three productivity seconds and `paused`, plus week totals. A `week` that is not a Monday MUST get `422 VALIDATION_FAILED`.
+`GET /v1/employees/:id/timesheet?week=YYYY-MM-DD` SHALL return the employee's name and email, the company name and seven day rows with `date`, `first_activity_at`, `last_activity_at`, `tracked_seconds`, `activity_percent`, the three productivity seconds and `paused`, plus totals. It SHALL also take `from` and `to` (YYYY-MM-DD, at most 90 days, owner 19 Nov 2026) instead of `week`, returning one row per day and `from`, `to`. A `week` that is not a Monday MUST get `422 VALIDATION_FAILED`, and so MUST a bad, reversed or over-long range.
+
+#### Scenario: A date range
+- **WHEN** `from=2026-11-03&to=2026-11-12` is requested
+- **THEN** ten day rows are returned with totals over those days
 
 #### Scenario: A Wednesday is given
 - **WHEN** `week=2026-11-11` (a Wednesday) is requested
@@ -63,7 +67,7 @@ Every calendar, timesheet and dashboard day SHALL run from local midnight to mid
 
 ### Requirement: The timesheet is generated as a PDF
 <!-- source: PRD "Activity levels, productivity, calendar and timesheets" · Plan-v3.5 §4.4 -->
-`GET /v1/employees/:id/timesheet.pdf?week=YYYY-MM-DD` SHALL return `200` with `Content-Type: application/pdf` and a `Content-Disposition` file name holding the employee and week, generated on request from the same values as the JSON timesheet. The PDF MUST NOT be stored.
+`GET /v1/employees/:id/timesheet.pdf` with `week`, or `from` and `to` of at most 31 days, SHALL return `200` with `Content-Type: application/pdf` and a `Content-Disposition` file name holding the employee and week or range, generated on request from the same values as the JSON timesheet. The PDF MUST NOT be stored.
 
 #### Scenario: An admin downloads a timesheet
 - **WHEN** an admin requests the PDF for a Monday week
