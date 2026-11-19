@@ -353,10 +353,10 @@ async function main() {
 
   const devices = expect(await call('GET', '/v1/devices', it.token), 200);
   const d = devices.find((x: any) => x.id === dev.device_id);
-  assert.equal(d.status, 'tamper'); assert.ok(d.badges.includes('permission_pending'));
+  assert.equal(d.status, 'online', 'an open alert is not a status (B31)'); assert.ok(d.badges.includes('permission_pending') && d.badges.includes('open_alert'));
   assert.ok('released_at' in d && 'deactivated_at' in d);
   const adaNow = expect(await call('GET', `/v1/employees/${ada.id}`, mgr.token), 200);
-  assert.equal(adaNow.presence, 'tamper'); assert.equal(adaNow.devices[0].id, dev.device_id);
+  assert.ok(['active', 'idle'].includes(adaNow.presence), 'an open alert leaves presence to the devices'); assert.equal(adaNow.devices[0].id, dev.device_id);
   assert.equal(expect(await call('GET', '/v1/employees', admin), 200).find((e: any) => e.id === bob.id).presence, 'no_device');
   const team2 = expect(await call('GET', `/v1/employees?manager_user_id=${mgr.id}`, admin), 200);
   assert.ok(team2.every((e: any) => e.manager_user_id === mgr.id) && team2.some((e: any) => e.id === ada.id));

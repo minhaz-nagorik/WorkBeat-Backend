@@ -15,19 +15,19 @@ alerts and seats, each shown only to the roles allowed to see it.
 
 ### Requirement: Device counts follow device status
 <!-- source: Plan-v3.5 §4.5 "Dashboard" · Plan-v3.5 §5.9 · B12 -->
-The response SHALL carry `devices` with `online`, `offline` and `tamper` counts as `device-status` (receive-device-health) derives them, excluding released and deactivated devices. `company_admin` and `it_admin` MUST count all the company's devices; `manager` MUST count only devices of employees whose `manager_user_id` is the caller.
+The response SHALL carry `devices` with `online` and `offline` counts as `device-status` (receive-device-health) derives them and `open_alert`, the devices with that badge, excluding released and deactivated devices. `company_admin` and `it_admin` MUST count all the company's devices; `manager` MUST count only devices of employees whose `manager_user_id` is the caller.
 
 #### Scenario: A manager's dashboard
 - **WHEN** a manager with three team devices, one offline, opens the dashboard
-- **THEN** `devices` is `online` 2, `offline` 1, `tamper` 0
+- **THEN** `devices` is `online` 2, `offline` 1, `open_alert` 0
 
 #### Scenario: A device both offline and tampered
 - **WHEN** a device is offline and has an open tamper event
-- **THEN** it is counted once, under the status `device-status` derives for it
+- **THEN** it counts in `offline` and in `open_alert`
 
 #### Scenario: A company with no devices
 - **WHEN** a company with no devices opens the dashboard
-- **THEN** `devices` is `online` 0, `offline` 0, `tamper` 0
+- **THEN** `devices` is `online` 0, `offline` 0, `open_alert` 0
 
 ### Requirement: Today's activity is shown to report readers only
 <!-- source: D1 · PRD "Users and roles" · Plan-v3.5 §4.5 "Dashboard" -->

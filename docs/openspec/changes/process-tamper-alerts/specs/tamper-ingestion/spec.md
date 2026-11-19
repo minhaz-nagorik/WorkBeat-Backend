@@ -24,7 +24,7 @@ types it accepts, and what it records about the device at that moment.
 
 #### Scenario: The same type again after a resolution
 - **WHEN** a device reports a new `hosts_modified` event with a new `id` after the previous one was resolved
-- **THEN** a second row is stored and the device is `tamper` again
+- **THEN** a second row is stored and the device has the `open_alert` badge again
 
 ### Requirement: A reused ID with different content is refused
 <!-- source: D13 · agent-contract.md "Status and code catalog" -->
@@ -88,13 +88,13 @@ An event SHALL be stored whatever the age of its `occurred_at`; the B7 window MU
 - **WHEN** a device of a paused employee reports a `config_changed` event
 - **THEN** the event is stored and raises an alert like any other
 
-### Requirement: An unresolved event makes the device tampered and raises an alert
+### Requirement: An unresolved event flags the device and raises an alert
 <!-- source: PRD "Online status and tamper detection" · Plan-v3.5 §5.9 -->
-A stored event SHALL stay unresolved until `resolved_at` is set; while it is, the device's derived status MUST be `tamper` (`device-status`, receive-device-health), and its first insertion MUST be handed to `alert-emails`.
+A stored event SHALL stay unresolved until `resolved_at` is set; while it is, the device MUST carry the `open_alert` badge (`device-status`, receive-device-health), and its first insertion MUST be handed to `alert-emails`.
 
 #### Scenario: Hosts file edited
 - **WHEN** a `hosts_modified` event is stored
-- **THEN** `GET /v1/devices` shows the device as `tamper`
+- **THEN** `GET /v1/devices` shows the device with the `open_alert` badge
 
 #### Scenario: A repeat is not a second alert
 - **WHEN** a stored event's `id` is sent again

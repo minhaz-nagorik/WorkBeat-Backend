@@ -60,7 +60,7 @@ resolved, and how fresh the feed is.
 #### Scenario: IT closes a reviewed event
 - **WHEN** an IT admin resolves the device's only open tamper event
 - **THEN** the event carries `resolved_at` and `resolved_by`
-- **AND** the device's status is no longer `tamper`
+- **AND** the device no longer has the `open_alert` badge
 
 #### Scenario: A manager tries to resolve
 - **WHEN** a manager calls `POST /v1/alerts/:id/resolve`
@@ -72,7 +72,7 @@ resolved, and how fresh the feed is.
 
 #### Scenario: One of two open events is resolved
 - **WHEN** a device has two open tamper events and IT resolves one
-- **THEN** the device's status is still `tamper`
+- **THEN** the device still has the `open_alert` badge
 
 ### Requirement: An event is in the feed as soon as it is stored
 <!-- source: PRD "Success metrics" -->

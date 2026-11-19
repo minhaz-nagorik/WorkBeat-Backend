@@ -21,7 +21,6 @@ const DEVICE = `d.id, d.hostname, d.os, d.os_version, d.arch, d.agent_version, d
 export function deviceStatus(d: any) {
   if (d.released_at) return 'released';
   if (d.deactivated_at) return 'deactivated';
-  if (d.tampered) return 'tamper';
   const seen = (d.last_heartbeat_at ?? d.enrolled_at).getTime();
   if (d.offline_since || Date.now() - seen > OFFLINE_MINUTES * 60_000) return 'offline';
   return 'online';
@@ -48,6 +47,7 @@ async function withStatus(c: Tx, rows: any[], detail = false) {
       ...(d.os === 'macos' && perms.some((p) => p !== 'granted') ? ['permission_pending'] : []),
       ...(browsers.some((b) => b === 'pending' || b === 'unreadable') ? ['browser_access_pending'] : []),
       ...(d.active_pause_id || d.paused ? ['paused'] : []),
+      ...(d.tampered ? ['open_alert'] : []), // B31: an open tamper alert is a badge, not a status
     ];
     const base = { id: d.id, hostname: d.hostname, os: d.os, os_version: d.os_version, arch: d.arch, agent_version: d.agent_version,
       employee: d.employee, status: deviceStatus(d), badges, last_heartbeat_at: d.last_heartbeat_at,
@@ -146,8 +146,8 @@ export class DevicesController {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN_IT);
       const rows = await listDevices(c);
-      const status: Record<string, number> = { online: 0, offline: 0, tamper: 0, deactivated: 0, released: 0 };
-      const badges: Record<string, number> = { outdated: 0, permission_pending: 0, browser_access_pending: 0, paused: 0 };
+      const status: Record<string, number> = { online: 0, offline: 0, deactivated: 0, released: 0 };
+      const badges: Record<string, number> = { outdated: 0, permission_pending: 0, browser_access_pending: 0, paused: 0, open_alert: 0 };
       for (const d of rows) {
         status[d.status]++;
         for (const b of d.badges) badges[b]++;

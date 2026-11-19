@@ -191,7 +191,7 @@ An import with any invalid row (no `name`, a missing or malformed email, a `mana
 
 ### Requirement: Employees carry a derived presence
 <!-- source: Plan-v3.5 §4.5 "Employees" · B12 · B18 -->
-`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` and `deactivated_at` NULL), `tamper` (one such device is `tamper`), `offline` (none of them is `online`), `active` (an `online` one is active, see below), else `idle`. It MUST never be stored.
+`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` and `deactivated_at` NULL), `offline` (none of them is `online`), `active` (an `online` one is active, see below), else `idle`. An open tamper alert MUST NOT change it. It MUST never be stored.
 
 #### Scenario: A paused employee with a tampered laptop
 - **WHEN** an employee has a pause in force and a device with an open tamper event

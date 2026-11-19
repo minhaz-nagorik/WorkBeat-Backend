@@ -692,8 +692,8 @@ Response `200`: array<object>:
 | arch | enum(x64\|arm64) | |
 | agent_version | string | |
 | employee | object | `{ id, name }`; key name (derived) |
-| status | enum(released\|deactivated\|tamper\|offline\|online) | first that applies, in this order; never stored |
-| badges | array<enum(outdated\|permission_pending\|browser_access_pending\|paused)> | Windows is never `permission_pending` |
+| status | enum(released\|deactivated\|offline\|online) | first that applies, in this order; never stored |
+| badges | array<enum(outdated\|permission_pending\|browser_access_pending\|paused\|open_alert)> | Windows is never `permission_pending`; `open_alert` while an unresolved tamper event other than `offline` exists (B31) |
 | last_heartbeat_at | ISO-8601 datetime \| null | |
 
 Errors: `403 FORBIDDEN` (manager).
@@ -709,7 +709,7 @@ Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`.
 Roles: company_admin, it_admin · Spec: [`device-status`][device-status]
 Device counts for the rollout dashboard.
 Request: none.
-Response `200`: count per `status`, count per badge, and `healthy` (online with no badge). Shape: `{ status: { online, offline, tamper, deactivated, released }, badges: { outdated, permission_pending, browser_access_pending, paused }, healthy }`, all int.
+Response `200`: count per `status`, count per badge, and `healthy` (online with no badge). Shape: `{ status: { online, offline, deactivated, released }, badges: { outdated, permission_pending, browser_access_pending, paused, open_alert }, healthy }`, all int.
 Errors: `403 FORBIDDEN` (manager).
 
 ### `POST /v1/devices/:id/deactivate`
@@ -908,7 +908,7 @@ Close an alert.
 Request: none.
 Response `200`: the event, fields as in `GET /v1/alerts` items.
 Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`.
-Notes: sets `resolved_at`, `resolved_by`. Repeating returns it unchanged. With no open tamper event left the device is no longer `tamper`.
+Notes: sets `resolved_at`, `resolved_by`. Repeating returns it unchanged. With no open tamper event left the device loses the `open_alert` badge.
 
 ---
 
@@ -1103,7 +1103,7 @@ Response `200`:
 
 | field | type | notes |
 |---|---|---|
-| devices | object | `{ online: int, offline: int, tamper: int }`, released and deactivated excluded. Manager: own team's devices only |
+| devices | object | `{ online: int, offline: int, open_alert: int }`, released and deactivated excluded; `open_alert` counts devices with that badge, which are also online or offline. Manager: own team's devices only |
 | today | object | company_admin, manager only: `{ tracked_seconds: int, activity_percent: number\|null }` since local midnight |
 | alerts | array<object> | newest five the caller would see in `GET /v1/alerts`, same fields and scoping |
 | seats | object | company_admin only: `{ used: int, limit: int\|null }` |

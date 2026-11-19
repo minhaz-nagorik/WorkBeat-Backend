@@ -370,7 +370,7 @@ export class ReportsController {
         .filter((d) => d.status !== 'released' && d.status !== 'deactivated');
       const count = (s: string) => devs.filter((d) => d.status === s).length;
       const data: Record<string, unknown> = {
-        devices: { online: count('online'), offline: count('offline'), tamper: count('tamper') },
+        devices: { online: count('online'), offline: count('offline'), open_alert: devs.filter((d) => d.badges.includes('open_alert')).length },
         alerts: (await alerts(c, u, {}, 5)).items,
       };
       if (u.role !== 'it_admin') {

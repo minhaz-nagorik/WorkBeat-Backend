@@ -7,11 +7,11 @@ and the device list and rollout counts that serve them to admins and IT.
 
 ### Requirement: Status is derived in a fixed order and never stored
 <!-- source: Plan-v3.5 §2.4, §5.9 · D38 · D47 -->
-A device's `status` SHALL be computed at read time as the first that applies: `released` (`released_at` set), `deactivated` (`deactivated_at` set), `tamper` (an unresolved tamper event other than `offline`), `offline` (`offline_since` set), else `online`. No column MUST store it, and there MUST be no `unassigned` status.
+A device's `status` SHALL be computed at read time as the first that applies: `released` (`released_at` set), `deactivated` (`deactivated_at` set), `offline` (`offline_since` set), else `online`. No column MUST store it, and there MUST be no `unassigned` or `tamper` status.
 
 #### Scenario: A tampered device goes offline
 - **WHEN** a device has an unresolved `hosts_modified` event and `offline_since` set
-- **THEN** its status is `tamper`
+- **THEN** its status is `offline`
 
 #### Scenario: A released device had tamper events
 - **WHEN** a released device has unresolved tamper events
@@ -53,6 +53,18 @@ Each device SHALL carry `badges`: `outdated` when `agent_version` is below the e
 #### Scenario: A Windows PC
 - **WHEN** a Windows device reports `permissions` `not_required`
 - **THEN** its badges never include `permission_pending`
+
+### Requirement: An open tamper alert is a badge, not a status
+<!-- source: B31 · tamper-ingestion (process-tamper-alerts) -->
+A device SHALL carry the badge `open_alert` while it has an unresolved tamper event other than `offline`, and its `status` MUST be derived as if it had none.
+
+#### Scenario: Hosts file edited
+- **WHEN** an online device has an unresolved `hosts_modified` event
+- **THEN** its status is `online` and its badges include `open_alert`
+
+#### Scenario: The alert is resolved
+- **WHEN** the device's last open tamper event is resolved
+- **THEN** its badges no longer include `open_alert`
 
 ### Requirement: Admins and IT list the company's devices
 <!-- source: Plan-v3.5 §4.5 "Devices" · PRD "Permission matrix" -->

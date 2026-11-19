@@ -12,7 +12,7 @@ import { listDevices } from './devices.controller';
 // Fallback for agents that do not report input: a 10-minute bucket is closed by the next sample and
 // sent with the next 10-minute sync, so a working employee's newest one can be ~31 minutes old.
 const BUCKET_LOOKBACK_MINUTES = 35;
-// presence (employee-directory): paused > no_device > tamper > offline (no live device online) >
+// presence (employee-directory): paused > no_device > offline (no live device online) >
 // active (an online device is active) > idle. A live binding is a device neither released nor
 // deactivated. A device is active when its latest heartbeat reported input within the idle threshold,
 // or, when it reported none (last_input_at NULL), when one of its own recent buckets has active samples.
@@ -41,8 +41,7 @@ async function withPresence(c: Tx, rows: any[]) {
     const mine = devs.filter((d) => d.employee.id === r.id);
     const live = mine.filter((d) => d.status !== 'deactivated');
     const online = live.filter((d) => d.status === 'online');
-    const presence = s?.paused ? 'paused' : !live.length ? 'no_device' : live.some((d) => d.status === 'tamper') ? 'tamper'
-      : !online.length ? 'offline' : online.some((d) => active.has(d.id)) ? 'active' : 'idle';
+    const presence = s?.paused ? 'paused' : !live.length ? 'no_device' : !online.length ? 'offline' : online.some((d) => active.has(d.id)) ? 'active' : 'idle';
     return { ...r, presence, devices: mine.map((d) => ({ id: d.id, hostname: d.hostname, os: d.os, status: d.status, last_heartbeat_at: d.last_heartbeat_at })) };
   });
 }

@@ -33,6 +33,7 @@
 ## 4. device-status
 
 - [ ] 4.1 Status and badge derivation in one query helper shared by the device list, rollout and `dashboard-summary`
+- [x] 4.7 No `tamper` status or presence (B31): an open tamper alert is the `open_alert` badge; rollout and dashboard count it
 - [ ] 4.2 `GET /v1/devices`, `GET /v1/devices/:id`, `GET /v1/rollout` for `company_admin` and `it_admin`
 - [ ] 4.3 Semver comparison of `agent_version` against the effective minimum (`companies.min_agent_version` only, until `distribute-agents` ships)
 - [ ] 4.4 Tests: status order; Windows never `permission_pending`; manager and staff refused; tenant isolation: two companies' devices never appear in each other's list or counts
