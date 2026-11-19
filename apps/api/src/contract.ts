@@ -8,6 +8,7 @@ export const LIMITS = {
   bodyBytes: 1024 * 1024,
   activityBodyBytes: 8 * 1024 * 1024,
   screenshotMaxBytes: 4 * 1024 * 1024,
+  screenshotThumbMaxBytes: 256 * 1024, // a larger thumb_bytes is ignored, never refused (screenshot-upload)
   screenshotUploadUrlSeconds: 15 * 60,
   packageUrlSeconds: 60 * 60,
   enrollmentTokenHours: 24,
@@ -127,6 +128,7 @@ export const screenshotBody = z.object({
   id: z.string().uuid(),
   captured_at: time,
   bytes: z.number().int().positive(),
+  thumb_bytes: z.number().int().optional().catch(undefined), // optional thumbnail; a bad value means none, never a refusal
 });
 
 export const tamperBody = z.object({

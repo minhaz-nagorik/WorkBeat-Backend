@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { ADMIN, ADMIN_MANAGER, ALL, employeeFor, idOrNone, portalUser, User } from '../auth';
 import { ApiError, Db, parse, Tx } from '../core';
 import { baseUrl } from '../http';
-import { Storage } from '../storage';
+import { Storage, thumbPath } from '../storage';
 import { isDay, localTime, MAX_RANGE_DAYS } from './reports.controller';
 import { listDevices } from './devices.controller';
 
@@ -370,7 +370,7 @@ export class EmployeesController {
       const where = `s.employee_id = $1 AND s.status = 'uploaded' AND s.captured_at >= $2::date AND s.captured_at < $3::date + 1`;
       const { rows: [{ total }] } = await c.query(`SELECT count(*)::int AS total FROM screenshots s WHERE ${where}`, [e.id, range.from, range.to]);
       const { rows } = await c.query(
-        `SELECT s.id, s.captured_at, s.device_id, d.hostname, s.storage_path,
+        `SELECT s.id, s.captured_at, s.device_id, d.hostname, s.storage_path, s.thumb_bytes,
                 to_char(s.captured_at, 'YYYY-MM-DD-HH24MI') AS local_time,
                 to_char(s.captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
            FROM screenshots s JOIN devices d ON d.id = s.device_id
@@ -382,8 +382,8 @@ export class EmployeesController {
       const next_cursor = rows.length > limit && last ? Buffer.from(`${last.cursor_at}|${last.id}`).toString('base64url') : null;
       const exp = Math.floor(Date.now() / 1000) + SCREENSHOT_VIEW_SECONDS;
       const sign = (path: string, download?: string) => this.storage.sign(baseUrl(req), 'GET', 'screenshots', path, exp, download);
-      return { data: { screenshots_enabled: true, ...range, total, next_cursor, items: page.map(({ storage_path, local_time, cursor_at, ...r }) => ({
-        ...r, view_url: sign(storage_path),
+      return { data: { screenshots_enabled: true, ...range, total, next_cursor, items: page.map(({ storage_path, thumb_bytes, local_time, cursor_at, ...r }) => ({
+        ...r, view_url: sign(storage_path), thumb_url: thumb_bytes ? sign(thumbPath(storage_path)) : null,
         download_url: sign(storage_path, `${r.hostname.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 150) || 'screenshot'}-${local_time}.jpg`),
         expires_at: new Date(exp * 1000),
       })) } };

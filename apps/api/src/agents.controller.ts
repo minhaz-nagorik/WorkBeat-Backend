@@ -5,7 +5,7 @@ import { activityBody, HEALTH_FIELDS, heartbeatBody, LIMITS, screenshotBody, tam
 import { ApiError, Db, parse, sha256 } from './core';
 import { authDevice, cmpVersion, newestRelease, pauseInForce, policyVersion } from './device';
 import { baseUrl, tag } from './http';
-import { Storage } from './storage';
+import { Storage, thumbPath } from './storage';
 import { rebuildLateDays } from './usage';
 
 const inWindow = (d: Date) => {
@@ -200,10 +200,12 @@ export class AgentsController {
       if (!inWindow(b.captured_at)) throw new ApiError(422, 'VALIDATION_FAILED', 'captured_at outside the accepted window', { fields: ['captured_at'] });
 
       const path = `${dev.company_id}/${dev.device_id}/${b.id}.jpg`;
+      // A thumbnail is optional and never a reason to refuse (screenshot-upload "A screenshot may come with a thumbnail").
+      const thumb = b.thumb_bytes && b.thumb_bytes > 0 && b.thumb_bytes <= LIMITS.screenshotThumbMaxBytes ? b.thumb_bytes : null;
       const ins = await c.query(
-        `INSERT INTO screenshots (id, company_id, device_id, employee_id, captured_at, storage_path, bytes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
-        [b.id, dev.company_id, dev.device_id, dev.employee_id, b.captured_at, path, b.bytes],
+        `INSERT INTO screenshots (id, company_id, device_id, employee_id, captured_at, storage_path, bytes, thumb_bytes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
+        [b.id, dev.company_id, dev.device_id, dev.employee_id, b.captured_at, path, b.bytes, thumb],
       );
       let status = 'pending';
       if (ins.rowCount) res.status(201);
@@ -213,15 +215,19 @@ export class AgentsController {
         if (!s || s.device_id !== dev.device_id || s.bytes !== b.bytes || s.captured_at.getTime() !== b.captured_at.getTime())
           throw new ApiError(409, 'IDEMPOTENCY_KEY_REUSED', 'Screenshot ID reused');
         status = s.status;
+        // A retry may re-encode its thumbnail to another size: keep the latest while pending.
+        if (status === 'pending') await c.query('UPDATE screenshots SET thumb_bytes = $2 WHERE id = $1', [b.id, thumb]);
         res.status(200);
       }
       const exp = Math.floor(Date.now() / 1000) + LIMITS.screenshotUploadUrlSeconds;
+      const pending = status === 'pending';
       return {
         data: {
           id: b.id,
           status,
-          upload_url: status === 'pending' ? this.storage.sign(baseUrl(req), 'PUT', 'screenshots', path, exp) : null,
-          expires_at: status === 'pending' ? new Date(exp * 1000) : null,
+          upload_url: pending ? this.storage.sign(baseUrl(req), 'PUT', 'screenshots', path, exp) : null,
+          thumb_upload_url: pending && thumb ? this.storage.sign(baseUrl(req), 'PUT', 'screenshots', thumbPath(path), exp) : null,
+          expires_at: pending ? new Date(exp * 1000) : null,
         },
       };
     });
@@ -236,7 +242,7 @@ export class AgentsController {
       if (billing) throw billing;
       const notFound = new ApiError(404, 'NOT_FOUND', 'Screenshot not found');
       if (!uuid.safeParse(id).success) throw notFound;
-      const { rows: [s] } = await c.query('SELECT storage_path, bytes, status FROM screenshots WHERE id = $1 AND device_id = $2 FOR UPDATE', [id, dev.device_id]);
+      const { rows: [s] } = await c.query('SELECT storage_path, bytes, thumb_bytes, status FROM screenshots WHERE id = $1 AND device_id = $2 FOR UPDATE', [id, dev.device_id]);
       if (!s) throw notFound;
       if (s.status === 'uploaded') return { data: { id, status: 'uploaded' } };
       const size = await this.storage.size('screenshots', s.storage_path);
@@ -244,7 +250,16 @@ export class AgentsController {
         if (size !== null) await this.storage.remove('screenshots', s.storage_path);
         throw new ApiError(422, 'VALIDATION_FAILED', 'Uploaded object missing or wrong size', { fields: ['bytes'] });
       }
-      await c.query("UPDATE screenshots SET status = 'uploaded', uploaded_at = coalesce(uploaded_at, now()) WHERE id = $1", [id]);
+      // Keep the thumbnail only when whole; a missing or partial one never fails the confirmation.
+      let thumb = s.thumb_bytes as number | null;
+      if (thumb !== null) {
+        const t = await this.storage.size('screenshots', thumbPath(s.storage_path));
+        if (t !== thumb) {
+          if (t !== null) await this.storage.remove('screenshots', thumbPath(s.storage_path));
+          thumb = null;
+        }
+      }
+      await c.query("UPDATE screenshots SET status = 'uploaded', uploaded_at = coalesce(uploaded_at, now()), thumb_bytes = $2 WHERE id = $1", [id, thumb]);
       return { data: { id, status: 'uploaded' } };
     });
   }

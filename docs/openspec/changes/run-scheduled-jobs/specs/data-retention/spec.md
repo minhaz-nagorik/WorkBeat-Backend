@@ -55,7 +55,7 @@ For each company, cleanup SHALL delete `app_sessions`, `url_visits`, `activity_b
 
 ### Requirement: Screenshots past retention are deleted with their files
 <!-- source: B13 · PRD "Retention and suspension" · PRD "Screenshots" -->
-Cleanup SHALL delete each stored object (B26) at `screenshots.storage_path` whose `captured_at` is before now minus the company's `data_retention_days`, then delete those `screenshots` rows. A row whose object could not be deleted MUST be kept for the next run; a missing object MUST count as deleted.
+Cleanup SHALL delete each stored object (B26) at `screenshots.storage_path` whose `captured_at` is before now minus the company's `data_retention_days`, with its thumbnail object (`.thumb.jpg`) when it has one, then delete those `screenshots` rows. A row whose object could not be deleted MUST be kept for the next run; a missing object MUST count as deleted.
 
 #### Scenario: Storage fails for one object
 - **WHEN** Storage refuses one of a batch of 100 deletes
@@ -87,7 +87,7 @@ Cleanup SHALL delete `ingest_batches` rows with `received_at` older than 14 days
 
 ### Requirement: Screenshots never confirmed are deleted after a day
 <!-- source: B7 · D23 · ingest-activity/screenshot-upload -->
-Cleanup SHALL delete every `screenshots` row still `pending` 24 hours after its `created_at`, together with any object at its `storage_path`, whatever the company's retention.
+Cleanup SHALL delete every `screenshots` row still `pending` 24 hours after its `created_at`, together with any object at its `storage_path` and its thumbnail path, whatever the company's retention.
 
 #### Scenario: An upload URL was requested but nothing was uploaded
 - **WHEN** a screenshot row has been `pending` for 25 hours

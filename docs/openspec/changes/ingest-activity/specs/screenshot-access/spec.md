@@ -25,9 +25,17 @@ URL that shows each image lives.
 - **WHEN** every screenshot of the day is still `pending`
 - **THEN** the response has an empty list and issues no signed URL
 
+### Requirement: A tile can load a thumbnail
+<!-- source: product owner 19 Nov 2026 · screenshot-upload "A screenshot may come with a thumbnail" -->
+Each item's `thumb_url` SHALL be a signed URL to the screenshot's thumbnail when the confirmed row has one, and null otherwise; `view_url` MUST always be the full image.
+
+#### Scenario: A screenshot from an agent without thumbnails
+- **WHEN** a listed screenshot was uploaded without a thumbnail
+- **THEN** its `thumb_url` is null and its `view_url` is set
+
 ### Requirement: View URLs are short-lived
 <!-- source: PRD "Screenshots" · PRD "Risks" -->
-Each `view_url` and `download_url` SHALL be a signed URL valid for 5 minutes (value from `packages/shared`) and MUST NOT be logged.
+Each `view_url`, `thumb_url` and `download_url` SHALL be a signed URL valid for 5 minutes (value from `packages/shared`) and MUST NOT be logged.
 
 #### Scenario: A link is shared later
 - **WHEN** a `view_url` is opened 10 minutes after the response

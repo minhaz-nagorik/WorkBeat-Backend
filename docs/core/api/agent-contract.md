@@ -18,7 +18,7 @@ Clients branch on HTTP status and `code`, never on `error`. Every response carri
 | Agent service | `POST /agents/heartbeat` | `X-Device-Key` | Every 5 min; response carries `policy_version` and `monitoring_pause` |
 | Agent service | `GET /agents/policy` | `X-Device-Key`, `If-None-Match` | Every 30 min; `304` when the ETag matches (D8) |
 | Agent service | `POST /agents/activity` | `X-Device-Key`, `Idempotency-Key` | One sealed batch: `app_sessions[]`, `url_visits[]`, `activity_buckets[]`, `idle_intervals[]`; any may be empty (D13, D37) |
-| Agent service | `POST /agents/screenshots` | `X-Device-Key`, `Idempotency-Key` | Request a signed upload URL for screenshot `id`; then `PUT` the JPEG; then `POST /agents/screenshots/:id/confirm` |
+| Agent service | `POST /agents/screenshots` | `X-Device-Key`, `Idempotency-Key` | Request a signed upload URL for screenshot `id`; then `PUT` the JPEG; then `POST /agents/screenshots/:id/confirm`. Optional `thumb_bytes` (≤ 256 KB) also returns `thumb_upload_url` for a small JPEG used on timeline tiles; a missing or wrong thumbnail never fails the screenshot (19 Nov 2026) |
 | Agent service | `POST /agents/tamper` | `X-Device-Key` | One tamper event, sent as soon as detected; `id` is its idempotency key (D24) |
 | Uninstaller | `POST /devices/:id/deactivate` | `X-Device-Key` | Free the seat before removal (D19) |
 | Agent service | `GET` the signed `update_package_url` from policy | signed URL | Self-update (D40) |

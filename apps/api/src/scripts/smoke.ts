@@ -139,6 +139,25 @@ async function main() {
   assert.equal(r.json.code, 'NOT_FOUND');
   step('screenshot: request, PUT, confirm, repeat');
 
+  // optional thumbnail: given, kept when whole; too large or never PUT, ignored without failing the screenshot
+  const thumb = jpeg.subarray(0, 200);
+  const withThumb = async (thumbBytes: unknown, putThumb: boolean) => {
+    const id = randomUUID();
+    let t = await call('POST', '/v1/agents/screenshots', { ...dk(), 'idempotency-key': id }, { id, captured_at: now, bytes: jpeg.length, thumb_bytes: thumbBytes });
+    assert.equal(t.status, 201);
+    const d = t.json.data;
+    assert.equal((await fetch(d.upload_url, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: jpeg })).status, 200);
+    if (putThumb) assert.equal((await fetch(d.thumb_upload_url, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: thumb })).status, 200);
+    t = await call('POST', `/v1/agents/screenshots/${id}/confirm`, dk());
+    assert.equal(t.status, 200); assert.equal(t.json.data.status, 'uploaded');
+    return d.thumb_upload_url as string | null;
+  };
+  assert.ok(await withThumb(thumb.length, true), 'thumbnail URL given');
+  assert.ok(await withThumb(thumb.length, false), 'thumbnail never PUT: screenshot still confirms');
+  assert.equal(await withThumb(10 * 1024 * 1024, false), null, 'oversized thumbnail ignored');
+  assert.equal(await withThumb('big', false), null, 'malformed thumb_bytes ignored');
+  step('screenshot thumbnails: optional, never a refusal');
+
   const tamperId = randomUUID();
   const ev = { id: tamperId, event_type: 'hosts_modified', detail: { file: '/etc/hosts' }, occurred_at: now, repeat_count: 1 };
   r = await call('POST', '/v1/agents/tamper', dk(), ev);

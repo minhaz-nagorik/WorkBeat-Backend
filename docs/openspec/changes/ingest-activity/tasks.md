@@ -23,6 +23,7 @@
 - [ ] 3.2 `POST /v1/agents/screenshots`: insert pending row, signed upload URL to `{company_id}/{device_id}/{id}.jpg`
 - [ ] 3.3 Repeat handling: fresh URL while pending, uploaded state, 409 on a different body or device
 - [ ] 3.4 `POST /v1/agents/screenshots/:id/confirm`: object stat, size check, delete on mismatch
+- [x] 3.8 Optional thumbnail: `thumb_bytes` → `thumb_upload_url` for `{id}.thumb.jpg`, never a refusal; confirm keeps it only when whole; `thumb_url` in the timeline; migration `0011_screenshot_thumbnails.sql`
 - [ ] 3.5 Tests: request → PUT → confirm; repeat before and after confirm; missing object → 422 stays pending; another device's ID → 409; logs hold no signed URL or path
 - [ ] 3.6 Edge tests: concurrent requests → one row, 201 + 200; repeat after confirm → `upload_url` null; another device's or company's ID → 409, no path leaked; changed `bytes` → 409; confirm before PUT → 422 then 200 after it; concurrent confirms → `uploaded_at` once; mis-sized → new URL, then 200; another device confirms → 404; `bytes` at the limit → 201; `captured_at` 9 days old → 422; `employee_id` from the binding and kept when the device is released before confirm; released key confirms inside 7 days → 200, after → 401 `DEVICE_RELEASED`
 

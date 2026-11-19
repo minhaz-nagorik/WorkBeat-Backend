@@ -72,6 +72,30 @@ A repeat for a known `id` of the same device SHALL return `200`: a fresh `upload
 - **WHEN** a device confirms a screenshot `id` held by another device
 - **THEN** the response is `404 NOT_FOUND` and the row is unchanged
 
+### Requirement: A screenshot may come with a thumbnail
+<!-- source: product owner 19 Nov 2026 · WorkBeat-Concerns #13 -->
+An upload request MAY carry `thumb_bytes`. When it is at most the thumbnail limit in `packages/shared` and the row is `pending`, the API SHALL store it and return `thumb_upload_url` for `{company_id}/{device_id}/{id}.thumb.jpg`; otherwise `thumb_upload_url` MUST be null and the row keep no thumbnail. A thumbnail MUST NOT be a reason to refuse the screenshot, and `thumb_bytes` MUST NOT count toward a `409`.
+
+#### Scenario: An agent without thumbnails
+- **WHEN** an upload request carries no `thumb_bytes`
+- **THEN** the response has `thumb_upload_url` null and the screenshot uploads as before
+
+#### Scenario: A thumbnail over the limit
+- **WHEN** `thumb_bytes` is above the thumbnail limit
+- **THEN** the response is `201` with an `upload_url` and `thumb_upload_url` null
+
+#### Scenario: A repeat with another thumbnail size
+- **WHEN** a pending `id` is requested again with a different `thumb_bytes`
+- **THEN** the response is `200`, the row keeps the new `thumb_bytes` and a new `thumb_upload_url` is returned
+
+### Requirement: Confirmation keeps only a whole thumbnail
+<!-- source: product owner 19 Nov 2026 -->
+At confirmation, when the row has `thumb_bytes`, the API SHALL keep the thumbnail only if its object exists with that size; otherwise it MUST delete any object at the thumbnail path, clear `thumb_bytes` and still confirm the screenshot by the rules above.
+
+#### Scenario: The thumbnail upload failed
+- **WHEN** an agent confirms after the image `PUT` succeeded and the thumbnail `PUT` did not
+- **THEN** the response is `200` with `status` `uploaded` and the screenshot has no thumbnail
+
 ### Requirement: Only JPEGs within the size limit are accepted
 <!-- source: D23 · PRD "Screenshots" -->
 The `screenshots` bucket SHALL accept only `image/jpeg` objects up to the size limit in `packages/shared`, and an upload request whose `bytes` exceeds that limit, or whose `captured_at` is outside [now − 8 days, now + 1 day] (B7), MUST get `422 VALIDATION_FAILED` and write nothing.

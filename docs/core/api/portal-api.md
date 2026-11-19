@@ -945,6 +945,7 @@ Response `200`:
 | items[].device_id | uuid | |
 | items[].hostname | string | |
 | items[].view_url | string | R2 presigned, 5 minutes (`packages/shared`); for `<img>` |
+| items[].thumb_url | string \| null | same expiry; a small JPEG for timeline tiles, `null` when the agent sent none (then use `view_url`) |
 | items[].download_url | string | same object and expiry; R2 answers it as `attachment; filename="<hostname>-<YYYY-MM-DD>-<HHMM>.jpg"` (company time), `image/jpeg`. No CORS needed |
 | items[].expires_at | ISO-8601 datetime | |
 
