@@ -133,17 +133,25 @@ export class EmployeesController {
       const { rows: managers } = await c.query("SELECT id, lower(email) AS email FROM users WHERE role = 'manager' AND disabled_at IS NULL");
       const { rows: existing } = await c.query('SELECT lower(email) AS email FROM employees WHERE archived_at IS NULL AND email IS NOT NULL');
       const taken = new Set(existing.map((r) => r.email));
+      // A returning employee is restored, not created again (D46): an email only an archived employee holds is refused.
+      const { rows: gone } = await c.query(
+        'SELECT DISTINCT ON (lower(email)) id, name, lower(email) AS email FROM employees WHERE archived_at IS NOT NULL AND email IS NOT NULL ORDER BY lower(email), archived_at DESC',
+      );
+      const archivedBy = new Map(gone.map((r) => [r.email, r]));
       const seen = new Set<string>(), bad: number[] = [], create: any[] = [], skipped: string[] = [];
+      const archived: { line: number; employee_id: string; name: string }[] = [];
       rows.forEach((r, i) => {
         const [name = '', mail = '', dept = '', mgr = ''] = r.map((v) => v.trim());
         const email = mail.toLowerCase();
         const manager = mgr ? managers.find((m) => m.email === mgr.toLowerCase()) : null;
-        if (!name || !z.string().email().safeParse(email).success || (mgr && !manager) || (email && seen.has(email))) bad.push(i + 1);
+        const old = taken.has(email) ? undefined : archivedBy.get(email);
+        if (old) archived.push({ line: i + 1, employee_id: old.id, name: old.name });
+        if (!name || !z.string().email().safeParse(email).success || (mgr && !manager) || (email && seen.has(email)) || old) bad.push(i + 1);
         seen.add(email);
         if (taken.has(email)) skipped.push(email);
         else create.push({ name, email, department: dept || null, manager_user_id: manager?.id ?? null });
       });
-      if (bad.length) throw new ApiError(422, 'VALIDATION_FAILED', 'Invalid rows', { lines: bad });
+      if (bad.length) throw new ApiError(422, 'VALIDATION_FAILED', 'Invalid rows', archived.length ? { lines: bad, archived } : { lines: bad });
       if (create.length)
         await c.query(
           `INSERT INTO employees (company_id, name, email, department, manager_user_id)
@@ -192,6 +200,25 @@ export class EmployeesController {
       await c.query('UPDATE employees SET archived_at = coalesce(archived_at, now()) WHERE id = $1', [e.id]); // trigger → 409 EMPLOYEE_HAS_DEVICES
     });
     res.status(204);
+  }
+
+  // A returning employee is restored, not created again (D46). Takes no seat: their computer enrolls again as a new binding.
+  @Post(':id/restore')
+  async restore(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
+    return this.db.tx(async (c) => {
+      const u = await portalUser(c, req, ADMIN);
+      const e = await employeeFor(c, u, id);
+      const b = parse(z.object({ email: employeeBody.shape.email.optional() }), raw ?? {});
+      res.status(200);
+      if (!e.archived_at) return { data: (await withPresence(c, [e]))[0] };
+      const email = b.email ?? e.email;
+      if (!email) throw new ApiError(422, 'VALIDATION_FAILED', 'The employee has no email; send one', { fields: ['email'] });
+      const { rows: [r] } = await c.query( // employees_email unique → 409 CONFLICT
+        `UPDATE employees SET archived_at = NULL, email = $2 WHERE id = $1 RETURNING ${FULL}`,
+        [e.id, email],
+      );
+      return { data: (await withPresence(c, [r]))[0] };
+    });
   }
 
   @Get(':id/notice-acknowledgements')

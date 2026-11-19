@@ -400,6 +400,25 @@ async function main() {
   expect(await call('PATCH', `/v1/employees/${ada.id}`, admin, { name: 'x' }), 409);
   ok('release frees the employee; archive; archived is read-only');
 
+  // restore (D46): a returning employee is restored, not created again
+  const adaMail = `ada-${run}@example.test`;
+  const reImp = await call('POST', '/v1/employees/import', admin, `Ada back,${adaMail.toUpperCase()},,\n`, { 'content-type': 'text/csv' });
+  expect(reImp, 422); assert.deepEqual(reImp.json.lines, [1]); assert.equal(reImp.json.archived[0].employee_id, ada.id);
+  expect(await call('POST', `/v1/employees/${ada.id}/restore`, it.token), 403);
+  expect(await call('POST', `/v1/employees/${ada.id}/restore`, mgr.token), 403);
+  const ada2 = expect(await call('POST', '/v1/employees', admin, { name: 'Ada two', email: adaMail }), 201); // the email is free while archived
+  expect(await call('POST', `/v1/employees/${ada.id}/restore`, admin), 409, 'CONFLICT');
+  assert.ok(expect(await call('GET', `/v1/employees/${ada.id}`, admin), 200).archived_at);
+  expect(await call('DELETE', `/v1/employees/${ada2.id}`, admin), 204);
+  const back = expect(await call('POST', `/v1/employees/${ada.id}/restore`, admin), 200);
+  assert.equal(back.id, ada.id); assert.equal(back.archived_at, null); assert.equal(back.presence, 'no_device');
+  expect(await call('PATCH', `/v1/employees/${ada.id}`, admin, { department: 'Back' }), 200);
+  assert.equal(expect(await call('POST', `/v1/employees/${ada.id}/restore`, admin), 200).archived_at, null); // not archived: unchanged
+  expect(await call('DELETE', `/v1/employees/${ada.id}`, admin), 204);
+  expect(await call('POST', `/v1/employees/${ada.id}/restore`, admin, { email: 'nope' }), 422);
+  assert.equal(expect(await call('POST', `/v1/employees/${ada.id}/restore`, admin, { email: `ada.new-${run}@example.test` }), 200).email, `ada.new-${run}@example.test`);
+  ok('restore: same id, email clash 409, new email, roles, import refuses archived email');
+
   expect(await call('DELETE', `/v1/team/users/${mgr.id}`, admin), 204);
   expect(await call('GET', '/v1/me', mgr.token), 401, 'UNAUTHENTICATED');
   // password reset (self-service), for the it_admin

@@ -11,7 +11,9 @@ pauses for leave (D31–D34). Removing an employee must not orphan a device (D47
 
 - **Employee directory**: add, edit, list, CSV import and remove (archive) employees; removal is
   refused with `409 EMPLOYEE_HAS_DEVICES` while any binding of the employee is not released,
-  deactivated ones included (D44, D46, D48).
+  deactivated ones included (D44, D46, D48). A returning employee is restored, not created
+  again: `POST /v1/employees/:id/restore`, and an import row holding only an archived employee's
+  email is refused (D46).
 - **Manager teams**: one manager per employee (B12); a manager reads only their own team and
   writes nothing.
 - **Monitoring settings**: the four switches and the screenshot interval per employee, created
@@ -37,7 +39,7 @@ None.
 ## Impact
 
 - Routes: `GET/POST /v1/employees`, `GET/PATCH/DELETE /v1/employees/:id`,
-  `POST /v1/employees/import`, `GET/PUT /v1/employees/:id/monitoring-settings`,
+  `POST /v1/employees/:id/restore`,  `POST /v1/employees/import`, `GET/PUT /v1/employees/:id/monitoring-settings`,
   `GET/POST /v1/employees/:id/pauses`, `PATCH /v1/employees/:id/pauses/:pause_id`,
   `POST /v1/employees/:id/pauses/:pause_id/cancel`.
 - Consumed by `enroll-devices` (the employee list and `EMPLOYEE_NOT_FOUND`), `serve-agent-policy`

@@ -64,7 +64,7 @@ why an employee who still has a device cannot be removed.
 
 ### Requirement: Employees are imported from CSV
 <!-- source: PRD "Permission matrix" · Plan-v3.5 §4.4 "Employees and devices" -->
-`POST /v1/employees/import` SHALL accept from a `company_admin` a CSV with the columns `name, email, department, manager email`, with or without a header row. A row with no or an invalid email MUST be reported as an invalid line. A row whose email matches a non-archived employee of the company MUST be skipped. A `manager email` MUST name a user with role `manager` in the company. The response MUST give `created`, `skipped` and the skipped emails.
+`POST /v1/employees/import` SHALL accept from a `company_admin` a CSV with the columns `name, email, department, manager email`, with or without a header row. A row whose email matches a non-archived employee of the company MUST be skipped. The response MUST give `created`, `skipped` and the skipped emails.
 
 #### Scenario: A file with a header row and an existing employee
 - **WHEN** an admin imports a file with a header row and three rows, one with an existing employee's email
@@ -83,17 +83,18 @@ why an employee who still has a device cannot be removed.
 - **WHEN** a row's name is `"Silva, Ana"`
 - **THEN** the employee's `name` is `Silva, Ana`
 
-#### Scenario: An email of an archived employee
-- **WHEN** a row's email matches only an archived employee
-- **THEN** a new employee is created for it
-
 #### Scenario: The same file imported twice at once
 - **WHEN** two imports of one file are handled concurrently
 - **THEN** each email exists once among non-archived employees and the second import reports the rows the first created as skipped, or fails with nothing written
 
 ### Requirement: An invalid import writes nothing
 <!-- source: B9 · PRD "Permission matrix" -->
-An import with any invalid row (no `name`, a malformed email, an unknown manager email, or the same email twice in the file) SHALL return `422 VALIDATION_FAILED` naming each invalid line number, and MUST create no employee. A file over the import limit in `packages/shared` MUST return `413 PAYLOAD_TOO_LARGE`.
+An import with any invalid row (no `name`, a missing or malformed email, a `manager email` that is not an enabled `manager` of the company, the same email twice in the file, or an email held only by an archived employee) SHALL return `422 VALIDATION_FAILED` naming each invalid line number, and MUST create no employee. A file over the import limit MUST return `413 PAYLOAD_TOO_LARGE`.
+
+#### Scenario: An email of an archived employee
+- **WHEN** line 7's email matches an archived employee and no non-archived one
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED` naming line 7 and that archived employee's `id`
+- **AND** no employee is created, so the admin can restore the archived employee instead
 
 #### Scenario: One row has no name
 - **WHEN** an admin imports 100 rows and row 57 has no name
@@ -143,9 +144,42 @@ An import with any invalid row (no `name`, a malformed email, an unknown manager
 - **WHEN** an admin removes an employee while a device enrolls for that employee
 - **THEN** either the removal answers `409 EMPLOYEE_HAS_DEVICES` or the enrollment answers `404 EMPLOYEE_NOT_FOUND`, never both succeeding
 
+### Requirement: An archived employee is restored
+<!-- source: D46 · Plan-v3.5 §4.4 "Employees and devices" -->
+`POST /v1/employees/:id/restore` from a `company_admin` SHALL set `archived_at` to NULL and keep the employee's `id`, history, monitoring settings, pauses and manager. An optional body `email` MUST replace the stored email. While a non-archived employee of the company holds the resulting email it MUST return `409 CONFLICT` and change nothing. It MUST create no binding and take no seat.
+
+#### Scenario: A returning employee
+- **WHEN** a company admin restores an archived employee whose email no one else holds
+- **THEN** the response is `200` with the same `id` and `archived_at` null
+- **AND** the employee's past activity counts again in totals without `employee_id`
+
+#### Scenario: The email was given to someone else
+- **WHEN** an admin restores an archived employee whose email a non-archived employee now holds
+- **THEN** the response is `409` with `code` `CONFLICT` and `archived_at` stays set
+
+#### Scenario: Restored with a new email
+- **WHEN** an admin restores an archived employee with `{ "email": "sadia.k@acme.com" }` that no one holds
+- **THEN** the response is `200` and the employee's `email` is `sadia.k@acme.com`
+
+#### Scenario: An archived employee with no email
+- **WHEN** an admin restores an archived employee who has no email and sends none
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED` naming `email`
+
+#### Scenario: Restoring an employee who is not archived
+- **WHEN** an admin restores an employee whose `archived_at` is null
+- **THEN** the response is `200` and nothing changes
+
+#### Scenario: Another role or company
+- **WHEN** an `it_admin` or a `manager` restores an employee, or an admin restores another company's employee
+- **THEN** the response is `403 FORBIDDEN`, or `404 NOT_FOUND` for the other company, and nothing changes
+
+#### Scenario: The returning employee's laptop
+- **WHEN** a restored employee's computer runs WorkBeat Setup
+- **THEN** the enrollment is a new binding that takes a seat, as for any employee
+
 ### Requirement: An archived employee is read-only
 <!-- source: D47 · Plan-v3.5 §4.4 "Employees and devices" -->
-`PATCH /v1/employees/:id`, `PUT /v1/employees/:id/monitoring-settings` and every pause write for an archived employee SHALL return `409 CONFLICT` and change nothing. Reads of an archived employee, their settings, pauses and history MUST keep working for the roles allowed to read them.
+`PATCH /v1/employees/:id`, `PUT /v1/employees/:id/monitoring-settings` and every pause write for an archived employee SHALL return `409 CONFLICT` and change nothing; `POST /v1/employees/:id/restore` is how an archived employee becomes editable again. Reads of an archived employee, their settings, pauses and history MUST keep working for the roles allowed to read them.
 
 #### Scenario: An admin edits an archived employee
 - **WHEN** a company admin patches the `department` of an archived employee
