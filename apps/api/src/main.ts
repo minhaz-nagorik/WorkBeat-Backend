@@ -13,6 +13,7 @@ import type { LogCtx } from './http';
 import { InstallController } from './install.controller';
 import { Storage } from './storage';
 import { StorageController } from './storage.controller';
+import { CronController } from './cron.controller';
 import { ChangesController } from './portal/changes.controller';
 import { CompanyController } from './portal/company.controller';
 import { DevicesController } from './portal/devices.controller';
@@ -60,7 +61,7 @@ class AllErrors implements ExceptionFilter {
 
 @Module({
   controllers: [InstallController, AgentsController, StorageController, SessionController, CompanyController,
-    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController, ChangesController],
+    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController, ChangesController, CronController],
   providers: [
     { provide: Db, useValue: new Db(cfg.DATABASE_URL) },
     { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY, {

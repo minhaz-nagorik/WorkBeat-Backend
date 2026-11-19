@@ -20,6 +20,7 @@ const env = z
     RESEND_API_KEY: z.string().optional(), // unset: emails go to STORAGE_DIR/outbox (local only)
     EMAIL_FROM: z.string().default('WorkBeat <no-reply@workbeat.io>'),
     PORTAL_URL: z.string().url().default('http://localhost:3001'), // links in emails
+    CRON_SECRET: z.string().min(32).optional(), // X-Cron-Secret for /cron/*; unset: every cron call is 401
   })
   .safeParse(process.env);
 

@@ -24,6 +24,8 @@ export const LIMITS = {
   ratePerSession: 600,
   ratePerIpLicense: 20,
   ratePerIp: 120,
+  // /cron/usage-summary stops starting new company days after this; the scheduler calls hourly (B28).
+  usageSummaryBudgetMs: 50_000,
 };
 
 // Unix milliseconds (agent wire format) or an ISO string.

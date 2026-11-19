@@ -9,8 +9,8 @@
 
 ## 2. cron-routes
 
-- [ ] 2.1 Cron guard: `X-Cron-Secret` vs. the configured secret with `crypto.timingSafeEqual`; 401 `UNAUTHENTICATED` otherwise; header in the log redaction list
-- [ ] 2.2 Job runner: `system` scope per transaction, `pg_try_advisory_xact_lock(hashtext('cron:<job>'))`, response `{ job, started_at, duration_ms, rows_affected, skipped, more }`, one log line
+- [x] 2.1 Cron guard: `X-Cron-Secret` vs. the configured secret with `crypto.timingSafeEqual`; 401 `UNAUTHENTICATED` otherwise; header in the log redaction list
+- [x] 2.2 Job runner: `system` scope per transaction, `pg_try_advisory_xact_lock(hashtext('cron:<job>'))`, response `{ job, started_at, duration_ms, rows_affected, skipped, more }`, one log line
 - [ ] 2.3 `POST /cron/token-expiry`
 - [ ] 2.4 Schedule definitions (server cron or systemd timers calling `curl` with the secret from the environment) for all five jobs, in `db/cron/` and the deploy guide
 - [ ] 2.5 Tests: no / wrong secret / user JWT → 401 and nothing runs; second concurrent call → `skipped`; run twice = run once; used tokens survive token-expiry; no route outside `/cron/*` can set `system` scope

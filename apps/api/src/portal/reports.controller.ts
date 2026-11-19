@@ -13,9 +13,12 @@ const EXPORT_ROW_CAP = 100_000;
 // A range is at most 90 days, the longest retention (B13); `to` at most 89 days after `from`.
 export const MAX_RANGE_DAYS = 90;
 const CATEGORIES = ['productive', 'neutral', 'unproductive'];
-const APP_CAT = `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'app' AND lower(r.pattern) = lower(a.app_name) LIMIT 1), 'neutral')`;
-const DOM_CAT = `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'domain'
-  AND (lower(v.domain) = lower(r.pattern) OR lower(v.domain) LIKE '%.' || lower(r.pattern)) ORDER BY length(r.pattern) DESC LIMIT 1), 'neutral')`;
+// Category of an app name or domain from the rules, at read time (never stored, PRD).
+const appCat = (col: string) => `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'app' AND lower(r.pattern) = lower(${col}) LIMIT 1), 'neutral')`;
+const domCat = (col: string) => `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'domain'
+  AND (lower(${col}) = lower(r.pattern) OR lower(${col}) LIKE '%.' || lower(r.pattern)) ORDER BY length(r.pattern) DESC LIMIT 1), 'neutral')`;
+const APP_CAT = appCat('a.app_name');
+const DOM_CAT = domCat('v.domain');
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // A real calendar day (rejects 2026-02-30, which Date.parse rolls over).
 export const isDay = (d?: string) => !!d && DATE.test(d) && !isNaN(Date.parse(d)) && new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) === d;
@@ -57,28 +60,52 @@ async function reportRange(c: Tx, u: User, q: Record<string, string | undefined>
   return { ids, from: q.from! < first ? first : q.from!, to: q.to! };
 }
 
-// Per employee and day: tracked time, first/last activity, samples, productivity split.
-async function daily(c: Tx, r: Range) {
-  const p = [r.ids, r.from, r.to, BROWSERS];
+// Summarized days (usage_days, B28) read the summaries; the other days read raw rows, only over the
+// span from the first to the last of them (normally just today). Both sets are disjoint.
+type Split = { built: string[]; rf: string; rt: string };
+async function split(c: Tx, r: Range): Promise<Split> {
   const { rows } = await c.query(
-    `WITH s AS (SELECT a.employee_id, a.started_at::date AS day, a.duration_seconds, a.started_at, a.ended_at, ${APP_CAT} AS cat,
-                       lower(a.app_name) = ANY ($4) AS browser
-                  FROM app_sessions a WHERE a.employee_id = ANY ($1) AND a.started_at >= $2::date AND a.started_at < $3::date + 1),
-          v AS (SELECT v.employee_id, v.visited_at::date AS day, v.duration_seconds, ${DOM_CAT} AS cat
-                  FROM url_visits v WHERE v.employee_id = ANY ($1) AND v.visited_at >= $2::date AND v.visited_at < $3::date + 1),
+    "SELECT to_char(day, 'YYYY-MM-DD') AS d FROM usage_days WHERE company_id = app_company_id() AND day BETWEEN $1 AND $2", [r.from, r.to]);
+  const built = new Set(rows.map((x) => x.d as string));
+  const raw = days(r.from, r.to).filter((d) => !built.has(d));
+  return { built: [...built], rf: raw[0] ?? addDays(r.to, 1), rt: raw[raw.length - 1] ?? r.to };
+}
+// Raw rows of unsummarized days: $1 ids, $2 rf, $3 rt, $4 built. Summary rows: $1 ids, $4 built.
+const RAW = (col: string) =>
+  `company_id = app_company_id() AND employee_id = ANY ($1) AND ${col} >= $2::date AND ${col} < $3::date + 1 AND ${col}::date <> ALL ($4::date[])`;
+const SUM = `company_id = app_company_id() AND employee_id = ANY ($1) AND day = ANY ($4::date[])`;
+
+// Per employee and day: tracked time, first/last activity, samples, productivity split.
+// Categories are looked up once per distinct app name or domain, then summed.
+async function daily(c: Tx, r: Range) {
+  const sp = await split(c, r);
+  const { rows } = await c.query(
+    `WITH s AS (SELECT employee_id, started_at::date AS day, duration_seconds, started_at, ended_at, app_name FROM app_sessions WHERE ${RAW('started_at')}),
           b AS (SELECT employee_id, bucket_start::date AS day, sum(active_samples) AS act, sum(total_samples) AS tot
-                  FROM activity_buckets WHERE employee_id = ANY ($1) AND bucket_start >= $2::date AND bucket_start < $3::date + 1 GROUP BY 1, 2),
-          t AS (SELECT employee_id, day, sum(duration_seconds) AS tracked, min(started_at) AS first_at, max(ended_at) AS last_at FROM s GROUP BY 1, 2),
-          pr AS (SELECT employee_id, day, sum(duration_seconds) FILTER (WHERE cat = 'productive') AS productive,
-                        sum(duration_seconds) FILTER (WHERE cat = 'neutral') AS neutral, sum(duration_seconds) FILTER (WHERE cat = 'unproductive') AS unproductive
-                   FROM (SELECT employee_id, day, cat, duration_seconds FROM s WHERE NOT browser
-                         UNION ALL SELECT employee_id, day, cat, duration_seconds FROM v) x GROUP BY 1, 2),
+                  FROM activity_buckets WHERE ${RAW('bucket_start')} GROUP BY 1, 2
+                UNION ALL
+                SELECT employee_id, day, sum(active_samples), sum(total_samples) FROM usage_hours WHERE ${SUM} AND buckets > 0 GROUP BY 1, 2),
+          t AS (SELECT employee_id, day, sum(duration_seconds) AS tracked, min(started_at) AS first_at, max(ended_at) AS last_at FROM s GROUP BY 1, 2
+                UNION ALL
+                SELECT employee_id, day, sum(tracked_seconds), min(first_at), max(last_at) FROM usage_hours WHERE ${SUM} AND sessions > 0 GROUP BY 1, 2),
+          items AS (SELECT employee_id, day, 'app' AS kind, app_name AS name, sum(duration_seconds) AS sec FROM s WHERE NOT lower(app_name) = ANY ($5) GROUP BY 1, 2, 4
+                UNION ALL
+                SELECT employee_id, day, 'app', app_name, seconds FROM usage_apps WHERE ${SUM} AND NOT lower(app_name) = ANY ($5)
+                UNION ALL
+                SELECT employee_id, visited_at::date, 'domain', domain, sum(duration_seconds) FROM url_visits WHERE ${RAW('visited_at')} GROUP BY 1, 2, 4
+                UNION ALL
+                SELECT employee_id, day, 'domain', domain, seconds FROM usage_domains WHERE ${SUM}),
+          cats AS (SELECT n.kind, n.name, CASE WHEN n.kind = 'app' THEN ${appCat('n.name')} ELSE ${domCat('n.name')} END AS cat
+                     FROM (SELECT DISTINCT kind, name FROM items) n),
+          pr AS (SELECT employee_id, day, sum(sec) FILTER (WHERE cat = 'productive') AS productive,
+                        sum(sec) FILTER (WHERE cat = 'neutral') AS neutral, sum(sec) FILTER (WHERE cat = 'unproductive') AS unproductive
+                   FROM items JOIN cats USING (kind, name) GROUP BY 1, 2),
           k AS (SELECT employee_id, day FROM t UNION SELECT employee_id, day FROM b UNION SELECT employee_id, day FROM pr)
      SELECT k.employee_id, to_char(k.day, 'YYYY-MM-DD') AS date, coalesce(t.tracked, 0)::int AS tracked_seconds, t.first_at, t.last_at,
             coalesce(b.act, 0)::int AS act, coalesce(b.tot, 0)::int AS tot, coalesce(pr.productive, 0)::int AS productive_seconds,
             coalesce(pr.neutral, 0)::int AS neutral_seconds, coalesce(pr.unproductive, 0)::int AS unproductive_seconds
        FROM k LEFT JOIN t USING (employee_id, day) LEFT JOIN b USING (employee_id, day) LEFT JOIN pr USING (employee_id, day)`,
-    p,
+    [r.ids, sp.rf, sp.rt, sp.built, BROWSERS],
   );
   return rows;
 }
@@ -111,20 +138,20 @@ function dayRows(rows: any[], dates: string[], paused: Set<string>) {
 
 // group_by=day|week|month (admin request 2.1): one row per period in the range, zeros included.
 // Weeks start on Monday; a period is labelled by its first day, clipped to the range.
-async function periods(c: Tx, r: Range, g: string | undefined) {
+async function periods(c: Tx, r: Range, g: string | undefined, rows?: any[]) {
   if (g === undefined) return undefined;
   if (!['day', 'week', 'month'].includes(g)) throw bad('group_by', 'group_by must be day, week or month');
   const key = (d: string) => g === 'day' ? d : g === 'month' ? d.slice(0, 8) + '01'
     : addDays(d, -((new Date(d + 'T00:00:00Z').getUTCDay() + 6) % 7));
-  const rows = await daily(c, r);
+  rows ??= await daily(c, r);
   const out = new Map<string, any>();
   for (const d of days(r.from, r.to)) {
     const k = key(d);
     if (!out.has(k)) out.set(k, { period_start: k < r.from ? r.from : k, tracked_seconds: 0, act: 0, tot: 0, productive_seconds: 0, neutral_seconds: 0, unproductive_seconds: 0 });
-    for (const x of rows.filter((x) => x.date === d)) {
-      const o = out.get(k);
-      for (const f of ['tracked_seconds', 'act', 'tot', 'productive_seconds', 'neutral_seconds', 'unproductive_seconds']) o[f] += x[f];
-    }
+  }
+  for (const x of rows) {
+    const o = out.get(key(x.date));
+    if (o) for (const f of ['tracked_seconds', 'act', 'tot', 'productive_seconds', 'neutral_seconds', 'unproductive_seconds']) o[f] += x[f];
   }
   return [...out.values()].map(({ act, tot, ...o }) => ({ ...o, activity_percent: pct(act, tot) }));
 }
@@ -161,15 +188,16 @@ export class ReportsController {
       const category = q.category ?? null;
       if (category !== null && !CATEGORIES.includes(category)) throw bad('category', 'category must be productive, neutral or unproductive');
       // Category is resolved per row from the rules, so filter after it is computed; ties by name keep pages stable.
-      const inner = kind === 'apps'
-        ? `SELECT a.app_name, sum(a.duration_seconds)::int AS seconds, ${APP_CAT} AS category FROM app_sessions a
-            WHERE a.employee_id = ANY ($1) AND a.started_at >= $2::date AND a.started_at < $3::date + 1 GROUP BY a.app_name`
-        : `SELECT v.domain, sum(v.duration_seconds)::int AS seconds, ${DOM_CAT} AS category FROM url_visits v
-            WHERE v.employee_id = ANY ($1) AND v.visited_at >= $2::date AND v.visited_at < $3::date + 1 GROUP BY v.domain`;
-      const name = kind === 'apps' ? 'app_name' : 'domain';
+      // Raw rows of unsummarized days plus the summaries (B28), then one category per name.
+      const [name, raw, col, sum] = kind === 'apps'
+        ? ['app_name', 'app_sessions', 'started_at', 'usage_apps'] : ['domain', 'url_visits', 'visited_at', 'usage_domains'];
+      const inner = `SELECT x.name AS ${name}, sum(x.sec)::int AS seconds, ${kind === 'apps' ? appCat('x.name') : domCat('x.name')} AS category
+          FROM (SELECT ${name} AS name, sum(duration_seconds) AS sec FROM ${raw} WHERE ${RAW(col)} GROUP BY 1
+                UNION ALL SELECT ${name}, sum(seconds) FROM ${sum} WHERE ${SUM} GROUP BY 1) x GROUP BY x.name`;
+      const sp = await split(c, r);
       const { rows } = await c.query(
-        `SELECT * FROM (${inner}) t WHERE ($4::text IS NULL OR t.category = $4) ORDER BY t.seconds DESC, t.${name} LIMIT $5 OFFSET $6`,
-        [r.ids, r.from, r.to, category, limit + 1, offset],
+        `SELECT * FROM (${inner}) t WHERE ($5::text IS NULL OR t.category = $5) ORDER BY t.seconds DESC, t.${name} LIMIT $6 OFFSET $7`,
+        [r.ids, sp.rf, sp.rt, sp.built, category, limit + 1, offset],
       );
       const next_offset = rows.length > limit ? offset + limit : null;
       return { data: { from: r.from, to: r.to, [kind]: rows.slice(0, limit), next_offset } };
@@ -181,20 +209,28 @@ export class ReportsController {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ADMIN_MANAGER);
       const r = await reportRange(c, u, q);
-      const p = [r.ids, r.from, r.to];
+      const sp = await split(c, r);
+      const p = [r.ids, sp.rf, sp.rt, sp.built];
       const { rows: [tot] } = await c.query(
-        `SELECT (SELECT coalesce(sum(duration_seconds), 0)::int FROM app_sessions WHERE employee_id = ANY ($1) AND started_at >= $2::date AND started_at < $3::date + 1) AS tracked,
-                (SELECT coalesce(sum(extract(epoch FROM ended_at - started_at)), 0)::int FROM idle_intervals WHERE employee_id = ANY ($1) AND started_at >= $2::date AND started_at < $3::date + 1) AS idle,
-                (SELECT coalesce(sum(active_samples), 0)::int FROM activity_buckets WHERE employee_id = ANY ($1) AND bucket_start >= $2::date AND bucket_start < $3::date + 1) AS act,
-                (SELECT coalesce(sum(total_samples), 0)::int FROM activity_buckets WHERE employee_id = ANY ($1) AND bucket_start >= $2::date AND bucket_start < $3::date + 1) AS tot`,
+        `SELECT ((SELECT coalesce(sum(duration_seconds), 0) FROM app_sessions WHERE ${RAW('started_at')})
+                 + (SELECT coalesce(sum(tracked_seconds), 0) FROM usage_hours WHERE ${SUM}))::int AS tracked,
+                ((SELECT coalesce(sum(extract(epoch FROM ended_at - started_at)), 0) FROM idle_intervals WHERE ${RAW('started_at')})
+                 + (SELECT coalesce(sum(idle_seconds), 0) FROM usage_hours WHERE ${SUM}))::int AS idle,
+                ((SELECT coalesce(sum(active_samples), 0) FROM activity_buckets WHERE ${RAW('bucket_start')})
+                 + (SELECT coalesce(sum(active_samples), 0) FROM usage_hours WHERE ${SUM}))::int AS act,
+                ((SELECT coalesce(sum(total_samples), 0) FROM activity_buckets WHERE ${RAW('bucket_start')})
+                 + (SELECT coalesce(sum(total_samples), 0) FROM usage_hours WHERE ${SUM}))::int AS tot`,
         p,
       );
+      // Average per day that had a session starting in that hour.
       const { rows: th } = await c.query(
-        `SELECT extract(hour FROM started_at)::int AS h, (sum(duration_seconds)::float / count(DISTINCT started_at::date))::int AS avg
-           FROM app_sessions WHERE employee_id = ANY ($1) AND started_at >= $2::date AND started_at < $3::date + 1 GROUP BY 1`, p);
+        `SELECT h, (sum(sec)::float / count(DISTINCT day))::int AS avg
+           FROM (SELECT extract(hour FROM started_at)::int AS h, started_at::date AS day, sum(duration_seconds) AS sec FROM app_sessions WHERE ${RAW('started_at')} GROUP BY 1, 2
+                 UNION ALL SELECT hour, day, sum(tracked_seconds) FROM usage_hours WHERE ${SUM} AND sessions > 0 GROUP BY 1, 2) x GROUP BY 1`, p);
       const { rows: bh } = await c.query(
-        `SELECT extract(hour FROM bucket_start)::int AS h, sum(active_samples)::int AS act, sum(total_samples)::int AS tot
-           FROM activity_buckets WHERE employee_id = ANY ($1) AND bucket_start >= $2::date AND bucket_start < $3::date + 1 GROUP BY 1`, p);
+        `SELECT h, sum(act)::int AS act, sum(tot)::int AS tot
+           FROM (SELECT extract(hour FROM bucket_start)::int AS h, active_samples AS act, total_samples AS tot FROM activity_buckets WHERE ${RAW('bucket_start')}
+                 UNION ALL SELECT hour, active_samples, total_samples FROM usage_hours WHERE ${SUM} AND buckets > 0) x GROUP BY 1`, p);
       const hours = Array.from({ length: 24 }, (_, h) => {
         const b = bh.find((x) => x.h === h);
         return { hour: h, tracked_seconds: th.find((x) => x.h === h)?.avg ?? 0, activity_percent: b ? pct(b.act, b.tot) : null };
@@ -212,7 +248,7 @@ export class ReportsController {
       const rows = await daily(c, r);
       const sum = (k: string) => rows.reduce((a, x) => a + x[k], 0);
       return { data: { from: r.from, to: r.to, productive_seconds: sum('productive_seconds'), neutral_seconds: sum('neutral_seconds'),
-        unproductive_seconds: sum('unproductive_seconds'), tracked_seconds: sum('tracked_seconds'), periods: await periods(c, r, q.group_by) } };
+        unproductive_seconds: sum('unproductive_seconds'), tracked_seconds: sum('tracked_seconds'), periods: await periods(c, r, q.group_by, rows) } };
     });
   }
 
@@ -248,16 +284,15 @@ export class ReportsController {
       await localTime(c);
       if (!isDay(week) || new Date(week + 'T00:00:00Z').getUTCDay() !== 1) throw bad('week', 'week must be a Monday, YYYY-MM-DD');
       const to = addDays(week, 6);
-      const rows = dayRows(await daily(c, { ids: [e.id], from: week, to }), days(week, to), await pausedDays(c, e.id, week, to));
+      const raw = await daily(c, { ids: [e.id], from: week, to });
+      const rows = dayRows(raw, days(week, to), await pausedDays(c, e.id, week, to));
       const { rows: [co] } = await c.query('SELECT name, timezone FROM companies');
       const sum = (k: keyof (typeof rows)[0]) => rows.reduce((a, x) => a + (x[k] as number), 0);
-      const act = await c.query(
-        'SELECT coalesce(sum(active_samples), 0)::int AS a, coalesce(sum(total_samples), 0)::int AS t FROM activity_buckets WHERE employee_id = $1 AND bucket_start >= $2::date AND bucket_start < $3::date + 1',
-        [e.id, week, to]);
+      const act = { a: raw.reduce((s, x) => s + x.act, 0), t: raw.reduce((s, x) => s + x.tot, 0) };
       return {
         timezone: co.timezone as string, // for the PDF's clock times only
         employee: { name: e.name, email: e.email }, company: { name: co.name }, week, days: rows,
-        totals: { tracked_seconds: sum('tracked_seconds'), activity_percent: pct(act.rows[0].a, act.rows[0].t), productive_seconds: sum('productive_seconds'),
+        totals: { tracked_seconds: sum('tracked_seconds'), activity_percent: pct(act.a, act.t), productive_seconds: sum('productive_seconds'),
           neutral_seconds: sum('neutral_seconds'), unproductive_seconds: sum('unproductive_seconds') },
       };
     });

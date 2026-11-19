@@ -347,6 +347,16 @@ Index `(company_id, employee_id, visited_at)`, `(company_id, domain, visited_at)
 ### idle_intervals
 `company_id`, `device_id`, `employee_id`, `batch_id`, `os_user`, `started_at`, `ended_at`.
 
+### Usage summaries (B28)
+Built by `/cron/usage-summary` for finished company days; not partitioned; no FKs, like the raw
+tables. Days and hours are in the company `timezone`.
+- `usage_days`: PK `(company_id, day)`, `built_at`. A row means the day's summary is complete.
+- `usage_hours`: PK `(company_id, employee_id, day, hour)`; `tracked_seconds`, `sessions`,
+  `buckets`, `active_samples`, `total_samples`, `idle_seconds numeric`, `first_at`, `last_at`
+  (of sessions that started in that hour).
+- `usage_apps`: PK `(company_id, employee_id, day, app_name)`, `seconds`.
+- `usage_domains`: PK `(company_id, employee_id, day, domain)`, `seconds`.
+
 ### screenshots
 Not partitioned (low row count). `id uuid PK` (agent's), `company_id`, `device_id`,
 `employee_id`, `captured_at`, `storage_path` (`{company_id}/{device_id}/{id}.jpg`),
@@ -367,6 +377,7 @@ Also the alerts feed. `id uuid PK` (agent's; server-made for `offline`), `compan
 Nightly `/cron/cleanup`: per company, delete ingested rows and screenshot files older than
 `data_retention_days` (batched deletes); drop whole monthly partitions older than the 90-day
 maximum; delete `ingest_batches` older than 14 days and expired, unused `enrollment_tokens`.
+Usage summaries past retention are deleted by `/cron/usage-summary`, not by cleanup.
 
 ## Added by 0002_spec_gaps.sql
 

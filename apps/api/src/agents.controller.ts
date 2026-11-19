@@ -6,6 +6,7 @@ import { ApiError, Db, parse, sha256 } from './core';
 import { authDevice, cmpVersion, newestRelease, pauseInForce, policyVersion } from './device';
 import { baseUrl, tag } from './http';
 import { Storage } from './storage';
+import { rebuildLateDays } from './usage';
 
 const inWindow = (d: Date) => {
   const t = d.getTime(), now = Date.now();
@@ -179,6 +180,9 @@ export class AgentsController {
               SET active_samples = excluded.active_samples, total_samples = excluded.total_samples`,
           [dev.company_id, dev.device_id, dev.employee_id, JSON.stringify(buckets)],
         );
+      // Rows on an already summarized day rebuild that employee-day now (usage-summaries, B28).
+      await rebuildLateDays(c, dev.company_id, dev.employee_id,
+        [...sessions.map((r) => r.started_at), ...visits.map((r) => r.visited_at), ...idles.map((r) => r.started_at), ...buckets.map((r) => r.bucket_start)]);
       return { data: { batch_id: b.batch_id, accepted: counts, dropped_out_of_window: dropped } };
     });
   }

@@ -8,6 +8,7 @@ import { ApiError, config, Db, decrypt, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { cmpVersion } from '../device';
 import { Storage } from '../storage';
+import { clearSummaries } from '../usage';
 import { isBareHost } from './policy.controller';
 
 const EVENT_TYPES = ['process_restart', 'hosts_modified', 'config_changed', 'clock_tampered', 'permission_revoked', 'offline', 'duplicate_device_id'] as const;
@@ -78,6 +79,7 @@ export class CompanyController {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN);
       const b = parse(settingsPatch, raw, 422);
+      const { rows: [old] } = await c.query('SELECT timezone FROM companies WHERE id = app_company_id()');
       const { rows: [r] } = await c.query(
         `UPDATE companies SET name = coalesce($1, name), data_retention_days = coalesce($2, data_retention_days),
                 idle_threshold_seconds = coalesce($3, idle_threshold_seconds), alert_email = coalesce($4, alert_email),
@@ -86,6 +88,7 @@ export class CompanyController {
         [b.name ?? null, b.data_retention_days ?? null, b.idle_threshold_seconds ?? null,
          b.alert_email ? JSON.stringify(b.alert_email) : null, b.timezone ?? null],
       );
+      if (r.timezone !== old.timezone) await clearSummaries(c); // days moved: rebuilt by /cron/usage-summary (B28)
       return { data: r };
     });
   }

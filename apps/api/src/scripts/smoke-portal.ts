@@ -1,6 +1,6 @@
 // End-to-end check of the portal API against a running local API.
 // Usage: ADMIN_EMAIL=… ADMIN_PASSWORD=… [STAFF1_EMAIL=… STAFF1_PASSWORD=… STAFF_TARGET_SLUG=…]
-//        [BASE_URL=http://localhost:3000] pnpm smoke:portal
+//        [CRON_SECRET=…] [BASE_URL=http://localhost:3000] pnpm smoke:portal
 // Reads invitation emails from STORAGE_DIR/outbox, so run it against a local API without RESEND_API_KEY.
 // Writes test users, employees, rules and one device into the admin's company.
 import assert from 'node:assert/strict';
@@ -390,6 +390,49 @@ async function main() {
   const dashIt = expect(await call('GET', '/v1/dashboard', it.token), 200);
   assert.ok(!('today' in dashIt) && !('seats' in dashIt));
   ok('reports: apps, productivity split, activity, calendar, CSV export, dashboard by role');
+
+  // usage summaries (summarize-usage): reports answer the same before and after the job; late batches show at once
+  expect(await call('POST', '/cron/usage-summary'), 401, 'UNAUTHENTICATED');
+  expect(await call('POST', '/cron/usage-summary', undefined, undefined, { 'x-cron-secret': 'wrong' }), 401, 'UNAUTHENTICATED');
+  const cron = process.env.CRON_SECRET;
+  if (cron) {
+    const cs = { 'x-cron-secret': cron };
+    expect(await call('POST', '/cron/no-such-job', undefined, undefined, cs), 404, 'NOT_FOUND');
+    const past = daysAgo(2), at = Date.parse(past + 'T06:00:00Z'); // 12:00 in Dhaka
+    const lateBatch = async (start: number, secs: number, app: string) => {
+      const id = randomUUID();
+      expect(await call('POST', '/v1/agents/activity', undefined, {
+        batch_id: id,
+        app_sessions: [{ session_user: 'ada', bundle_id: 'x', app_name: app, process_name: 'p', started_at: start, ended_at: start + secs * 1000, duration_seconds: secs }],
+        url_visits: [{ session_user: 'ada', browser: 'safari', url: `https://docs-${run}.example/`, domain: `docs-${run}.example`, visited_at: start, duration_seconds: secs }],
+        activity_buckets: [{ bucket_start: start, active_samples: 2, total_samples: 4 }],
+        idle_intervals: [{ session_user: 'ada', started_at: start + 1000, ended_at: start + 61_500 }],
+      }, { ...dk, 'idempotency-key': id }), 200);
+    };
+    await lateBatch(at, 900, `Code${run}`);
+    await lateBatch(at + 3600_000, 600, 'Safari');
+    // a timezone change drops the company's summaries, so the first reading is from raw rows
+    expect(await call('PATCH', '/v1/company/settings', admin, { timezone: 'UTC' }), 200);
+    expect(await call('PATCH', '/v1/company/settings', admin, { timezone: 'Asia/Dhaka' }), 200);
+    const w = `from=${daysAgo(6)}&to=${today}`;
+    const monday = daysAgo((new Date(past + 'T00:00:00Z').getUTCDay() + 6) % 7 + 2);
+    const reads = [`/v1/reports/productivity?${w}&group_by=day`, `/v1/reports/activity?${w}&group_by=week`, `/v1/reports/apps?${w}&limit=100`,
+      `/v1/reports/websites?${w}&limit=100`, `/v1/reports/apps?${w}&category=productive`, `/v1/reports/productivity?${w}&employee_id=${ada.id}`,
+      `/v1/employees/${ada.id}/calendar?view=month&date=${past}`, `/v1/employees/${ada.id}/timesheet?week=${monday}`, `/v1/exports/daily-summaries.csv?${w}`];
+    const snap = async () => Promise.all(reads.map(async (u) => (await call('GET', u, admin)).json));
+    const before = await snap();
+    let run1: any;
+    do run1 = expect(await call('POST', '/cron/usage-summary', undefined, undefined, cs), 200); while (run1.more || run1.skipped);
+    assert.ok(run1.rows_affected.usage_days >= 1, 'days were summarized');
+    assert.deepEqual(await snap(), before, 'same responses from summaries');
+    const again = expect(await call('POST', '/cron/usage-summary', undefined, undefined, cs), 200);
+    assert.deepEqual(again.rows_affected, {}); assert.equal(again.more, false);
+    const one = `/v1/reports/productivity?from=${past}&to=${past}&employee_id=${ada.id}`;
+    const was = expect(await call('GET', one, admin), 200).tracked_seconds;
+    await lateBatch(at + 7200_000, 300, `Code${run}`);
+    assert.equal(expect(await call('GET', one, admin), 200).tracked_seconds, was + 300, 'a late batch shows at once');
+    ok('usage summaries: cron secret, same reports before and after, late batch, timezone change');
+  } else console.log('skip usage summaries: CRON_SECRET not set');
 
   expect(await call('DELETE', `/v1/employees/${ada.id}`, admin), 409, 'EMPLOYEE_HAS_DEVICES');
   expect(await call('POST', `/v1/devices/${dev.device_id}/release`, mgr.token), 403);
