@@ -6,11 +6,13 @@ import type { FastifyRequest } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { ApiError, config, Db, sha256, Tx } from './core';
 import type { LogCtx } from './http';
+import { cleanupJob } from './cleanup';
 import { JobTx, Rows, usageSummaryJob } from './usage';
 
 type Job = (tx: JobTx, rows: Rows) => Promise<{ skipped: boolean; more: boolean }>;
 const JOBS: Record<string, Job> = {
   'usage-summary': usageSummaryJob,
+  cleanup: cleanupJob,
 };
 
 // Hashing first gives equal lengths, so a prefix or longer value is refused without throwing.

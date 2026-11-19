@@ -112,9 +112,9 @@ Apply each company's retention and prepare partitions.
 Notes, in order:
 1. `cron_ensure_month_partitions()`: partitions from last month to two months ahead on the four partitioned tables; idempotent.
 2. Per company: deletes `app_sessions`, `url_visits`, `activity_buckets`, `idle_intervals` rows older than now − `data_retention_days`, in batches (size in `packages/shared`), each batch its own short `system`-scope transaction, until done or the time budget is spent (`more` true).
-3. Screenshots past retention: deletes the Storage object at `storage_path`, then the row. A failed object delete keeps the row for next run; a missing object counts as deleted.
+3. *(Not built yet, task 3.2: screenshot rows and files are kept.)* Screenshots past retention: deletes the Storage object at `storage_path`, then the row. A failed object delete keeps the row for next run; a missing object counts as deleted.
 4. Deletes `ingest_batches` older than 14 days (`received_at`) and **resolved** `tamper_events` older than retention. Unresolved events are kept.
-5. `cron_drop_old_partitions(365)`: drops monthly partitions ending more than 365 days ago; the count is in `rows_affected`.
+5. `cron_drop_old_partitions(90)`: drops monthly partitions ending more than 90 days ago; the count is in `rows_affected.partitions_dropped`.
 
 Never deletes `notice_acknowledgements`, `employees`, `devices`, `users`, `companies`, `licenses`, or
 any rule or settings row. Exempt from B2's one-transaction rule (B15); each batch still sets the scope

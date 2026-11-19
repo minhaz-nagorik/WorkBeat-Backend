@@ -1,0 +1,10 @@
+# /cron/usage-summary hourly (summarize-usage, B28).
+[Unit]
+Description=WorkBeat usage summaries, hourly
+
+[Timer]
+OnCalendar=*-*-* *:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

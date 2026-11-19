@@ -23,7 +23,7 @@ Each `/cron/cleanup` run SHALL first call `cron_ensure_month_partitions()`, so p
 
 ### Requirement: Activity past a company's retention is deleted
 <!-- source: B13 · PRD "Retention and suspension" · Plan-v3.5 §4.4 "Reports and data lifecycle" -->
-For each company, cleanup SHALL delete `app_sessions`, `url_visits`, `activity_buckets` and `idle_intervals` rows whose time column is before now minus `data_retention_days`, in batches of the size in `packages/shared`, each batch its own transaction in `system` scope, until none remain or the run's time budget is spent. A spent budget MUST return `more` = `true`.
+For each company, cleanup SHALL delete `app_sessions`, `url_visits`, `activity_buckets` and `idle_intervals` rows whose time column is before now minus `data_retention_days`, in batches of at most one company day of one table, each batch its own transaction in `system` scope, until none remain or the run's time budget is spent. A spent budget MUST return `more` = `true`.
 
 #### Scenario: A company keeps 30 days
 - **WHEN** cleanup runs for a company with `data_retention_days` = 30
@@ -45,9 +45,9 @@ For each company, cleanup SHALL delete `app_sessions`, `url_visits`, `activity_b
 - **WHEN** a row's time equals the run's start time minus `data_retention_days`
 - **THEN** the row is kept
 
-#### Scenario: One-day retention
-- **WHEN** a company keeps 1 day
-- **THEN** rows older than 24 hours before the run's start are deleted
+#### Scenario: A row a minute either side of the cut-off
+- **WHEN** a company keeps 30 days and has rows 30 days and one minute old and 30 days less one minute old
+- **THEN** the older row is deleted and the newer row is kept
 
 #### Scenario: A suspended or expired company
 - **WHEN** a company is `suspended` or `expired`

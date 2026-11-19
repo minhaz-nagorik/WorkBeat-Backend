@@ -26,6 +26,9 @@ months ahead (`cron_ensure_month_partitions()`), so no default partition is need
 `/cron/cleanup` deletes each company's rows past its retention in batches (B15) and drops whole
 partitions past 365 days (`cron_drop_old_partitions()`). `ingest_batches` rows are kept 14 days.
 
+**Note (19 Nov 2026):** retention is now at most 90 days (B13, migration 0009), so cleanup calls
+`cron_drop_old_partitions(90)`; the 365 days below are from before that change.
+
 ## Consequences
 
 Inserts stay cheap; a 365-day drop is a `DROP TABLE`, not a delete. The time window keeps every

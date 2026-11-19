@@ -27,6 +27,11 @@ export const LIMITS = {
   ratePerIp: 120,
   // /cron/usage-summary stops starting new company days after this; the scheduler calls hourly (B28).
   usageSummaryBudgetMs: 50_000,
+  // /cron/cleanup (data-retention): stops starting batches after the budget and answers more: true;
+  // the next night continues. Rows per batch for ingest_batches and tamper_events.
+  cleanupBudgetMs: 5 * 60_000,
+  cleanupBatchRows: 5_000,
+  ingestBatchKeepDays: 14, // D13
 };
 
 // Unix milliseconds (agent wire format) or an ISO string.

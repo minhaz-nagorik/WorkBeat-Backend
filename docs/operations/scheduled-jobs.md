@@ -13,7 +13,7 @@ three times (rule 8). The mechanism is specified in `run-scheduled-jobs` (`cron-
 | `/cron/token-expiry` | `0 * * * *` | Deletes unused enrollment tokens past `expires_at`; used tokens stay | `run-scheduled-jobs` (`cron-routes`) | Under a second |
 | `/cron/usage-summary` | `0 * * * *` | Deletes each company's summaries past retention, then builds the summary of every finished company day not built yet, newest first | `summarize-usage` (`usage-summaries`) | Seconds once caught up; after deploy or a timezone change it backfills up to 90 days per company and returns `more: true` until done |
 | `/cron/alert-digest` | `0 * * * *` | Hourly digests; daily digests at the run that falls at 09:00 in each company's `timezone`; retries failed instant emails under 24 h old | `process-tamper-alerts` (`alert-emails`) | Seconds; one Resend call per recipient |
-| `/cron/cleanup` | `0 2 * * *` | Ensures monthly partitions, deletes each company's activity and screenshots past retention in batches, deletes old `ingest_batches` and resolved old tamper events, drops partitions past 90 days | `run-scheduled-jobs` (`data-retention`) | Up to the time budget in `packages/shared`; may return `more: true` |
+| `/cron/cleanup` | `0 2 * * *` | Ensures monthly partitions, deletes each company's activity and screenshots past retention in batches, deletes old `ingest_batches` and resolved old tamper events, drops partitions past 90 days (screenshots not yet, task 3.2) | `run-scheduled-jobs` (`data-retention`) | Up to the time budget in `packages/shared`; may return `more: true` |
 
 Runtimes are expectations until the load test measures them (`data-retention` task 3.5).
 
@@ -34,7 +34,7 @@ Runtimes are expectations until the load test measures them (`data-retention` ta
 
 Every job is safe to repeat and safe to call by hand with the secret.
 
-Built so far: `/cron/usage-summary` (summarize-usage). The other routes answer `404` until their changes land.
+Built so far: `/cron/usage-summary` (summarize-usage) and `/cron/cleanup` (data-retention; screenshots are not deleted yet, task 3.2). The other routes answer `404` until their changes land.
 
 ## When a job fails
 
@@ -61,53 +61,18 @@ curl -fsS -X POST https://<api host>/cron/cleanup -H "X-Cron-Secret: $CRON_SECRE
 
 Never paste the secret into a ticket or chat; read it from the secret store into the variable.
 
-## Setting up with pg_cron and pg_net (default)
+## Setting up the schedule (systemd timers)
 
-Schedule definitions belong in `db/cron/` (`cron-routes` task 2.4, not yet written). The secret
-lives in Supabase Vault, never in the job text.
+The database is self-hosted PostgreSQL (B22, no Supabase), so there is no pg_cron/Vault setup.
+One host runs systemd timers that `curl` each route; the units and install steps are in
+[`db/cron/`](../../db/cron/README.md). The secret lives only in the root-only
+`/etc/workbeat/cron.env`, never in a unit file.
 
-```sql
--- once per project, as postgres
-SELECT vault.create_secret('<the CRON_SECRET value>', 'cron_secret');
-
-SELECT cron.schedule('wb-heartbeat-check', '*/5 * * * *', $$
-  SELECT net.http_post(
-    url     := 'https://<api host>/cron/heartbeat-check',
-    headers := jsonb_build_object(
-                 'Content-Type', 'application/json',
-                 'X-Cron-Secret', (SELECT decrypted_secret FROM vault.decrypted_secrets
-                                   WHERE name = 'cron_secret')),
-    body    := '{}'::jsonb,
-    timeout_milliseconds := 60000);
-$$);
-```
-
-Repeat for each row of the table above with its name and schedule (`wb-domain-verify`,
-`wb-token-expiry`, `wb-alert-digest`, `wb-cleanup`). pg_cron runs in UTC.
-
-| Check | Query |
+| Check | Command |
 |---|---|
-| Jobs defined | `SELECT jobname, schedule, active FROM cron.job;` |
-| Last runs | `SELECT jobid, status, start_time FROM cron.job_run_details ORDER BY start_time DESC LIMIT 20;` |
-| HTTP answers | `SELECT status_code, created FROM net._http_response ORDER BY created DESC LIMIT 20;` |
+| Timers defined and next run | `systemctl list-timers 'workbeat-cron@*'` |
+| Last runs and answers | `journalctl -u 'workbeat-cron@cleanup.service' -n 20` |
+| Run one now | `sudo systemctl start workbeat-cron@cleanup.service` |
 
-pg_net is fire-and-forget: `cron.job_run_details` shows `succeeded` once the request is queued,
-not when the API answered. Read `net._http_response` (or the API's log line) for the result.
-`cleanup` can outlast the HTTP timeout; that is fine, the API keeps working and the lock
-prevents a second run.
-
-## Setting up with Cloud Scheduler
-
-When the API runs on Cloud Run and pg_cron is not wanted:
-
-```bash
-gcloud scheduler jobs create http wb-cleanup \
-  --schedule="0 2 * * *" --time-zone="Etc/UTC" \
-  --uri="https://<api host>/cron/cleanup" --http-method=POST \
-  --headers="X-Cron-Secret=${CRON_SECRET},Content-Type=application/json" \
-  --attempt-deadline=30m
-```
-
-The header value is stored in the job definition, so restrict who can view scheduler jobs. Use one
-scheduler, never both: two schedulers are harmless (the lock skips the second) but make failures
-hard to read.
+`curl --max-time 900` outlasts cleanup's 5-minute budget. Run timers on one host only: a second
+scheduler is harmless (the lock skips it) but makes failures hard to read.

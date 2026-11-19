@@ -1,0 +1,16 @@
+# Calls one /cron/<job> route of the WorkBeat API (run-scheduled-jobs `cron-routes`, task 2.4).
+# %i is the job name, e.g. workbeat-cron@cleanup.service. Started only by its timer.
+# /etc/workbeat/cron.env holds API_URL=https://<api host> and CRON_SECRET=<same value as the API's>;
+# it is root-only (chmod 600), so the secret never appears in a unit file or a process listing's unit text.
+[Unit]
+Description=WorkBeat cron job %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/workbeat/cron.env
+# --max-time above the job's budget (cleanup: 5 min); -f makes a 401/500 fail the unit.
+ExecStart=/bin/sh -c 'exec curl -fsS --max-time 900 -X POST "$API_URL/cron/%i" -H "X-Cron-Secret: $CRON_SECRET" -H "Content-Type: application/json" -d "{}"'
+DynamicUser=yes
+NoNewPrivileges=yes

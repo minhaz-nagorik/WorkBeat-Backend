@@ -98,9 +98,9 @@ Daily at 02:00 UTC, `system` scope, behind `X-Cron-Secret`.
 |---|---|
 | 1 | `cron_ensure_month_partitions()`: create upcoming partitions |
 | 2 | Per company: delete activity rows older than its retention, in batches |
-| 3 | Per company: delete expired screenshot objects, then their rows |
+| 3 | Per company: delete expired screenshot objects, then their rows (**not built yet**, task 3.2: rows and files are kept for now) |
 | 4 | Delete `ingest_batches` older than 14 days; resolved `tamper_events` older than retention |
-| 5 | `cron_drop_old_partitions(365)`: drop months that end more than 365 days ago |
+| 5 | `cron_drop_old_partitions(90)`: drop months that end more than 90 days ago (the longest retention) |
 
 - Each batch is its own short transaction that sets `system` scope and takes the job's
   `pg_try_advisory_xact_lock`; if held, the run answers `skipped`.
@@ -125,3 +125,4 @@ ones.
 - **Screenshot window.** [ingest-activity design.md](../openspec/changes/ingest-activity/design.md)
   amends B7 for screenshots (refuse, not drop); B7 itself was not updated to say so.
 - **`ingest_batches` keep 14 days** is in the spec and a schema comment, not in a B-number.
+- **Partition bounds use the session time zone** (`ensure_month_partitions`); see `run-scheduled-jobs` task 4.2.

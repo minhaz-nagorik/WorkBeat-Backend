@@ -13,7 +13,7 @@ company keeps activity and screenshots for its own `data_retention_days`, 30, 60
 - **Token expiry** (`/cron/token-expiry`, hourly): deletes expired, unused enrollment tokens.
 - **Retention cleanup** (`/cron/cleanup`, daily 02:00 UTC): creates future partitions, deletes
   each company's activity, screenshots and their Storage objects past retention, old
-  `ingest_batches` and resolved tamper events, and drops partitions older than 365 days.
+  `ingest_batches` and resolved tamper events, and drops partitions that ended more than 90 days ago (the longest retention, B13).
 - `/cron/heartbeat-check`, `/cron/domain-verify` and the alert digests use this mechanism; their
   logic stays in their own changes.
 

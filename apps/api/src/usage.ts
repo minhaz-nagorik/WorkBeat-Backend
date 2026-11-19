@@ -5,7 +5,7 @@ import { LIMITS } from './contract';
 import type { Tx } from './core';
 
 export type Rows = Record<string, number>;
-const add = (rows: Rows, table: string, n: number | null) => { if (n) rows[table] = (rows[table] ?? 0) + n; };
+export const add = (rows: Rows, table: string, n: number | null) => { if (n) rows[table] = (rows[table] ?? 0) + n; };
 
 // The ingest of a late batch and the job building that day take this lock, so neither misses
 // the other's rows (design "Late batches"). Two-key form: never collides with the job locks.
