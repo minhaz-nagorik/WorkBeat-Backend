@@ -45,7 +45,9 @@ Clients branch on HTTP status and `code`, never on `error`. Every response carri
   `browser_access`, `permissions` (Windows: `not_required`), `store_bytes`, `oldest_unsent_at`,
   `dropped_records`, `dropped_samples`, `screenshot_skips`, `quarantined_batches`,
   `blocking_status`, `helper_restarts_24h`, `upload_failures_24h`, `update_failure`,
-  `active_pause_id`, `notice_version`, `notice_acknowledged_at`, `uptime_seconds`.
+  `active_pause_id`, `notice_version`, `notice_acknowledged_at`, `uptime_seconds`, `input_idle_seconds`
+  (optional: whole seconds since the last keyboard or mouse input; drives the employee's Active/Idle;
+  an invalid value is ignored, never refused).
   **Response:** `policy_version`, `monitoring_pause` (`{ pause_id, starts_at, ends_at }` or `null`).
 - **Policy response:** `policy_version`, `block_rules[]` (`{ id, type: domain|url, pattern, reason }`),
   `sensitive_domains[]`, `screenshot_interval_seconds` (0, 600, 1800, 3600), `idle_threshold_seconds`,

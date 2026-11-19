@@ -15,6 +15,7 @@
 - [ ] 1.8 Tests (edge cases): case-only duplicate email → 409; concurrent same-email creates → one 201, one 409; blank name → 422; `company_id` in body ignored; several employees without email; BOM + CRLF file; quoted comma; archived email re-created on import; duplicate emails in file → 422 naming both lines; unknown or disabled manager email → 422; 0 rows → 422; exactly the cap → imported, cap + 1 → 413; two concurrent imports of one file → no duplicate; deactivated, unreleased binding blocks archive → 409, released binding does not; repeat archive keeps `archived_at`; archive vs enroll race
 - [ ] 1.9 `POST /v1/employees/:id/restore`: clear `archived_at`, optional `email`; unique-email violation → `409 CONFLICT`; no email → `422`; import refuses a row whose email only an archived employee holds, with `archived: [{ line, employee_id, name }]`
 - [ ] 1.10 Tests: restore → same `id`, editable again, back in totals; email held by another → 409 and still archived; restore with a new email; not archived → 200 unchanged; it_admin/manager → 403; other company → 404; import of an archived email → 422 naming the line
+- [x] 1.11 Presence per online device: `last_input_at` within the idle threshold of the latest heartbeat, else (no `last_input_at`) an active bucket of that device in the last 35 minutes; any active device makes the employee `active` (19 Nov 2026)
 
 ## 2. manager-teams
 

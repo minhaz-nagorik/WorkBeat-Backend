@@ -79,6 +79,8 @@ export const heartbeatBody = z.object({
   notice_version: z.number().int().positive().nullish(),
   notice_acknowledged_at: time.nullish(),
   uptime_seconds: nonneg.optional(),
+  // Seconds since the last keyboard or mouse input; drives presence. Invalid means absent, never a 422.
+  input_idle_seconds: nonneg.optional().catch(undefined),
 });
 export const HEALTH_FIELDS = [
   'store_bytes', 'oldest_unsent_at', 'dropped_records', 'dropped_samples', 'screenshot_skips',

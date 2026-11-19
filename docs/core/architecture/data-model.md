@@ -271,6 +271,7 @@ released and the next enrollment makes a new row.
 | enrolled_via | text NOT NULL DEFAULT 'manual' | D40 |
 | enrolled_at | timestamptz NOT NULL | |
 | last_heartbeat_at | timestamptz NULL | |
+| last_input_at | timestamptz NULL | Heartbeat receipt time minus `input_idle_seconds`; NULL when the latest heartbeat did not send it (0012) |
 | offline_since | timestamptz NULL | set by `/cron/heartbeat-check`, cleared on heartbeat |
 | policy_version | bigint NOT NULL | taken at insert; never bumped (0003 drops `devices_policy_bump`) |
 | reported_policy_version | bigint NULL | |

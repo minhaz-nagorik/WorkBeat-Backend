@@ -191,7 +191,7 @@ An import with any invalid row (no `name`, a missing or malformed email, a `mana
 
 ### Requirement: Employees carry a derived presence
 <!-- source: Plan-v3.5 §4.5 "Employees" · B12 · B18 -->
-`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` and `deactivated_at` NULL), `tamper` (one such device is `tamper`), `offline` (none of them is `online`), `active` (the latest `activity_buckets` row in the last 25 minutes has active samples), else `idle`. It MUST never be stored.
+`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` and `deactivated_at` NULL), `tamper` (one such device is `tamper`), `offline` (none of them is `online`), `active` (an `online` one is active, see below), else `idle`. It MUST never be stored.
 
 #### Scenario: A paused employee with a tampered laptop
 - **WHEN** an employee has a pause in force and a device with an open tamper event
@@ -201,14 +201,6 @@ An import with any invalid row (no `name`, a missing or malformed email, a `mana
 - **WHEN** every device of the employee is released
 - **THEN** `presence` is `no_device`
 
-#### Scenario: Working right now
-- **WHEN** the employee's newest activity bucket from 4 minutes ago has 3 active samples
-- **THEN** `presence` is `active`
-
-#### Scenario: An online computer whose newest bucket arrived with the last sync
-- **WHEN** the device heartbeated 3 minutes ago and the newest bucket started 18 minutes ago with active samples
-- **THEN** `presence` is `active`
-
 #### Scenario: No device online
 - **WHEN** every live device of the employee is `offline`
 - **THEN** `presence` is `offline`, whatever the buckets say
@@ -216,6 +208,26 @@ An import with any invalid row (no `name`, a missing or malformed email, a `mana
 #### Scenario: The IT admin's list
 - **WHEN** an `it_admin` lists employees
 - **THEN** rows carry only `id`, `name`, `email` and `department`, without `presence`
+
+### Requirement: Active means recent input on an online device
+<!-- source: B12 · concern "device online, employee idle" (19 Nov 2026) -->
+An `online` device SHALL be active when `last_input_at` is not NULL and at least `last_heartbeat_at` minus the company's `idle_threshold_seconds`. When `last_input_at` is NULL it SHALL be active when one of its own `activity_buckets` that started in the last 35 minutes has active samples, which covers a 10-minute bucket sent with a 10-minute sync.
+
+#### Scenario: Working right now
+- **WHEN** the device's latest heartbeat reported input 20 seconds before it, with a 300-second threshold
+- **THEN** `presence` is `active`
+
+#### Scenario: Stepped away
+- **WHEN** the latest heartbeat reported input 9 minutes before it, with a 300-second threshold
+- **THEN** `presence` is `idle`, whatever the buckets say
+
+#### Scenario: An agent that does not report input
+- **WHEN** `last_input_at` is NULL and the device's bucket that started 28 minutes ago has active samples
+- **THEN** `presence` is `active`
+
+#### Scenario: Two computers, one in use
+- **WHEN** one online device is active and another online device is not
+- **THEN** `presence` is `active`
 
 ### Requirement: Employees carry their devices
 <!-- source: Plan-v3.5 §4.5 "Employees" · D48 -->

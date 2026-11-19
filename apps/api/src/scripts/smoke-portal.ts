@@ -362,6 +362,16 @@ async function main() {
   assert.equal(expect(await call('GET', `/v1/devices/${dev.device_id}`, admin), 200).status, 'online');
   ok('devices: tamper status, badges, alerts feed, resolve');
 
+  // presence: no input reported → the device's own bucket from 30 min ago counts (lookback 35 min)
+  const presence = async () => expect(await call('GET', `/v1/employees/${ada.id}`, admin), 200).presence;
+  const beat = async (idle: unknown) =>
+    expect(await call('POST', '/v1/agents/heartbeat', undefined, { agent_version: '1.0.0', input_idle_seconds: idle }, dk), 200);
+  assert.equal(await presence(), 'active', 'bucket fallback');
+  await beat(900); assert.equal(await presence(), 'idle', 'input 15 min ago beats the bucket');
+  await beat(10); assert.equal(await presence(), 'active', 'input 10 s ago');
+  await beat(-5); assert.equal(await presence(), 'active', 'invalid value ignored: back to the bucket');
+  ok('presence: reported input, bucket fallback, invalid input_idle_seconds ignored');
+
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
   const q = `from=${today}&to=${today}&employee_id=${ada.id}`;
   const apps = expect(await call('GET', `/v1/reports/apps?${q}`, mgr.token), 200);

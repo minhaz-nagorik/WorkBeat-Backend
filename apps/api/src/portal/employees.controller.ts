@@ -9,31 +9,40 @@ import { Storage, thumbPath } from '../storage';
 import { isDay, localTime, MAX_RANGE_DAYS } from './reports.controller';
 import { listDevices } from './devices.controller';
 
-// Buckets are 10 minutes, keyed by their start, and arrive with the agent's 10-minute sync, so the
-// newest one is 13-23 minutes old when read: look back 25 minutes for it.
-const RECENT_MINUTES = 25;
-// presence (admin request 1.2): paused > no_device > tamper > offline (no live device online) >
-// active (latest bucket in 25 min has active samples) > idle (online, no recent active bucket).
-// A live binding is a device neither released nor deactivated.
+// Fallback for agents that do not report input: a 10-minute bucket is closed by the next sample and
+// sent with the next 10-minute sync, so a working employee's newest one can be ~31 minutes old.
+const BUCKET_LOOKBACK_MINUTES = 35;
+// presence (employee-directory): paused > no_device > tamper > offline (no live device online) >
+// active (an online device is active) > idle. A live binding is a device neither released nor
+// deactivated. A device is active when its latest heartbeat reported input within the idle threshold,
+// or, when it reported none (last_input_at NULL), when one of its own recent buckets has active samples.
 async function withPresence(c: Tx, rows: any[]) {
   if (!rows.length) return rows;
   const ids = rows.map((r) => r.id);
   const { rows: st } = await c.query(
-    `SELECT e.id,
-            EXISTS (SELECT 1 FROM monitoring_pauses p WHERE p.employee_id = e.id AND p.cancelled_at IS NULL
-                     AND p.starts_at <= now() AND p.ends_at > now()) AS paused,
-            (SELECT b.active_samples > 0 FROM activity_buckets b WHERE b.employee_id = e.id
-                AND b.bucket_start > now() - make_interval(mins => $2) ORDER BY b.bucket_start DESC LIMIT 1) AS recent_active
+    `SELECT e.id, EXISTS (SELECT 1 FROM monitoring_pauses p WHERE p.employee_id = e.id AND p.cancelled_at IS NULL
+                           AND p.starts_at <= now() AND p.ends_at > now()) AS paused
        FROM employees e WHERE e.id = ANY ($1)`,
-    [ids, RECENT_MINUTES],
+    [ids],
   );
+  const { rows: act } = await c.query(
+    `SELECT d.id FROM devices d JOIN companies co ON co.id = d.company_id
+      WHERE d.employee_id = ANY ($1) AND d.released_at IS NULL
+        AND CASE WHEN d.last_input_at IS NOT NULL
+                 THEN d.last_input_at >= d.last_heartbeat_at - make_interval(secs => co.idle_threshold_seconds)
+                 ELSE EXISTS (SELECT 1 FROM activity_buckets b WHERE b.company_id = d.company_id AND b.device_id = d.id
+                               AND b.bucket_start > now() - make_interval(mins => $2) AND b.active_samples > 0) END`,
+    [ids, BUCKET_LOOKBACK_MINUTES],
+  );
+  const active = new Set(act.map((a) => a.id));
   const devs = await listDevices(c, 'd.employee_id = ANY ($1) AND d.released_at IS NULL', [ids]);
   return rows.map((r) => {
     const s = st.find((x) => x.id === r.id);
     const mine = devs.filter((d) => d.employee.id === r.id);
     const live = mine.filter((d) => d.status !== 'deactivated');
+    const online = live.filter((d) => d.status === 'online');
     const presence = s?.paused ? 'paused' : !live.length ? 'no_device' : live.some((d) => d.status === 'tamper') ? 'tamper'
-      : !live.some((d) => d.status === 'online') ? 'offline' : s?.recent_active === true ? 'active' : 'idle';
+      : !online.length ? 'offline' : online.some((d) => active.has(d.id)) ? 'active' : 'idle';
     return { ...r, presence, devices: mine.map((d) => ({ id: d.id, hostname: d.hostname, os: d.os, status: d.status, last_heartbeat_at: d.last_heartbeat_at })) };
   });
 }
@@ -41,7 +50,7 @@ async function withPresence(c: Tx, rows: any[]) {
 const FULL = 'id, name, email, department, manager_user_id, archived_at';
 const IMPORT_MAX_ROWS = 5000;
 const SCREENSHOT_VIEW_SECONDS = 5 * 60;
-// Every tile loads the full JPEG (no thumbnails), so pages stay small.
+// Tiles load the thumbnail when the agent sent one, else the full JPEG, so pages stay small.
 const SCREENSHOT_PAGE = 24, SCREENSHOT_PAGE_MAX = 60;
 const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
 const employeeBody = z.object({

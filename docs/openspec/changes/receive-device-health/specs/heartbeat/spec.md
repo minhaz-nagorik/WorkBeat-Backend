@@ -27,6 +27,18 @@ The API SHALL write the heartbeat's `agent_version`, `policy_version` (as `repor
 - **WHEN** a heartbeat omits `os_version`
 - **THEN** the stored `os_version` is kept and the other fields are written
 
+### Requirement: A heartbeat may carry the time since the last input
+<!-- source: employee-directory "Active means recent input on an online device" · Mac CHANGELOG 84 -->
+A heartbeat MAY carry `input_idle_seconds`, the whole seconds since the last keyboard or mouse input the agent saw. The API SHALL store `devices.last_input_at` as the time it received the heartbeat minus that value, and NULL when the field is absent. A value that is not a whole number from 0 up MUST be treated as absent, never refused.
+
+#### Scenario: Typed a minute ago
+- **WHEN** a heartbeat carries `input_idle_seconds` 60
+- **THEN** `devices.last_input_at` is one minute before the heartbeat was received
+
+#### Scenario: An agent that does not send it
+- **WHEN** a heartbeat omits `input_idle_seconds` or sends `-5`
+- **THEN** it is accepted with `200` and `devices.last_input_at` is NULL
+
 ### Requirement: Counters and store health are kept in one health object
 <!-- source: Plan-v3.5 §4.1 "Heartbeat" · D7 · D25 · report-device-health/heartbeat -->
 The API SHALL store `store_bytes`, `oldest_unsent_at`, `dropped_records`, `dropped_samples`, `screenshot_skips`, `quarantined_batches`, `blocking_status`, `helper_restarts_24h`, `upload_failures_24h`, `update_failure` and `uptime_seconds` in `devices.health`, replacing the previous object.

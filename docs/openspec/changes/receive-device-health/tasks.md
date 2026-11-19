@@ -12,6 +12,7 @@
 - [ ] 1.5 Tests: `402` heartbeat updates `last_heartbeat_at`; `401` writes nothing; pause extended / cancelled reaches the next response; invalid body leaves the row unchanged
 - [ ] 1.6 `last_heartbeat_at = greatest(last_heartbeat_at, now())` in the update
 - [ ] 1.7 Edge tests: unknown fields (`enrolled_via`, a new one) → 200, not stored; omitted `os_version` kept; all-zero counters accepted; repeated body → same row, later `last_heartbeat_at`; future pause → null; `starts_at` boundary in, `ends_at` boundary out; deactivated → 401, nothing written; ended company hourly → 402 and recorded; unknown `helper_status` → 422; concurrent heartbeats → last commit wins, time never decreases; delayed retry → time never decreases
+- [x] 1.8 `input_idle_seconds` (optional, ignored when invalid) → `devices.last_input_at` = now − value, NULL when absent; migration 0012 (19 Nov 2026)
 
 ## 2. notice-acknowledgement
 

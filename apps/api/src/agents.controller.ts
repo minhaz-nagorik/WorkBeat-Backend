@@ -30,10 +30,11 @@ export class AgentsController {
       await c.query(
         `UPDATE devices SET agent_version = $2, os_version = coalesce($3, os_version), reported_policy_version = $4,
                 helper_status = $5, browser_access = $6, permissions = $7, active_pause_id = $8, health = $9,
-                last_heartbeat_at = greatest(last_heartbeat_at, now()), offline_since = NULL
+                last_heartbeat_at = greatest(last_heartbeat_at, now()), offline_since = NULL,
+                last_input_at = now() - make_interval(secs => $10)
           WHERE id = $1`,
         [dev.device_id, b.agent_version, b.os_version ?? null, b.policy_version ?? null, json(b.helper_status),
-         json(b.browser_access), json(b.permissions), b.active_pause_id ?? null, json(health)],
+         json(b.browser_access), json(b.permissions), b.active_pause_id ?? null, json(health), b.input_idle_seconds ?? null],
       );
       await c.query(
         "UPDATE tamper_events SET resolved_at = now() WHERE device_id = $1 AND event_type = 'offline' AND resolved_at IS NULL",
