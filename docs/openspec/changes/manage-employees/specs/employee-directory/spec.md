@@ -128,7 +128,7 @@ An import with any invalid row (no `name`, a malformed email, an unknown manager
 
 #### Scenario: Every device was released
 - **WHEN** an admin removes an employee whose only device was released
-- **THEN** `archived_at` is set and the employee's past activity is still in reports
+- **THEN** `archived_at` is set and the employee's past activity is still in a report with that employee's `employee_id`
 - **AND** the employee's email can be used for a new employee
 
 #### Scenario: A deactivated binding still blocks
