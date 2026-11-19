@@ -1,13 +1,21 @@
 ## Purpose
 
-How a company opens its dashboard at its own domain: the admin sets it, proves it with a DNS TXT
+How a company opens its dashboard at its own domain: it is set for the company (B29: no company role may change it), proves it with a DNS TXT
 record, the verification job activates it, and the API resolves a host name to its company.
 
 ## ADDED Requirements
 
-### Requirement: A company admin sets a custom domain
+### Requirement: No company role changes the custom domain
+<!-- source: B29 -->
+`PUT` and `DELETE /v1/company/custom-domain` SHALL answer `403 FORBIDDEN` to every company role, `company_admin` included, and MUST change nothing. A company admin MUST still read the domain with `GET`.
+
+#### Scenario: A company admin adds a domain
+- **WHEN** a company admin puts `{ "domain": "monitor.acme.com" }`
+- **THEN** the response is `403` with `code` `FORBIDDEN` and `custom_domain` is unchanged
+
+### Requirement: Setting a custom domain
 <!-- source: PRD "Tenants and custom domains" · Plan-v3.5 §4.4 -->
-`PUT /v1/company/custom-domain` with `domain` SHALL be allowed to `company_admin` only. It MUST set `custom_domain` (lower case), `custom_domain_status` `pending`, a new random `custom_domain_token`, and clear `custom_domain_verified_at`. A domain under `workbeat.io` or not a valid host name MUST get `422 VALIDATION_FAILED`; a domain another company holds MUST get `409 CONFLICT`.
+`PUT /v1/company/custom-domain` with `domain`, when allowed, It MUST set `custom_domain` (lower case), `custom_domain_status` `pending`, a new random `custom_domain_token`, and clear `custom_domain_verified_at`. A domain under `workbeat.io` or not a valid host name MUST get `422 VALIDATION_FAILED`; a domain another company holds MUST get `409 CONFLICT`.
 
 #### Scenario: An admin adds a domain
 - **WHEN** a company admin puts `{ "domain": "Monitor.Acme.com" }`

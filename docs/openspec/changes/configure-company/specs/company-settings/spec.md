@@ -1,44 +1,54 @@
 ## Purpose
 
-The company-wide settings a company admin edits — profile, retention, idle threshold, alert
-email recipients — and the onboarding checklist that tracks the first install.
+The company-wide settings: the idle threshold, timezone and alert email recipients a company admin
+edits, the name and retention WorkBeat staff set (B29), and the onboarding checklist that tracks the
+first install.
 
 ## ADDED Requirements
 
 ### Requirement: A company admin reads and edits company settings
-<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Permission matrix" -->
-`GET /v1/company/settings` and `PATCH /v1/company/settings` SHALL be allowed to `company_admin` only and read or write the caller's `companies` row: `name` (1–100 characters), `data_retention_days`, `idle_threshold_seconds` and `alert_email`. `slug` MUST be returned and MUST NOT be writable. Other roles MUST get `403 FORBIDDEN`.
-
-#### Scenario: An admin renames the company
-- **WHEN** a company admin patches `{ "name": "Acme Group" }`
-- **THEN** the response is `200` with `name` `Acme Group` and the same `slug`
+<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Permission matrix" · B29 -->
+`GET /v1/company/settings` and `PATCH /v1/company/settings` SHALL be allowed to `company_admin` only. `GET` returns `name`, `slug`, `data_retention_days`, `idle_threshold_seconds`, `alert_email` and `timezone`. `PATCH` MUST write only `idle_threshold_seconds`, `alert_email` and `timezone`. Other roles MUST get `403 FORBIDDEN`.
 
 #### Scenario: An IT admin edits settings
 - **WHEN** an `it_admin` calls `PATCH /v1/company/settings`
 - **THEN** the response is `403 FORBIDDEN`
 
-#### Scenario: Name length boundaries
-- **WHEN** a company admin sets `name` to 100 characters, then to 101 characters or only spaces
-- **THEN** the 100-character name is saved and the others get `422 VALIDATION_FAILED`
-
 #### Scenario: A slug in the body
-- **WHEN** a company admin patches `{ "slug": "new-slug" }`
+- **WHEN** a company admin patches `{ "slug": "new-slug", "timezone": "UTC" }`
 - **THEN** `slug` is unchanged
 
+### Requirement: Name and retention are set by WorkBeat staff
+<!-- source: B29 -->
+A `PATCH /v1/company/settings` body holding `name` or `data_retention_days` SHALL get `403 FORBIDDEN` naming them in `fields`, and MUST change nothing, not even its other fields. Staff set both with `PATCH /v1/staff/companies/:id` (`staff-companies`): `name` 1–100 characters.
+
+#### Scenario: An admin renames the company
+- **WHEN** a company admin patches `{ "name": "Acme Group", "timezone": "UTC" }`
+- **THEN** the response is `403 FORBIDDEN` with `fields` `["name"]`
+- **AND** neither the name nor the timezone changes
+
+#### Scenario: Staff rename the company
+- **WHEN** staff patch `{ "name": "Acme Group" }` on the company
+- **THEN** the response is `200` with `name` `Acme Group` and the same `slug`
+
+#### Scenario: Name length boundaries
+- **WHEN** staff set `name` to 100 characters, then to 101 characters or only spaces
+- **THEN** the 100-character name is saved and the others get `422 VALIDATION_FAILED`
+
 ### Requirement: Retention is 30, 60 or 90 days
-<!-- source: B13 · PRD "Retention and suspension" -->
-`data_retention_days` SHALL accept only 30, 60 or 90, default 90, and MUST refuse any other value with `422 VALIDATION_FAILED`. Data older than the new value is removed by the next retention run (`run-scheduled-jobs`, `data-retention`), not by this route.
+<!-- source: B13 · B29 · PRD "Retention and suspension" -->
+`data_retention_days`, set by staff, SHALL accept only 30, 60 or 90, default 90, and MUST refuse any other value with `422 VALIDATION_FAILED`. Data older than the new value is removed by the next retention run (`run-scheduled-jobs`, `data-retention`), not by this route.
 
 #### Scenario: Retention over the maximum
-- **WHEN** a company admin sets `data_retention_days` to 180 or 365
+- **WHEN** staff set `data_retention_days` to 180 or 365
 - **THEN** the response is `422 VALIDATION_FAILED` naming `data_retention_days`
 
 #### Scenario: The three choices
-- **WHEN** a company admin sets `data_retention_days` to 30, 60, 90, 45, 0 and 30.5
+- **WHEN** staff set `data_retention_days` to 30, 60, 90, 45, 0 and 30.5
 - **THEN** 30, 60 and 90 are saved and 45, 0 and 30.5 get `422 VALIDATION_FAILED`
 
 #### Scenario: Retention lowered from 90 to 30
-- **WHEN** a company admin lowers `data_retention_days` from 90 to 30
+- **WHEN** staff lower `data_retention_days` from 90 to 30
 - **THEN** the response is `200` at once and no activity row is deleted by the request
 
 ### Requirement: The idle threshold reaches every device

@@ -126,6 +126,7 @@ Response `200`: the rows plus totals.
 | key_last4 | string | |
 | expired_blocking_grace_days | int | |
 | custom_domain_checked_at | ISO-8601 datetime \| null | |
+| data_retention_days | int | 30, 60 or 90 (B29) |
 
 The body is `{ items: [ …rows above… ], totals: { companies, seats_used, mrr_estimate, suspended } }`,
 newest company first, not paged.
@@ -192,15 +193,19 @@ Notes: sets `status` `trial` while `trial_ends_at` is ahead, else `active`; clea
 
 ### `PATCH /v1/staff/companies/:id`
 Roles: super_admin · Spec: [`staff-companies`][staff-companies], [`company-status`][company-status]
-Set the expired-licence blocking grace.
-Request:
+Set the expired-licence blocking grace, the company name, data retention (B29) and status (B30).
+Request (all optional; left-out fields keep their values):
 
 | field | type | required | notes |
 |---|---|---|---|
-| expired_blocking_grace_days | int | yes | 0–365 |
+| expired_blocking_grace_days | int | no | 0–365 |
+| name | string | no | 1–100 characters |
+| data_retention_days | int | no | 30, 60 or 90; older data is removed by the next `/cron/cleanup` |
+| status | enum(trial\|active\|suspended\|expired) | no | `suspended`: reason kept or `staff`; `expired`: `expired_at` set if unset (grace from now); others clear suspension and `expired_at`; `active` and `expired` end a running trial (`trial_ends_at` = now) |
+| trial_days | int | no | 1–90; sets `trial_ends_at` = now + days. Needed for `trial` unless `trial_ends_at` is still ahead |
 
 Response `200`: the company row as in the list.
-Errors: `404 NOT_FOUND` (derived); `422 VALIDATION_FAILED` (outside 0–365).
+Errors: `404 NOT_FOUND` (derived); `422 VALIDATION_FAILED` (a value out of range; `trial` with no future trial end, naming `trial_days`).
 Notes: applies at once: `blocking_ends_at` = `licenses.expired_at` + grace is computed on every read.
 
 ---
@@ -209,21 +214,23 @@ Notes: applies at once: `blocking_ends_at` = `licenses.expired_at` + grace is co
 
 ### `PATCH /v1/staff/companies/:id/license`
 Roles: super_admin · Spec: [`staff-companies`][staff-companies]
-Enterprise plan and seat-limit override.
-Request:
+Set the plan, seat limit and screenshot tier (B30).
+Request (all optional, at least one; left-out fields keep their values):
 
 | field | type | required | notes |
 |---|---|---|---|
-| plan | enum(enterprise) | yes | |
-| seat_limit | int \| null | yes | null = unlimited |
+| plan | enum(starter\|growth\|enterprise) | no | |
+| seat_limit | int \| null | no | null = unlimited, Enterprise only |
+| screenshot_tier | enum(off\|light\|standard\|intensive) | no | a change raises the company's `policy_version`; the policy caps each employee's interval at it |
 
-Response `200`: the company row as in the list. Moving a `starter` or `growth` licence to `enterprise` is allowed.
+Response `200`: the company row as in the list.
 Errors:
 
 | status | code | when |
 |---|---|---|
 | 404 | `NOT_FOUND` | unknown company (derived) |
-| 409 | `CONFLICT` | `seat_limit` below seats used; `seat_limit` change on a `starter` or `growth` licence. Nothing changes |
+| 409 | `CONFLICT` | `seat_limit` below seats used. Nothing changes |
+| 422 | `VALIDATION_FAILED` | empty body; unknown value; null `seat_limit` on a non-Enterprise plan (`fields` `seat_limit`) |
 
 Notes: later `customer.subscription.updated` events leave an `enterprise` `seat_limit` unchanged ([`subscription-sync`][subscription-sync]).
 

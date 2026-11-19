@@ -29,13 +29,18 @@ const newCompany = z.object({
   if (b.seat_limit === null && b.plan !== 'enterprise') ctx.addIssue({ code: 'custom', path: ['seat_limit'], message: 'unlimited needs enterprise' });
   if (b.status === 'trial' && b.trial_days === undefined) ctx.addIssue({ code: 'custom', path: ['trial_days'], message: 'required for a trial' });
 });
+const licencePatch = z.object({
+  plan: z.enum(['starter', 'growth', 'enterprise']).optional(),
+  seat_limit: z.number().int().min(1).nullable().optional(),
+  screenshot_tier: z.enum(['off', 'light', 'standard', 'intensive']).optional(),
+}).refine((b) => Object.keys(b).length > 0, { message: 'nothing to change' });
 const conflict = (field: string, msg: string) => new ApiError(409, 'CONFLICT', msg, { fields: [field] });
 const version = z.string().regex(/^\d+\.\d+\.\d+$/);
 const release = { product: z.enum(['agent', 'downloader']), platform: z.enum(['macos', 'windows']), arch: z.enum(['universal', 'x64', 'arm64']), version };
 const RELEASE = 'id, product, platform, arch, version, min_supported, storage_path, sha256, signature, size_bytes, release_notes, published_by, released_at, withdrawn_at';
 const COMPANY = `SELECT c.id, c.name, c.slug, l.plan, l.seat_limit, coalesce(s.seats_used, 0) AS seats_used, l.screenshot_tier, c.status,
     c.suspended_reason, c.custom_domain, c.custom_domain_status, l.trial_ends_at, c.created_at, l.key_last4,
-    c.expired_blocking_grace_days, c.custom_domain_checked_at
+    c.expired_blocking_grace_days, c.custom_domain_checked_at, c.data_retention_days
   FROM companies c JOIN licenses l ON l.company_id = c.id LEFT JOIN company_seat_counts() s ON s.company_id = c.id`;
 
 // An estimate for the staff list; invoices stay in Stripe.
@@ -53,6 +58,33 @@ async function lockCompany(c: Tx, id: string) {
   const { rows: [r] } = await c.query('SELECT id, status FROM companies WHERE id = $1 FOR UPDATE', [idOrNone(id)]);
   if (!r) throw notFound('Company');
   return r;
+}
+
+// Staff set any status (B30). trial needs a future trial end: trial_days from now, or the one already set.
+// Leaving trial for active is how staff end a trial early.
+// expired starts the blocking grace from now; leaving expired clears it. Suspension by staff is reason 'staff'.
+async function setStatus(c: Tx, co: { id: string; status: string }, status: string, trialDays?: number) {
+  if (status === co.status && trialDays === undefined) return;
+  if (status === 'trial') {
+    if (trialDays !== undefined)
+      await c.query('UPDATE licenses SET trial_ends_at = now() + make_interval(days => $2) WHERE company_id = $1', [co.id, trialDays]);
+    const { rows: [l] } = await c.query('SELECT trial_ends_at > now() AS ok FROM licenses WHERE company_id = $1', [co.id]);
+    if (!l.ok) throw new ApiError(422, 'VALIDATION_FAILED', 'A trial needs trial_days', { fields: ['trial_days'] });
+  }
+  // active or expired ends a running trial (trial_ends_at = now), so a later restore can't bring the trial back.
+  await c.query(
+    `UPDATE licenses SET expired_at = CASE WHEN $2 = 'expired' THEN coalesce(expired_at, now()) END,
+            trial_ends_at = CASE WHEN $2 IN ('active', 'expired') AND trial_ends_at > now() THEN now() ELSE trial_ends_at END
+      WHERE company_id = $1`,
+    [co.id, status],
+  );
+  await c.query(
+    `UPDATE companies SET status = $2,
+            suspended_reason = CASE WHEN $2 = 'suspended' THEN coalesce(suspended_reason, 'staff') END,
+            suspended_at = CASE WHEN $2 = 'suspended' THEN coalesce(suspended_at, now()) END
+      WHERE id = $1`,
+    [co.id, status],
+  );
 }
 
 async function mailStaffInvitation(inviteToken: string, to: string) {
@@ -217,25 +249,45 @@ export class StaffController {
   async patch(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
       await staffUser(c, req);
-      const b = parse(z.object({ expired_blocking_grace_days: z.number().int().min(0).max(365) }), raw, 422);
+      // Name and retention are staff-managed; a company admin can no longer change them (company-settings).
+      const b = parse(z.object({
+        expired_blocking_grace_days: z.number().int().min(0).max(365).optional(),
+        name: z.string().trim().min(1).max(100).optional(),
+        data_retention_days: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
+        status: z.enum(['trial', 'active', 'suspended', 'expired']).optional(),
+        trial_days: z.number().int().min(1).max(90).optional(),
+      }), raw, 422);
       const co = await lockCompany(c, id);
-      await c.query('UPDATE companies SET expired_blocking_grace_days = $2 WHERE id = $1', [co.id, b.expired_blocking_grace_days]);
+      if (b.status) await setStatus(c, co, b.status, b.trial_days);
+      await c.query(
+        `UPDATE companies SET expired_blocking_grace_days = coalesce($2, expired_blocking_grace_days),
+                name = coalesce($3, name), data_retention_days = coalesce($4, data_retention_days) WHERE id = $1`,
+        [co.id, b.expired_blocking_grace_days ?? null, b.name ?? null, b.data_retention_days ?? null],
+      );
       return { data: await company(c, co.id) };
     });
   }
 
   // ------------------------------------------------------------ licences
 
+  // Plan, seat limit and screenshot tier, each optional (B30). Unlimited seats (null) only on Enterprise.
   @Patch('companies/:id/license')
   async license(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
       await staffUser(c, req);
-      const b = parse(z.object({ plan: z.literal('enterprise'), seat_limit: z.number().int().min(1).nullable() }), raw, 422);
+      const b = parse(licencePatch, raw, 422);
       const co = await lockCompany(c, id);
-      const { seats_used } = await company(c, co.id);
-      if (b.seat_limit !== null && b.seat_limit < seats_used)
-        throw new ApiError(409, 'CONFLICT', 'Seat limit is below the seats in use', { seats_used });
-      await c.query("UPDATE licenses SET plan = 'enterprise', seat_limit = $2 WHERE company_id = $1", [co.id, b.seat_limit]);
+      const cur = await company(c, co.id);
+      const plan = b.plan ?? cur.plan;
+      const seatLimit = b.seat_limit !== undefined ? b.seat_limit : cur.seat_limit;
+      if (seatLimit === null && plan !== 'enterprise')
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Unlimited seats need the Enterprise plan', { fields: ['seat_limit'] });
+      if (seatLimit !== null && seatLimit < cur.seats_used)
+        throw new ApiError(409, 'CONFLICT', 'Seat limit is below the seats in use', { seats_used: cur.seats_used });
+      const tier = b.screenshot_tier ?? cur.screenshot_tier;
+      await c.query('UPDATE licenses SET plan = $2, seat_limit = $3, screenshot_tier = $4 WHERE company_id = $1', [co.id, plan, seatLimit, tier]);
+      // The tier is in every device's policy (interval capped by it): devices fetch it again.
+      if (tier !== cur.screenshot_tier) await c.query("UPDATE companies SET policy_version = nextval('policy_version_seq') WHERE id = $1", [co.id]);
       return { data: await company(c, co.id) };
     });
   }

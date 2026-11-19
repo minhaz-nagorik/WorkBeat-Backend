@@ -202,7 +202,7 @@ Errors: none route-specific.
 Notes: works while suspended or expired. No company route changes `status`; a sent `status` is ignored.
 
 ### `GET /v1/billing`
-Roles: company_admin · Spec: [`subscription-sync`][subscription-sync]
+Roles: none (every company role gets `403 FORBIDDEN`; staff-managed, B29) · Spec: [`subscription-sync`][subscription-sync]
 Plan, seats and screenshot tier.
 Request: none.
 Response `200`:
@@ -221,7 +221,7 @@ Errors: `403 FORBIDDEN`.
 Notes: works while suspended or expired.
 
 ### `PUT /v1/billing/screenshot-tier`
-Roles: company_admin · Spec: [`subscription-sync`][subscription-sync]
+Roles: none (every company role gets `403 FORBIDDEN`; staff-managed, B29) · Spec: [`subscription-sync`][subscription-sync]
 Schedule a screenshot tier change for the period end.
 Request:
 
@@ -234,7 +234,7 @@ Errors: `403 FORBIDDEN`.
 Notes: schedules the change in Stripe; `licenses.screenshot_tier` is unchanged until the Stripe subscription event at that date ([webhooks-and-cron.md](webhooks-and-cron.md)).
 
 ### `POST /v1/billing/portal-session`
-Roles: company_admin · Spec: [`subscription-sync`][subscription-sync]
+Roles: none (every company role gets `403 FORBIDDEN`; staff-managed, B29) · Spec: [`subscription-sync`][subscription-sync]
 Open Stripe's billing portal.
 Request: none.
 Response `200`: `{ url }`, a Stripe billing portal URL. **Not built yet** (Stripe).
@@ -290,15 +290,13 @@ Request (all optional):
 
 | field | type | required | notes |
 |---|---|---|---|
-| name | string | no | 1–100 characters |
-| data_retention_days | int | no | 30, 60 or 90 |
 | idle_threshold_seconds | int | no | 60–3600 |
 | alert_email | object | no | shape as in GET |
 | timezone | string | no | known IANA name |
 
 Response `200`: the settings as in GET.
-Errors: `403 FORBIDDEN`; `422 VALIDATION_FAILED` (out of range, unknown zone, bad `alert_email`).
-Notes: `slug` is not writable. An `idle_threshold_seconds` change raises `companies.policy_version`. Old data is removed by the next `/cron/cleanup`, not here.
+Errors: `403 FORBIDDEN` (other roles; or `name` / `data_retention_days` in the body, named in `fields`, nothing changed: staff set them, B29); `422 VALIDATION_FAILED` (out of range, unknown zone, bad `alert_email`).
+Notes: `slug` is not writable. An `idle_threshold_seconds` change raises `companies.policy_version`.
 
 ### `GET /v1/company/setup`
 Roles: company_admin (it_admin `403` since round 6) · Spec: [`company-settings`][company-settings]
@@ -340,7 +338,7 @@ Response `200` (`data` is `null` when no domain is set):
 Errors: `403 FORBIDDEN`.
 
 ### `PUT /v1/company/custom-domain`
-Roles: company_admin · Spec: [`custom-domains`][custom-domains]
+Roles: none (every company role gets `403 FORBIDDEN`; staff-managed, B29) · Spec: [`custom-domains`][custom-domains]
 Set or replace the custom domain.
 Request:
 
@@ -360,7 +358,7 @@ Errors:
 Notes: sets `custom_domain_status` `pending`, a new `custom_domain_token`, clears `custom_domain_verified_at`. `/cron/domain-verify` activates it.
 
 ### `DELETE /v1/company/custom-domain`
-Roles: company_admin · Spec: [`custom-domains`][custom-domains]
+Roles: none (every company role gets `403 FORBIDDEN`; staff-managed, B29) · Spec: [`custom-domains`][custom-domains]
 Remove the custom domain.
 Request: none.
 Response `204`.
@@ -597,7 +595,7 @@ Notes: append-only; each row belongs to the binding (device row) that sent it.
 Roles: company_admin, manager (own team) · Spec: [`monitoring-settings`][monitoring-settings]
 The employee's monitoring switches.
 Request: none.
-Response `200`: `activity` bool, `app_usage` bool, `window_titles` bool, `website_visits` bool, `screenshot_interval_seconds` enum(0\|600\|1800\|3600).
+Response `200`: `activity` bool, `app_usage` bool, `window_titles` bool, `website_visits` bool, `screenshot_interval_seconds` enum(0\|600\|1800\|3600), `screenshot_tier` enum(off\|light\|standard\|intensive) (the company's plan; intervals faster than it are refused, B29).
 Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND`.
 
 ### `PUT /v1/employees/:id/monitoring-settings`
@@ -857,7 +855,7 @@ Response `200`: `notice_text` string, `notice_version` int.
 Errors: `403 FORBIDDEN` (manager, it_admin).
 
 ### `PUT /v1/settings/notice`
-Roles: company_admin · Spec: [`collection-notice`][collection-notice]
+Roles: none (every company role gets `403 FORBIDDEN`; staff-managed, B29) · Spec: [`collection-notice`][collection-notice]
 Edit the notice text.
 Request: `notice_text` string, required; non-empty, within the `packages/shared` limit.
 Response `200`: `{ notice_text, notice_version }`.

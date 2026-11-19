@@ -80,14 +80,36 @@ async function staffRoutes(t: string, myId: string, adminToken?: string) {
     assert.notEqual(expect(await call('POST', `/v1/staff/companies/${co.id}/restore`, t), 200).status, 'suspended');
     assert.equal(expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { expired_blocking_grace_days: 14 }), 200).expired_blocking_grace_days, 14);
     expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { expired_blocking_grace_days: 366 }), 422);
-    expect(await call('PATCH', `/v1/staff/companies/${co.id}/license`, t, { plan: 'growth', seat_limit: 5 }), 422);
+    const named = expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { name: co.name, data_retention_days: 60 }), 200);
+    assert.equal(named.data_retention_days, 60); assert.equal(named.expired_blocking_grace_days, 14, 'grace kept');
+    expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { data_retention_days: 45 }), 422);
+    expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { data_retention_days: 90 }), 200);
+    // B30: plan, seats, screenshot tier and status are all staff-set.
+    const before = expect(await call('GET', `/v1/staff/companies/${co.id}`, t), 200);
+    expect(await call('PATCH', `/v1/staff/companies/${co.id}/license`, t, { plan: 'growth', seat_limit: null }), 422, 'VALIDATION_FAILED');
+    expect(await call('PATCH', `/v1/staff/companies/${co.id}/license`, t, {}), 422);
+    if (before.seats_used > 1) expect(await call('PATCH', `/v1/staff/companies/${co.id}/license`, t, { seat_limit: 1 }), 409, 'CONFLICT');
+    const grown = expect(await call('PATCH', `/v1/staff/companies/${co.id}/license`, t, { plan: 'growth', seat_limit: before.seats_used + 5, screenshot_tier: 'light' }), 200);
+    assert.equal(grown.plan, 'growth'); assert.equal(grown.screenshot_tier, 'light');
     const ent = expect(await call('PATCH', `/v1/staff/companies/${co.id}/license`, t, { plan: 'enterprise', seat_limit: null }), 200);
-    assert.equal(ent.plan, 'enterprise'); assert.equal(ent.seat_limit, null);
+    assert.equal(ent.plan, 'enterprise'); assert.equal(ent.seat_limit, null); assert.equal(ent.screenshot_tier, 'light', 'tier kept');
+    expect(await call('PATCH', `/v1/staff/companies/${co.id}/license`, t, { screenshot_tier: before.screenshot_tier }), 200);
+    const exp = expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { status: 'expired' }), 200);
+    assert.equal(exp.status, 'expired');
+    expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { status: 'trial' }), before.trial_ends_at && Date.parse(before.trial_ends_at) > Date.now() ? 200 : 422);
+    assert.equal(expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { status: 'trial', trial_days: 14 }), 200).status, 'trial');
+    const sus = expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { status: 'suspended' }), 200);
+    assert.equal(sus.suspended_reason, 'staff');
+    const act = expect(await call('PATCH', `/v1/staff/companies/${co.id}`, t, { status: 'active' }), 200);
+    assert.equal(act.status, 'active'); assert.equal(act.suspended_reason, null);
+    assert.ok(Date.parse(act.trial_ends_at) <= Date.now(), 'active ends the trial');
+    expect(await call('POST', `/v1/staff/companies/${co.id}/suspend`, t), 200);
+    assert.equal(expect(await call('POST', `/v1/staff/companies/${co.id}/restore`, t), 200).status, 'active', 'an ended trial is not restored');
     const re = await call('POST', `/v1/staff/companies/${co.id}/license/reissue`, t);
     assert.match(expect(re, 200).key, /^WB-[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$/);
     assert.equal(re.headers.get('cache-control'), 'no-store');
     expect(await call('POST', '/v1/license/validate', undefined, {}, { 'x-license-key': re.json.data.key }), 200);
-    ok('staff company actions: suspend, restore, grace, enterprise, reissue');
+    ok('staff company actions: suspend, restore, grace, name and retention, plan, seats, tier, status, reissue');
   }
 
   const rel = { product: 'downloader', platform: 'windows', arch: 'x64', version: `0.0.${Date.now() % 100000}` };
@@ -169,17 +191,15 @@ async function staffRound5(t: string) {
 // Company routes and gaps of admin round 4.
 async function round4(admin: string) {
   const host = `smoke-${run}.example.com`;
-  const d = expect(await call('PUT', '/v1/company/custom-domain', admin, { domain: host.toUpperCase() + '.' }), 200);
-  assert.equal(d.domain, host); assert.equal(d.status, 'pending'); assert.equal(d.txt_name, `_workbeat.${host}`); assert.match(d.txt_value, /^verify-/);
-  assert.equal(expect(await call('PUT', '/v1/company/custom-domain', admin, { domain: host }), 200).txt_value, d.txt_value, 'same domain keeps its token');
-  expect(await call('PUT', '/v1/company/custom-domain', admin, { domain: 'WORKBEAT.IO' }), 422);
+  // Staff-managed: a company admin reads the domain but cannot change it.
+  expect(await call('PUT', '/v1/company/custom-domain', admin, { domain: host }), 403, 'FORBIDDEN');
+  expect(await call('DELETE', '/v1/company/custom-domain', admin), 403, 'FORBIDDEN');
+  expect(await call('GET', '/v1/company/custom-domain', admin), 200);
   expect(await call('GET', `/v1/hosts/resolve?host=${host}`), 404, 'NOT_FOUND');
-  expect(await call('DELETE', '/v1/company/custom-domain', admin), 204);
-  assert.equal(expect(await call('GET', '/v1/company/custom-domain', admin), 200), null);
   const slug = expect(await call('GET', '/v1/company/settings', admin), 200).slug;
   assert.equal(expect(await call('GET', `/v1/hosts/resolve?host=${slug.toUpperCase()}.workbeat.io`), 200).slug, slug);
   expect(await call('GET', `/v1/hosts/resolve?host=x.${slug}.workbeat.io`), 404, 'NOT_FOUND');
-  ok('custom domain: set, same again, refuse workbeat.io, delete; hosts/resolve');
+  ok('custom domain: read only for a company admin; hosts/resolve');
 
   assert.deepEqual((await call('PATCH', '/v1/company/settings', admin, { alert_email: { roles: [], types: [], delivery: 'instant' } })).json.fields, ['alert_email.roles']);
   assert.ok('min_agent_version' in expect(await call('GET', '/v1/license', admin), 200));
@@ -239,6 +259,7 @@ async function main() {
   expect(await call('PUT', `/v1/employees/${ada.id}/monitoring-settings`, admin, { ...all, screenshot_interval_seconds: 1800 }), 200);
   expect(await call('PUT', `/v1/employees/${ada.id}/monitoring-settings`, mgr.token, { ...all, screenshot_interval_seconds: 0 }), 403);
   expect(await call('GET', `/v1/employees/${ada.id}/monitoring-settings`, it.token), 200); // round 6: it_admin reads settings
+  assert.ok(['off', 'light', 'standard', 'intensive'].includes(expect(await call('GET', `/v1/employees/${ada.id}/monitoring-settings`, admin), 200).screenshot_tier));
   const start = new Date(Date.now() + 86400_000), end = new Date(Date.now() + 2 * 86400_000);
   const pause = expect(await call('POST', `/v1/employees/${ada.id}/pauses`, admin, { starts_at: start.toISOString(), ends_at: end.toISOString(), reason: 'annual_leave' }), 201);
   assert.equal(pause.status, 'scheduled'); assert.equal(pause.created_by_name, me.name);
@@ -287,10 +308,9 @@ async function main() {
   expect(await call('POST', '/v1/productivity-rules', admin, { match_type: 'app', pattern: `Code${run}`, category: 'productive' }), 201);
   expect(await call('POST', '/v1/productivity-rules', admin, { match_type: 'domain', pattern: `fun-${run}.example`, category: 'unproductive' }), 201);
   const n0 = expect(await call('GET', '/v1/settings/notice', admin), 200);
-  const n1 = expect(await call('PUT', '/v1/settings/notice', admin, { notice_text: n0.notice_text + ` (${run})` }), 200);
-  assert.equal(n1.notice_version, n0.notice_version + 1);
-  assert.equal(expect(await call('PUT', '/v1/settings/notice', admin, { notice_text: n1.notice_text }), 200).notice_version, n1.notice_version);
-  ok('block rules (domain, regex → url), sensitive domains, productivity rules, notice version');
+  expect(await call('PUT', '/v1/settings/notice', admin, { notice_text: n0.notice_text + ` (${run})` }), 403, 'FORBIDDEN');
+  assert.equal(expect(await call('GET', '/v1/settings/notice', admin), 200).notice_version, n0.notice_version);
+  ok('block rules (domain, regex → url), sensitive domains, productivity rules, notice read only');
 
   // licence, settings, setup
   expect(await call('GET', '/v1/license', it.token), 403); // round 6: no Deployment area for it_admin
@@ -303,12 +323,15 @@ async function main() {
   expect(await call('PATCH', '/v1/company/settings', admin, { timezone: 'Not/AZone' }), 422);
   expect(await call('PATCH', '/v1/company/settings', admin, { timezone: 'Asia/Dhaka', idle_threshold_seconds: 300 }), 200);
   expect(await call('PATCH', '/v1/company/settings', it.token, { name: 'x' }), 403);
+  const staffOnly = await call('PATCH', '/v1/company/settings', admin, { name: 'x', data_retention_days: 30, timezone: 'UTC' });
+  assert.equal(staffOnly.status, 403); assert.deepEqual(staffOnly.json.fields, ['name', 'data_retention_days']);
+  assert.equal(expect(await call('GET', '/v1/company/settings', admin), 200).timezone, 'Asia/Dhaka', 'refused patch changes nothing');
   expect(await call('POST', '/v1/company/setup/steps', admin, { step: 'copy_license_key' }), 204);
   assert.ok(expect(await call('GET', '/v1/company/setup', admin), 200).find((s: any) => s.step === 'copy_license_key').done);
   expect(await call('GET', '/v1/company/setup', it.token), 403);
   expect(await call('GET', '/v1/company/status', mgr.token), 200);
-  expect(await call('GET', '/v1/billing', admin), 200);
-  ok('licence reveal, settings (timezone check), setup, status, billing');
+  expect(await call('GET', '/v1/billing', admin), 403, 'FORBIDDEN');
+  ok('licence reveal, settings (timezone check, staff-only fields), setup, status, billing refused');
 
   // an agent for Ada produces data
   const tok = expect(await call('POST', '/v1/license/validate', undefined, { employee_id: ada.id }, { 'x-license-key': key }), 200).enrollment_token;

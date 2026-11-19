@@ -41,6 +41,8 @@ export const ADMIN: Role[] = ['company_admin'];
 export const ADMIN_IT: Role[] = ['company_admin', 'it_admin'];
 export const ADMIN_MANAGER: Role[] = ['company_admin', 'manager'];
 export const ALL: Role[] = ['company_admin', 'manager', 'it_admin'];
+// Settings WorkBeat staff manage: every company role gets 403 (company name, retention, domain, notice, billing).
+export const NO_COMPANY_ROLE: Role[] = [];
 
 export function bearer(req: FastifyRequest) {
   const a = req.headers.authorization;

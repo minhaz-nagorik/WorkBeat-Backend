@@ -95,17 +95,25 @@ On `customer.subscription.deleted`, the API SHALL set the company's `status` `ex
 - **WHEN** a second `customer.subscription.deleted` for an already `expired` company arrives
 - **THEN** `licenses.expired_at` keeps its first value
 
-### Requirement: A company admin reads and changes billing
-<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Pricing" -->
-For `company_admin` only, `GET /v1/billing` SHALL return `plan`, `seat_limit`, `seats_used`, `screenshot_tier`, any scheduled tier with its date, `trial_ends_at` and `current_period_end`. `PUT /v1/billing/screenshot-tier` MUST schedule the change in Stripe for `current_period_end` and MUST NOT change `licenses.screenshot_tier`; `POST /v1/billing/portal-session` MUST return a Stripe billing portal URL.
+### Requirement: No company role reaches billing
+<!-- source: B29 -->
+`GET /v1/billing`, `PUT /v1/billing/screenshot-tier` and `POST /v1/billing/portal-session` SHALL answer `403 FORBIDDEN` to every company role, `company_admin` included. WorkBeat staff handle billing.
 
-#### Scenario: An admin picks a higher tier
-- **WHEN** a company admin puts tier `intensive`
+#### Scenario: A company admin opens billing
+- **WHEN** a `company_admin` calls `GET /v1/billing`
+- **THEN** the response is `403` with `code` `FORBIDDEN`
+
+### Requirement: Billing reads and changes
+<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Pricing" -->
+When allowed, `GET /v1/billing` SHALL return `plan`, `seat_limit`, `seats_used`, `screenshot_tier`, any scheduled tier with its date, `trial_ends_at` and `current_period_end`. `PUT /v1/billing/screenshot-tier` MUST schedule the change in Stripe for `current_period_end` and MUST NOT change `licenses.screenshot_tier`; `POST /v1/billing/portal-session` MUST return a Stripe billing portal URL.
+
+#### Scenario: A higher tier is picked
+- **WHEN** tier `intensive` is put
 - **THEN** the response shows `intensive` scheduled for `current_period_end`
 - **AND** `licenses.screenshot_tier` is unchanged until the subscription event at that date
 
 #### Scenario: A scheduled downgrade is cancelled
-- **WHEN** an admin schedules tier `light` from `standard` and then puts `standard` before `current_period_end`
+- **WHEN** tier `light` is scheduled from `standard` and then `standard` is put before `current_period_end`
 - **THEN** Stripe holds no scheduled change and `GET /v1/billing` shows no scheduled tier
 - **AND** no employee interval changes
 
@@ -114,7 +122,7 @@ For `company_admin` only, `GET /v1/billing` SHALL return `plan`, `seat_limit`, `
 - **THEN** the response is `403` with `code` `FORBIDDEN`
 
 #### Scenario: Billing while suspended
-- **WHEN** a company admin of a company suspended for `payment_failed` calls `POST /v1/billing/portal-session`
+- **WHEN** a portal session is asked for a company suspended for `payment_failed`
 - **THEN** the response is `200` with a portal URL
 
 ### Requirement: A lower seat limit never removes devices

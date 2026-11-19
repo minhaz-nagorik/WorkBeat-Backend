@@ -67,7 +67,7 @@ export class AgentsController {
       if (billing) throw billing;
       const { rows: [p] } = await c.query(
         `SELECT d.os, d.arch, d.agent_version, c.idle_threshold_seconds, c.min_agent_version, c.uninstall_token_hash,
-                c.notice_text, c.notice_version, l.screenshot_tier, s.activity, s.app_usage, s.window_titles,
+                c.notice_text, c.notice_version, l.screenshot_tier, tier_interval(l.screenshot_tier) AS tier_min, s.activity, s.app_usage, s.window_titles,
                 s.website_visits, s.screenshot_interval_seconds
            FROM devices d JOIN companies c ON c.id = d.company_id JOIN licenses l ON l.company_id = c.id
            JOIN employee_monitoring_settings s ON s.employee_id = d.employee_id
@@ -93,7 +93,8 @@ export class AgentsController {
         policy_version: await policyVersion(c, dev),
         block_rules: rules.rows,
         sensitive_domains: sensitive.rows.map((r) => r.pattern),
-        screenshot_interval_seconds: p.screenshot_tier === 'off' ? 0 : p.screenshot_interval_seconds,
+        // Never faster than the plan: a lowered tier slows a faster stored interval (B30); off stops screenshots.
+        screenshot_interval_seconds: p.screenshot_tier === 'off' || !p.screenshot_interval_seconds ? 0 : Math.max(p.screenshot_interval_seconds, p.tier_min),
         idle_threshold_seconds: p.idle_threshold_seconds,
         min_agent_version: minVersion,
         update_package_url: update ? this.storage.sign(baseUrl(req), 'GET', 'agents', update.storage_path, dayEnd) : null,

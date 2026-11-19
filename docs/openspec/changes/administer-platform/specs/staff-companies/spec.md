@@ -75,9 +75,9 @@ expired-licence grace period.
 - **WHEN** a staff suspension and an `invoice.paid` for the same company are handled concurrently
 - **THEN** the company ends `suspended` with `suspended_reason` `staff`
 
-### Requirement: Staff override Enterprise plan and seat limit
-<!-- source: Plan-v3.5 §4.6 · PRD "Pricing" · B4 -->
-`PATCH /v1/staff/companies/:id/license` with `plan` `enterprise` and `seat_limit` (a number or NULL for unlimited) SHALL update the licence. A `seat_limit` below the company's seats used, or a `seat_limit` change on a `starter` or `growth` licence, MUST get `409 CONFLICT` and change nothing.
+### Requirement: Staff set the plan, seat limit and screenshot tier
+<!-- source: Plan-v3.5 §4.6 · PRD "Pricing" · B4 · B30 -->
+`PATCH /v1/staff/companies/:id/license` SHALL accept `plan` (`starter`, `growth`, `enterprise`), `seat_limit` (a number, or NULL for unlimited) and `screenshot_tier`, each optional, at least one; left-out fields keep their values. NULL seats on a non-Enterprise plan MUST get `422 VALIDATION_FAILED`; a `seat_limit` below seats used MUST get `409 CONFLICT`; both change nothing.
 
 #### Scenario: A limit below seats used
 - **WHEN** an Enterprise company uses 412 seats and staff set `seat_limit` 400
@@ -88,8 +88,20 @@ expired-licence grace period.
 - **THEN** the limit is saved and the next enrollment answers `403 SEAT_LIMIT_EXCEEDED`
 
 #### Scenario: A Growth licence
-- **WHEN** staff patch `seat_limit` 80 on a `growth` licence
-- **THEN** the response is `409 CONFLICT` and `seat_limit` stays 50
+- **WHEN** staff patch `seat_limit` 80 on a `growth` licence using 50 seats
+- **THEN** the licence keeps `growth` with `seat_limit` 80
+
+#### Scenario: Unlimited seats on Growth
+- **WHEN** staff patch `{ "plan": "growth", "seat_limit": null }`
+- **THEN** the response is `422 VALIDATION_FAILED` and the licence is unchanged
+
+### Requirement: A screenshot tier change reaches every device
+<!-- source: B30 · B11 -->
+A changed `screenshot_tier` SHALL raise the company's `policy_version`. Employees' stored intervals MUST NOT be written; the agent policy caps them at the tier (`serve-agent-policy`).
+
+#### Scenario: Intensive down to light
+- **WHEN** staff change the tier from `intensive` to `light` for a company whose employee has 600
+- **THEN** `policy_version` rises and that employee's policy carries 3600 while the stored value stays 600
 
 #### Scenario: Unlimited
 - **WHEN** staff set `seat_limit` null on an Enterprise licence
@@ -111,6 +123,42 @@ expired-licence grace period.
 - **WHEN** staff set 10 days for a company that expired 40 days ago
 - **THEN** its `blocking_ends_at` is 30 days in the past
 
+### Requirement: Staff set the company name and retention
+<!-- source: B29 · B13 -->
+`PATCH /v1/staff/companies/:id` SHALL also accept `name` (1–100 characters) and `data_retention_days` (30, 60 or 90), each optional; fields left out MUST keep their values. The company row in responses MUST carry `data_retention_days`. Other values MUST get `422 VALIDATION_FAILED`.
+
+#### Scenario: Staff lower retention
+- **WHEN** staff patch `{ "data_retention_days": 60 }`
+- **THEN** the response is `200` with `data_retention_days` 60 and the same `name` and grace
+
+#### Scenario: Retention 45
+- **WHEN** staff patch `{ "data_retention_days": 45 }`
+- **THEN** the response is `422 VALIDATION_FAILED` and nothing changes
+
+### Requirement: Staff set the company status
+<!-- source: B30 · D29 · D36 -->
+`PATCH /v1/staff/companies/:id` SHALL accept `status` (`trial`, `active`, `suspended`, `expired`) and `trial_days` (1–90). `suspended` MUST keep an existing reason, else set `staff`, and `suspended_at`. Any other status clears the suspension. `expired` MUST set `licenses.expired_at` if unset; any other status clears it. `trial` MUST set `trial_ends_at` to now + `trial_days`, and without `trial_days` and a future `trial_ends_at` MUST get `422 VALIDATION_FAILED`.
+
+#### Scenario: Staff expire a company
+- **WHEN** staff patch `{ "status": "expired" }` on an active company
+- **THEN** its `status` is `expired`, `expired_at` is now and agents get `402 LICENSE_EXPIRED`
+
+#### Scenario: Back to active
+- **WHEN** staff patch `{ "status": "active" }` on an expired company
+- **THEN** its `status` is `active` and `expired_at` is NULL
+
+#### Scenario: A trial without days
+- **WHEN** staff patch `{ "status": "trial" }` for a company whose `trial_ends_at` has passed
+- **THEN** the response is `422 VALIDATION_FAILED` naming `trial_days` and nothing changes
+
+### Requirement: Staff end a trial early
+<!-- source: B30 -->
+Setting `status` `active` or `expired` on a company with a running trial SHALL end the trial: `trial_ends_at` MUST become now, so a later restore MUST NOT bring the trial back.
+
+#### Scenario: Staff end a trial early
+- **WHEN** staff patch `{ "status": "active" }` on a company whose trial ends in 10 days
+- **THEN** its `status` is `active` with `trial_ends_at` now, and a later suspend and restore leaves it `active`
+
 ### Requirement: Staff routes answer 404 for unknown IDs
 <!-- source: D41 · role-access -->
 Every `/v1/staff/*` route with an ID in the path SHALL answer `404 NOT_FOUND`, and change nothing, when the ID names no row of the kind the route acts on, including a company user's ID on a staff-user route.
@@ -121,7 +169,7 @@ Every `/v1/staff/*` route with an ID in the path SHALL answer `404 NOT_FOUND`, a
 
 ### Requirement: Staff move any licence to Enterprise
 <!-- source: Plan-v3.5 §4.6 · PRD "Pricing" -->
-`PATCH /v1/staff/companies/:id/license` with `plan` `enterprise` SHALL also apply to a `starter` or `growth` licence, setting `plan` `enterprise` and the given `seat_limit`; only a `seat_limit` change that keeps a `starter` or `growth` plan MUST get `409 CONFLICT`.
+`PATCH /v1/staff/companies/:id/license` with `plan` `enterprise` SHALL also apply to a `starter` or `growth` licence, setting `plan` `enterprise` and the given `seat_limit`.
 
 #### Scenario: A Growth company moves to Enterprise
 - **WHEN** staff patch a `growth` licence with `plan` `enterprise` and `seat_limit` 500

@@ -3,7 +3,7 @@ import { Body, Controller, Delete, Get, Inject, Patch, Post, Put, Query, Req, Re
 import { randomBytes } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { ADMIN, ADMIN_IT, ALL, portalUser } from '../auth';
+import { ADMIN, ADMIN_IT, ALL, NO_COMPANY_ROLE, portalUser } from '../auth';
 import { ApiError, config, Db, decrypt, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { cmpVersion } from '../device';
@@ -12,9 +12,9 @@ import { clearSummaries } from '../usage';
 import { isBareHost } from './policy.controller';
 
 const EVENT_TYPES = ['process_restart', 'hosts_modified', 'config_changed', 'clock_tampered', 'permission_revoked', 'offline', 'duplicate_device_id'] as const;
+// name and data_retention_days are set by staff (staff-companies); a company admin sending them gets 403.
+const STAFF_FIELDS = ['name', 'data_retention_days'];
 const settingsPatch = z.object({
-  name: z.string().trim().min(1).max(100).optional(),
-  data_retention_days: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
   idle_threshold_seconds: z.number().int().min(60).max(3600).optional(),
   alert_email: z.object({
     roles: z.array(z.enum(['company_admin', 'manager', 'it_admin'])).min(1),
@@ -54,11 +54,11 @@ export class CompanyController {
     });
   }
 
-  // shortcut: reads the database only; tier scheduling and the Stripe portal come with provision-companies.
+  // Billing is handled by WorkBeat staff: every company role gets 403. The handler stays for when that changes.
   @Get('billing')
   async billing(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN);
+      await portalUser(c, req, NO_COMPANY_ROLE);
       const { rows: [r] } = await c.query(
         `SELECT plan, seat_limit, ${SEATS_USED} AS seats_used, screenshot_tier, trial_ends_at, current_period_end FROM licenses`,
       );
@@ -78,15 +78,15 @@ export class CompanyController {
   async patchSettings(@Req() req: FastifyRequest, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN);
+      const staffOnly = raw && typeof raw === 'object' ? STAFF_FIELDS.filter((f) => f in raw) : [];
+      if (staffOnly.length) throw new ApiError(403, 'FORBIDDEN', 'WorkBeat sets these for your company', { fields: staffOnly });
       const b = parse(settingsPatch, raw, 422);
       const { rows: [old] } = await c.query('SELECT timezone FROM companies WHERE id = app_company_id()');
       const { rows: [r] } = await c.query(
-        `UPDATE companies SET name = coalesce($1, name), data_retention_days = coalesce($2, data_retention_days),
-                idle_threshold_seconds = coalesce($3, idle_threshold_seconds), alert_email = coalesce($4, alert_email),
-                timezone = coalesce($5, timezone)
+        `UPDATE companies SET idle_threshold_seconds = coalesce($1, idle_threshold_seconds), alert_email = coalesce($2, alert_email),
+                timezone = coalesce($3, timezone)
           WHERE id = app_company_id() RETURNING ${SETTINGS}`,
-        [b.name ?? null, b.data_retention_days ?? null, b.idle_threshold_seconds ?? null,
-         b.alert_email ? JSON.stringify(b.alert_email) : null, b.timezone ?? null],
+        [b.idle_threshold_seconds ?? null, b.alert_email ? JSON.stringify(b.alert_email) : null, b.timezone ?? null],
       );
       if (r.timezone !== old.timezone) await clearSummaries(c); // days moved: rebuilt by /cron/usage-summary (B28)
       return { data: r };
@@ -198,6 +198,7 @@ export class CompanyController {
   }
 
   // ------------------------------------------------------------ custom domain (custom-domains)
+// A company admin reads the domain; changing it is refused to every company role (staff-managed).
 
   @Get('company/custom-domain')
   async getDomain(@Req() req: FastifyRequest) {
@@ -210,7 +211,7 @@ export class CompanyController {
   @Put('company/custom-domain')
   async putDomain(@Req() req: FastifyRequest, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN);
+      await portalUser(c, req, NO_COMPANY_ROLE);
       const b = parse(z.object({ domain: z.string().max(253) }), raw);
       const domain = b.domain.trim().toLowerCase().replace(/\.$/, '');
       if (!isBareHost(domain) || !domain.includes('.') || domain === 'workbeat.io' || domain.endsWith('.workbeat.io'))
@@ -229,7 +230,7 @@ export class CompanyController {
   @Delete('company/custom-domain')
   async deleteDomain(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
     await this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN);
+      await portalUser(c, req, NO_COMPANY_ROLE);
       await c.query(`UPDATE companies SET custom_domain = NULL, custom_domain_status = NULL, custom_domain_token = NULL,
         custom_domain_checked_at = NULL, custom_domain_verified_at = NULL WHERE id = app_company_id()`);
     });

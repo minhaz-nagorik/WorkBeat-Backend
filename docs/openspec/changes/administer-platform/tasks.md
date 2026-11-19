@@ -27,3 +27,5 @@
 - [ ] 3.3 CI test: in `staff` scope, `SELECT` on every tenant table returns zero rows, and `company_seat_counts()` returns only `company_id` and `seats_used`
 - [ ] 3.4 Tests: seed two companies with employees and devices; no name, hostname, URL or screenshot path of either appears in any staff response
 - [ ] 3.5 Tests (edge cases): staff code setting `system` scope fails with 500; staff error bodies hold no tenant value; staff `SELECT` filtered by a real `company_id` still returns zero rows
+- [x] 3.6 B29: `PATCH /v1/staff/companies/:id` accepts optional `name` and `data_retention_days`; company rows carry `data_retention_days`
+- [x] 3.7 B30: `PATCH /v1/staff/companies/:id/license` takes any plan, seat limit and screenshot tier (tier change raises `policy_version`); `PATCH /v1/staff/companies/:id` takes `status` and `trial_days`

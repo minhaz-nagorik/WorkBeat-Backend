@@ -38,3 +38,5 @@
 - [ ] 5.1 `GET/PUT /v1/settings/notice`; `notice_version + 1` only when the text differs, in the same update
 - [ ] 5.2 Tests: company_admin only, other roles 403; empty and oversized text → 422; same text → no version change; policy carries `{ text, version }`; tenant isolation — the notice read is the caller's company's
 - [ ] 5.3 Edge tests: whitespace-only → 422; text at the limit saved, one over → 422; manager → 403; two concurrent different saves → version + 2; each company's policy carries its own notice
+- [x] 5.4 B29: `PUT /v1/settings/notice` refused to every company role; `GET` stays with `company_admin`
+- [x] 5.5 B30: policy interval is `max(stored, tier_interval)`; 0 stays 0, tier `off` sends 0

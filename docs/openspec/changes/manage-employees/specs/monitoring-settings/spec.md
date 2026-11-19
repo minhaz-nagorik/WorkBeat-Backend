@@ -23,7 +23,7 @@ Every employee SHALL have one `employee_monitoring_settings` row, created with t
 
 ### Requirement: Settings are read and changed per employee
 <!-- source: D37 · PRD "Permission matrix" · B12 -->
-`GET /v1/employees/:id/monitoring-settings` SHALL return the four switches and `screenshot_interval_seconds` to a `company_admin`, and to a `manager` for their own team. `PUT` on the same path MUST be accepted only from a `company_admin`, MUST set `updated_by`, and MUST raise the employee's `policy_version`. Any other role MUST get `403 FORBIDDEN`.
+`GET /v1/employees/:id/monitoring-settings` SHALL return the four switches, `screenshot_interval_seconds` and the company's `screenshot_tier` (B29) to a `company_admin`, and to a `manager` for their own team. `PUT` on the same path MUST be accepted only from a `company_admin`, MUST set `updated_by`, and MUST raise the employee's `policy_version`. Any other role MUST get `403 FORBIDDEN`.
 
 #### Scenario: An admin turns window titles off
 - **WHEN** an admin sends `PUT` with `window_titles` false

@@ -44,7 +44,7 @@ Routes SHALL allow: onboarding and deployment to `company_admin`; installer down
 
 ### Requirement: Company-admin-only areas and the IT admin's limits
 <!-- source: Plan-v3.5 §4.5 · PRD "Roles" · B18 · D48 · Plan-v3.5 §4.4 "Device binding" -->
-Settings, billing, team, custom domain, licence key, uninstall token, minimum agent version and setup checklist SHALL be reachable by `company_admin` only. `it_admin` SHALL read employees with the `company_admin` fields, monitoring settings and pauses, and MUST reach no report, calendar, timesheet, screenshot, export or notice acknowledgement.
+Settings, team, licence key, uninstall token, minimum agent version and setup checklist SHALL be reachable by `company_admin` only; billing and the staff-managed settings by no company role (B29). `it_admin` SHALL read employees with the `company_admin` fields, monitoring settings and pauses, and MUST reach no report, calendar, timesheet, screenshot, export or notice acknowledgement.
 
 #### Scenario: An IT admin opens billing
 - **WHEN** an `it_admin` calls `GET /v1/billing`

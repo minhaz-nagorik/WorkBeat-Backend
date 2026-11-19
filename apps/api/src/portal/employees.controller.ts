@@ -252,8 +252,11 @@ export class EmployeesController {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ALL);
       const e = await employeeFor(c, u, id);
+      // screenshot_tier: the console offers only intervals the plan allows, without reading billing (staff-managed).
       const { rows: [s] } = await c.query(
-        'SELECT activity, app_usage, window_titles, website_visits, screenshot_interval_seconds FROM employee_monitoring_settings WHERE employee_id = $1',
+        `SELECT activity, app_usage, window_titles, website_visits, screenshot_interval_seconds,
+                (SELECT screenshot_tier FROM licenses) AS screenshot_tier
+           FROM employee_monitoring_settings WHERE employee_id = $1`,
         [e.id],
       );
       return { data: s };

@@ -5,9 +5,13 @@ version moves, and how it reaches the devices.
 
 ## ADDED Requirements
 
-### Requirement: The company admin edits the notice
-<!-- source: D25 · PRD "Privacy and legal requirements" · authenticate-users/role-access -->
-`GET /v1/settings/notice` (`notice_text`, `notice_version`) and `PUT /v1/settings/notice` (`notice_text`) SHALL be accepted only from a `company_admin`; another role MUST get `403 FORBIDDEN`. An empty text, or one over the limit in `packages/shared`, MUST return `422 VALIDATION_FAILED`.
+### Requirement: The company admin reads the notice; no company role edits it
+<!-- source: D25 · B29 · PRD "Privacy and legal requirements" · authenticate-users/role-access -->
+`GET /v1/settings/notice` (`notice_text`, `notice_version`) SHALL be accepted only from a `company_admin`. `PUT /v1/settings/notice` (`notice_text`) MUST answer `403 FORBIDDEN` to every company role and change nothing (B29). When a `PUT` is allowed, an empty text, or one over the limit in `packages/shared`, MUST return `422 VALIDATION_FAILED`.
+
+#### Scenario: A company admin edits the notice
+- **WHEN** a `company_admin` sends `PUT /v1/settings/notice`
+- **THEN** the response is `403` with `code` `FORBIDDEN` and `notice_version` is unchanged
 
 #### Scenario: An IT admin edits the notice
 - **WHEN** an `it_admin` sends `PUT /v1/settings/notice`

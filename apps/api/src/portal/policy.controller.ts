@@ -3,7 +3,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { ADMIN, ADMIN_IT, ADMIN_MANAGER, ALL, idOrNone, portalUser } from '../auth';
+import { ADMIN, ADMIN_IT, ADMIN_MANAGER, ALL, idOrNone, NO_COMPANY_ROLE, portalUser } from '../auth';
 import { ApiError, Db, parse } from '../core';
 
 const NOTICE_MAX = 10_000;
@@ -173,10 +173,11 @@ export class PolicyController {
     });
   }
 
+  // The notice text is staff-managed: every company role gets 403. A company admin still reads it.
   @Put('settings/notice')
   async putNotice(@Req() req: FastifyRequest, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN);
+      await portalUser(c, req, NO_COMPANY_ROLE);
       const b = parse(z.object({ notice_text: z.string().trim().min(1).max(NOTICE_MAX) }), raw, 422);
       // A changed text raises notice_version; the companies_policy trigger raises policy_version.
       const { rows: [r] } = await c.query(

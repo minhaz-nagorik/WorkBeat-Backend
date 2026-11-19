@@ -25,7 +25,7 @@ to, resolved for that device's employee, with a version and an ETag so unchanged
 
 ### Requirement: The policy is resolved for the device's employee
 <!-- source: D37 · D31 · Mac report-device-health "monitoring-features", "monitoring-pause" -->
-`monitoring_features` SHALL be the `activity`, `app_usage`, `window_titles` and `website_visits` of the device's employee's settings, and `screenshot_interval_seconds` their interval (0 when the tier is `off`). `monitoring_pauses[]` MUST hold `{ pause_id, starts_at, ends_at }` for that employee's pauses with `cancelled_at` NULL and `ends_at` after now. No other employee's data MUST appear.
+`monitoring_features` SHALL be the `activity`, `app_usage`, `window_titles` and `website_visits` of the device's employee's settings, and `screenshot_interval_seconds` their interval capped at the tier (B30). `monitoring_pauses[]` MUST hold `{ pause_id, starts_at, ends_at }` for that employee's pauses with `cancelled_at` NULL and `ends_at` after now. No other employee's data MUST appear.
 
 #### Scenario: Two employees with different switches
 - **WHEN** employee A has `window_titles` off and employee B has it on
@@ -46,6 +46,10 @@ to, resolved for that device's employee, with a version and an ETag so unchanged
 #### Scenario: The screenshot tier is off
 - **WHEN** an employee's `screenshot_interval_seconds` is 600 and the company's `screenshot_tier` is `off`
 - **THEN** the policy carries `screenshot_interval_seconds` 0
+
+#### Scenario: A stored interval faster than the tier
+- **WHEN** an employee's `screenshot_interval_seconds` is 600 and the company's `screenshot_tier` is `light`
+- **THEN** the policy carries `screenshot_interval_seconds` 3600
 
 #### Scenario: A new binding on a used device
 - **WHEN** a device bound to an employee with screenshots at 600 is released and set up for one at 0
