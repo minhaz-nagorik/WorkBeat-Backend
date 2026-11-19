@@ -924,10 +924,12 @@ Query:
 | from | string `YYYY-MM-DD` | yes¹ | inclusive, company `timezone`; moved up to the first retained day |
 | to | string `YYYY-MM-DD` | yes¹ | inclusive; the range is at most 90 days (`to` at most 89 days after `from`) |
 | date | string `YYYY-MM-DD` | — | shorthand for `from=date&to=date` |
+| start, end | string `HH:MM` | no² | hours of every day in the range, company `timezone`: `start` inclusive, `end` exclusive; `start` 00:00–23:59, `end` up to `24:00` and after `start` |
 | limit | int | no | 1–60, default 24. Every tile loads the full JPEG, so pages stay small |
 | cursor | string | no | `next_cursor` of the previous page |
 
 ¹ Or `date`.
+² Both or neither; neither means the whole day. `total` and paging count only the screenshots inside the hours.
 
 Response `200`:
 
@@ -947,7 +949,7 @@ Response `200`:
 | items[].download_url | string | same object and expiry; R2 answers it as `attachment; filename="<hostname>-<YYYY-MM-DD>-<HHMM>.jpg"` (company time), `image/jpeg`. No CORS needed |
 | items[].expires_at | ISO-8601 datetime | |
 
-Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND` (outside team or other company; no URL issued); `422 VALIDATION_FAILED` (bad or reversed dates, range over 90 days, `limit`, `cursor`).
+Errors: `403 FORBIDDEN` (it_admin); `404 NOT_FOUND` (outside team or other company; no URL issued); `422 VALIDATION_FAILED` (bad or reversed dates, range over 90 days, `start`/`end` alone, malformed or not in order, `limit`, `cursor`).
 Notes: signed URLs are issued only for the page returned, and none while the tier is `off`. URLs never logged.
 
 ---

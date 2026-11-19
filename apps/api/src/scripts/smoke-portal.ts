@@ -414,6 +414,12 @@ async function main() {
   expect(await call('GET', `/v1/reports/productivity?from=${daysAgo(89)}&to=${today}`, admin), 200); // 90 days
   expect(await call('GET', `/v1/reports/productivity?from=${daysAgo(90)}&to=${today}`, admin), 422); // 91 days
   expect(await call('GET', `/v1/employees/${ada.id}/screenshots?from=${daysAgo(90)}&to=${today}`, admin), 422);
+  const shots = `/v1/employees/${ada.id}/screenshots?from=${today}&to=${today}`;
+  const day = expect(await call('GET', shots, admin), 200), hrs = expect(await call('GET', `${shots}&start=00:00&end=24:00`, admin), 200);
+  assert.equal(hrs.total, day.total, 'the whole day as hours lists the same screenshots');
+  expect(await call('GET', `${shots}&start=09:00&end=12:00`, admin), 200);
+  for (const h of ['start=09:00', 'end=12:00', 'start=12:00&end=09:00', 'start=09:00&end=09:00', 'start=9:00&end=12:00', 'start=24:00&end=24:00', 'start=09:00&end=24:01'])
+    expect(await call('GET', `${shots}&${h}`, admin), 422, 'VALIDATION_FAILED');
   const cal = expect(await call('GET', `/v1/employees/${ada.id}/calendar?view=week&date=${today}`, admin), 200);
   assert.equal(cal.find((r: any) => r.date === today).tracked_seconds, 3000);
   const exp = await call('GET', `/v1/exports/app-sessions.csv?${q}`, admin);

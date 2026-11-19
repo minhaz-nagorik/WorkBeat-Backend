@@ -33,4 +33,5 @@
 - [ ] 4.2 Tier `off` → `screenshots_enabled` false, no URLs
 - [ ] 4.3 Tests: IT admin and staff → 403; manager of another team → 404; tenant isolation: another company's employee → 404 and no URL issued; pending rows never listed
 - [ ] 4.4 Day bounds from `companies.timezone`; `date` validated (400 on missing, malformed, impossible)
+- [x] 4.6 Optional `start`/`end` hours of each day (company time, `[start, end)`), counted in `total` and paging; 422 on one alone, malformed or out of order
 - [ ] 4.5 Edge tests: device released and set up for another employee splits the day by each record's `employee_id`; B's manager cannot get a `view_url` for A's binding's screenshot; archived employee listed; only-pending day → empty, no URL; `expires_at` = signing + 5 min; former manager → 404; tier back on lists old screenshots; 23:59 / 00:00 local split; `2026-02-30` → 400

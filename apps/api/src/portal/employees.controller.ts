@@ -52,6 +52,7 @@ const IMPORT_MAX_ROWS = 5000;
 const SCREENSHOT_VIEW_SECONDS = 5 * 60;
 // Tiles load the thumbnail when the agent sent one, else the full JPEG, so pages stay small.
 const SCREENSHOT_PAGE = 24, SCREENSHOT_PAGE_MAX = 60;
+const HOUR = /^(?:[01]\d|2[0-3]):[0-5]\d$|^24:00$/; // HH:MM company time; 24:00 ends a day
 const optText = (max: number) => z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
 const employeeBody = z.object({
   name: z.string().trim().min(1).max(200),
@@ -368,6 +369,11 @@ export class EmployeesController {
       if (!isDay(to)) throw bad(q.to === undefined && q.date !== undefined ? 'date' : 'to', 'to must be YYYY-MM-DD');
       if (to! < from!) throw bad('to', 'to is before from');
       if (Date.parse(to!) - Date.parse(from!) > (MAX_RANGE_DAYS - 1) * 86400_000) throw bad('to', `range over ${MAX_RANGE_DAYS} days`);
+      // Optional hours applied to every day of the range: [start, end) in company time, both or neither.
+      const start = q.start ?? null, end = q.end ?? null;
+      if ((start === null) !== (end === null)) throw bad(start === null ? 'start' : 'end', 'start and end go together');
+      if (start !== null && (!HOUR.test(start) || start === '24:00')) throw bad('start', 'start must be HH:MM');
+      if (end !== null && (!HOUR.test(end) || end <= start!)) throw bad('end', 'end must be HH:MM after start');
       const limit = q.limit === undefined ? SCREENSHOT_PAGE : Number(q.limit);
       if (!Number.isInteger(limit) || limit < 1 || limit > SCREENSHOT_PAGE_MAX) throw bad('limit', `limit must be 1–${SCREENSHOT_PAGE_MAX}`);
       let curAt: string | null = null, curId: string | null = null;
@@ -379,16 +385,17 @@ export class EmployeesController {
       const range = { from: from! < first ? first : from!, to: to! };
       const { rows: [l] } = await c.query('SELECT screenshot_tier FROM licenses');
       if (l.screenshot_tier === 'off') return { data: { screenshots_enabled: false, ...range, total: 0, items: [], next_cursor: null } };
-      const where = `s.employee_id = $1 AND s.status = 'uploaded' AND s.captured_at >= $2::date AND s.captured_at < $3::date + 1`;
-      const { rows: [{ total }] } = await c.query(`SELECT count(*)::int AS total FROM screenshots s WHERE ${where}`, [e.id, range.from, range.to]);
+      const where = `s.employee_id = $1 AND s.status = 'uploaded' AND s.captured_at >= $2::date AND s.captured_at < $3::date + 1
+        AND ($4::time IS NULL OR (s.captured_at::time >= $4::time AND s.captured_at::time < $5::time))`;
+      const { rows: [{ total }] } = await c.query(`SELECT count(*)::int AS total FROM screenshots s WHERE ${where}`, [e.id, range.from, range.to, start, end]);
       const { rows } = await c.query(
         `SELECT s.id, s.captured_at, s.device_id, d.hostname, s.storage_path, s.thumb_bytes,
                 to_char(s.captured_at, 'YYYY-MM-DD-HH24MI') AS local_time,
                 to_char(s.captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
            FROM screenshots s JOIN devices d ON d.id = s.device_id
-          WHERE ${where} AND ($4::timestamptz IS NULL OR (s.captured_at, s.id) < ($4, $5::uuid))
-          ORDER BY s.captured_at DESC, s.id DESC LIMIT $6`,
-        [e.id, range.from, range.to, curAt, curId, limit + 1],
+          WHERE ${where} AND ($6::timestamptz IS NULL OR (s.captured_at, s.id) < ($6, $7::uuid))
+          ORDER BY s.captured_at DESC, s.id DESC LIMIT $8`,
+        [e.id, range.from, range.to, start, end, curAt, curId, limit + 1],
       );
       const page = rows.slice(0, limit), last = page[page.length - 1];
       const next_cursor = rows.length > limit && last ? Buffer.from(`${last.cursor_at}|${last.id}`).toString('base64url') : null;

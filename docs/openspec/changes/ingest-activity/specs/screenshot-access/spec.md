@@ -102,6 +102,22 @@ While the company's `screenshot_tier` is `off`, the route SHALL return `screensh
 - **WHEN** an admin requests `from=2026-11-18&to=2026-11-17`
 - **THEN** the response is `422` with `code` `VALIDATION_FAILED`
 
+### Requirement: The range can be limited to hours of each day
+<!-- source: product owner 19 Nov 2026 -->
+`start` and `end` SHALL be optional `HH:MM` times in `companies.timezone` that keep only screenshots whose `captured_at` time of day is in [`start`, `end`) on every day of the range; `total` and paging MUST count only those. Neither means the whole day. One without the other, a malformed time, `start` of `24:00`, an `end` past `24:00` or an `end` not after `start` MUST return `422 VALIDATION_FAILED` and issue no signed URL.
+
+#### Scenario: Mornings of a week
+- **WHEN** an admin requests seven days with `start=09:00&end=12:00`
+- **THEN** only screenshots taken from 09:00 up to but not including 12:00 company time on each of those days are listed, and `total` counts only them
+
+#### Scenario: The whole day as hours
+- **WHEN** an admin requests `start=00:00&end=24:00`
+- **THEN** the response lists the same screenshots as without `start` and `end`
+
+#### Scenario: Hours across midnight
+- **WHEN** an admin requests `start=22:00&end=02:00`
+- **THEN** the response is `422` with `code` `VALIDATION_FAILED`
+
 ### Requirement: The range stops at retention
 <!-- source: Plan-v3.5 §4.4 "Reports and data lifecycle" · usage-reports -->
 A `from` before the first retained day (today minus `data_retention_days` plus one, company time) SHALL be moved to that day. The response MUST return the `from` and `to` it used.

@@ -27,7 +27,8 @@ manager (D23, PRD "Screenshots", PRD "Permission matrix").
 - `activity-ingestion`: the batch route, its idempotency, validation, stamping and time window.
 - `screenshot-upload`: the upload request, the signed URL, the confirmation and their repeats,
   and an optional thumbnail for timeline tiles (19 Nov 2026).
-- `screenshot-access`: who sees which screenshots, for how long a view URL lives.
+- `screenshot-access`: who sees which screenshots, for how long a view URL lives, and optional hours of
+  each day in a range (19 Nov 2026).
 
 ### Modified Capabilities
 
