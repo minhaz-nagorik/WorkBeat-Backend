@@ -3,7 +3,7 @@
 // date ↔ timestamptz casts and ::date use local midnight.
 import { Controller, Get, Inject, Param, Query, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { ADMIN_MANAGER, ALL, employeeFor, portalUser, scopeEmployeeIds, User } from '../auth';
+import { ALL, can, employeeFor, portalUser, scopeEmployeeIds, User } from '../auth';
 import { ApiError, Db, Tx } from '../core';
 import { textPdf } from '../pdf';
 import { alerts, listDevices } from './devices.controller';
@@ -46,14 +46,14 @@ async function reportRange(c: Tx, u: User, q: Record<string, string | undefined>
   if (Date.parse(q.to!) - Date.parse(q.from!) > (MAX_RANGE_DAYS - 1) * 86400_000) throw bad('to', `range over ${MAX_RANGE_DAYS} days`);
   const scopes = ['employee_id', 'manager_user_id', 'department'].filter((k) => q[k]);
   if (scopes.length > 1) throw bad(scopes[1], 'at most one of employee_id, manager_user_id, department');
-  if (q.manager_user_id && u.role === 'manager' && q.manager_user_id !== u.id) throw new ApiError(403, 'FORBIDDEN', 'Managers see only their own team');
+  if (q.manager_user_id && u.team_only && q.manager_user_id !== u.id) throw new ApiError(403, 'FORBIDDEN', 'You see only your own team');
   let ids: string[];
   if (q.employee_id) ids = [(await employeeFor(c, u, q.employee_id)).id];
   else {
     const { rows } = await c.query(
-      `SELECT id FROM employees WHERE ($1 <> 'manager' OR manager_user_id = $2) AND archived_at IS NULL -- totals leave out archived
+      `SELECT id FROM employees WHERE (NOT $1 OR manager_user_id = $2) AND archived_at IS NULL -- totals leave out archived
          AND ($3::text IS NULL OR manager_user_id::text = $3) AND ($4::text IS NULL OR department = $4)`,
-      [u.role, u.id, q.manager_user_id ?? null, q.department ?? null],
+      [u.team_only, u.id, q.manager_user_id ?? null, q.department ?? null],
     );
     ids = rows.map((r) => r.id);
   }
@@ -179,7 +179,7 @@ export class ReportsController {
 
   private ranked(req: FastifyRequest, q: Record<string, string>, kind: 'apps' | 'websites') {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_MANAGER);
+      const u = await portalUser(c, req, 'reports');
       const r = await reportRange(c, u, q);
       const limit = q.limit === undefined ? 10 : Number(q.limit);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw bad('limit', 'limit must be 1–100');
@@ -207,7 +207,7 @@ export class ReportsController {
   @Get('reports/activity')
   async activity(@Req() req: FastifyRequest, @Query() q: Record<string, string>) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_MANAGER);
+      const u = await portalUser(c, req, 'reports');
       const r = await reportRange(c, u, q);
       const sp = await split(c, r);
       const p = [r.ids, sp.rf, sp.rt, sp.built];
@@ -243,7 +243,7 @@ export class ReportsController {
   @Get('reports/productivity')
   async productivity(@Req() req: FastifyRequest, @Query() q: Record<string, string>) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_MANAGER);
+      const u = await portalUser(c, req, 'reports');
       const r = await reportRange(c, u, q);
       const rows = await daily(c, r);
       const sum = (k: string) => rows.reduce((a, x) => a + x[k], 0);
@@ -255,7 +255,7 @@ export class ReportsController {
   @Get('employees/:id/calendar')
   async calendar(@Req() req: FastifyRequest, @Param('id') id: string, @Query('view') view: string, @Query('date') date: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_MANAGER);
+      const u = await portalUser(c, req, 'reports');
       const e = await employeeFor(c, u, id);
       const { first } = await localTime(c);
       if (!['day', 'week', 'month'].includes(view)) throw bad('view', 'view must be day, week or month');
@@ -279,7 +279,7 @@ export class ReportsController {
 
   private async sheet(req: FastifyRequest, id: string, week: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_MANAGER);
+      const u = await portalUser(c, req, 'reports');
       const e = await employeeFor(c, u, id);
       await localTime(c);
       if (!isDay(week) || new Date(week + 'T00:00:00Z').getUTCDay() !== 1) throw bad('week', 'week must be a Monday, YYYY-MM-DD');
@@ -326,7 +326,7 @@ export class ReportsController {
   @Get('exports/:kind')
   async export(@Req() req: FastifyRequest, @Param('kind') kind: string, @Query() q: Record<string, string>, @Res() res: FastifyReply) {
     const csv = await this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_MANAGER);
+      const u = await portalUser(c, req, 'reports');
       const r = await reportRange(c, u, q);
       const p = [r.ids, r.from, r.to, EXPORT_ROW_CAP + 1];
       const ts = (col: string) => `to_char(${col}, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS ${col.split('.').pop()}`;
@@ -366,14 +366,14 @@ export class ReportsController {
   async dashboard(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ALL);
-      const devs = (await listDevices(c, "($1 <> 'manager' OR e.manager_user_id = $2)", [u.role, u.id]))
+      const devs = (await listDevices(c, "(NOT $1 OR e.manager_user_id = $2)", [u.team_only, u.id]))
         .filter((d) => d.status !== 'released' && d.status !== 'deactivated');
       const count = (s: string) => devs.filter((d) => d.status === s).length;
       const data: Record<string, unknown> = {
         devices: { online: count('online'), offline: count('offline'), open_alert: devs.filter((d) => d.badges.includes('open_alert')).length },
-        alerts: (await alerts(c, u, {}, 5)).items,
+        alerts: can(u, 'alerts.view') ? (await alerts(c, u, {}, 5)).items : [],
       };
-      if (u.role !== 'it_admin') {
+      if (can(u, 'reports')) {
         const { today } = await localTime(c);
         const rows = await daily(c, { ids: await scopeEmployeeIds(c, u), from: today, to: today });
         const sum = (k: string) => rows.reduce((a, x) => a + x[k], 0);

@@ -3,7 +3,7 @@ import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { FastifyRequest } from 'fastify';
 import { ApiError, sha256, token, Tx } from './core';
-import { deferAsChange, isApprovalRoute } from './changes';
+import { deferAsChange, isApprovalRoute, isReplay } from './changes';
 import { tag } from './http';
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number, opts: object) => Promise<Buffer>;
@@ -35,14 +35,23 @@ export async function newSession(c: Tx, userId: string) {
   return { token: t, expires_at: s.expires_at };
 }
 
-export type Role = 'company_admin' | 'manager' | 'it_admin';
-export type User = { id: string; company_id: string; role: Role; email: string; name: string; session_id: string; must_change_password?: boolean };
-export const ADMIN: Role[] = ['company_admin'];
-export const ADMIN_IT: Role[] = ['company_admin', 'it_admin'];
-export const ADMIN_MANAGER: Role[] = ['company_admin', 'manager'];
-export const ALL: Role[] = ['company_admin', 'manager', 'it_admin'];
+// Company Admin is the only fixed company role; every other user is a 'member' of a custom role (0013).
+export type Role = 'company_admin' | 'member';
+export const PERMS = ['reports', 'employees.view', 'employees.edit', 'devices.view', 'devices.edit', 'alerts.view', 'alerts.edit',
+  'policy.view', 'policy.edit', 'deployment'] as const;
+export type Perm = (typeof PERMS)[number];
+// What a route needs: a permission, Company Admin ('admin'), any company user ('any'), or no company user ('none').
+export type Need = Perm | 'admin' | 'any' | 'none';
+export type User = {
+  id: string; company_id: string; role: Role; email: string; name: string; session_id: string; must_change_password?: boolean;
+  role_id?: string | null; role_name?: string | null; permissions: Perm[]; team_only: boolean;
+};
+export const ADMIN: Need = 'admin';
+export const ALL: Need = 'any';
 // Settings WorkBeat staff manage: every company role gets 403 (company name, retention, domain, notice, billing).
-export const NO_COMPANY_ROLE: Role[] = [];
+export const NO_COMPANY_ROLE: Need = 'none';
+export const can = (u: Pick<User, 'role' | 'permissions'>, need: Need) =>
+  need === 'any' || (need !== 'none' && (u.role === 'company_admin' || (need !== 'admin' && u.permissions.includes(need))));
 
 export function bearer(req: FastifyRequest) {
   const a = req.headers.authorization;
@@ -55,11 +64,12 @@ export const idOrNone = (v: string) => (isUuid(v) ? v : NO_ID); // a malformed p
 
 // Role check before any data is read (role-access). super_admin never reaches company routes.
 // passwordChange: the route stays open while a temporary password must be replaced (GET /v1/me, POST /v1/auth/password).
-export async function portalUser(c: Tx, req: FastifyRequest, roles: Role[], opts: { allowStaff?: boolean; passwordChange?: boolean } = {}): Promise<User> {
+export async function portalUser(c: Tx, req: FastifyRequest, need: Need, opts: { allowStaff?: boolean; passwordChange?: boolean } = {}): Promise<User> {
   const t = bearer(req);
   const u = t ? (await c.query('SELECT * FROM auth_session($1)', [sha256(t)])).rows[0] : null;
   if (!u || (u.role !== 'super_admin' && !u.company_id)) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in required');
-  const user: User = { id: u.user_id, company_id: u.company_id, role: u.role, email: u.email, name: u.name, session_id: u.session_id, must_change_password: u.must_change_password };
+  const user: User = { id: u.user_id, company_id: u.company_id, role: u.role, email: u.email, name: u.name, session_id: u.session_id,
+    must_change_password: u.must_change_password, role_id: u.role_id, role_name: u.role_name, permissions: u.permissions ?? [], team_only: !!u.team_only };
   if (u.must_change_password && !opts.passwordChange) throw new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Choose a new password first');
   if (u.role === 'super_admin') {
     if (!opts.allowStaff) throw new ApiError(403, 'FORBIDDEN', 'Not allowed');
@@ -67,13 +77,23 @@ export async function portalUser(c: Tx, req: FastifyRequest, roles: Role[], opts
     tag(req, { scope: 'staff' });
     return user;
   }
-  const approval = u.role === 'it_admin' && isApprovalRoute(req); // runs, is rolled back, waits for a company_admin
-  if (!roles.includes(u.role) && !approval) throw new ApiError(403, 'FORBIDDEN', 'Not allowed for your role');
+  if (!can(user, need)) throw new ApiError(403, 'FORBIDDEN', 'Not allowed for your role');
+  const approval = isApprovalRoute(req) && !isReplay(req);
+  // Safety net: a member's write runs only as a change, so a write missing from the approval list is refused.
+  if (user.role === 'member' && req.method !== 'GET' && need !== 'any' && !approval && !isReplay(req))
+    throw new ApiError(403, 'FORBIDDEN', 'Not allowed for your role');
   await c.tenant(u.company_id);
-  if (approval) deferAsChange(c, req, user);
+  // Maker-checker: a member always waits for a Company Admin; a Company Admin waits for another one when there is one.
+  if (approval && (user.role === 'member' || await otherAdmins(c, user.id))) deferAsChange(c, req, user);
   tag(req, { company_id: u.company_id });
   return user;
 }
+
+// A user employees can be assigned to as their manager: enabled, in a team-only role.
+export const TEAM_LEAD = "disabled_at IS NULL AND role_id IN (SELECT id FROM roles WHERE team_only)";
+
+export const otherAdmins = async (c: Tx, userId: string) =>
+  (await c.query("SELECT 1 FROM users WHERE role = 'company_admin' AND disabled_at IS NULL AND id <> $1 LIMIT 1", [userId])).rowCount! > 0;
 
 // Staff routes: super_admin only, in staff scope.
 export async function staffUser(c: Tx, req: FastifyRequest): Promise<User> {
@@ -81,22 +101,22 @@ export async function staffUser(c: Tx, req: FastifyRequest): Promise<User> {
   const u = t ? (await c.query('SELECT * FROM auth_session($1)', [sha256(t)])).rows[0] : null;
   if (!u) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in required');
   if (u.role !== 'super_admin') throw new ApiError(403, 'FORBIDDEN', 'Staff only');
-  return portalUser(c, req, [], { allowStaff: true });
+  return portalUser(c, req, 'none', { allowStaff: true });
 }
 
-// An employee the caller may see: own company (RLS), and own team for a manager. Else 404.
+// An employee the caller may see: own company (RLS), and own team for a team-only role. Else 404.
 export async function employeeFor(c: Tx, u: User, id: string) {
   const { rows: [e] } = await c.query(
     `SELECT id, name, email, department, manager_user_id, archived_at FROM employees
-      WHERE id = $1 AND ($2 <> 'manager' OR manager_user_id = $3)`,
-    [idOrNone(id), u.role, u.id],
+      WHERE id = $1 AND (NOT $2 OR manager_user_id = $3)`,
+    [idOrNone(id), u.team_only, u.id],
   );
   if (!e) throw new ApiError(404, 'NOT_FOUND', 'Employee not found');
   return e;
 }
 
-// Employee IDs the caller's totals cover (a manager: own team only); archived employees are left out (usage-reports, dashboard-summary).
+// Employee IDs the caller's totals cover (a team-only role: own team only); archived employees are left out (usage-reports, dashboard-summary).
 export async function scopeEmployeeIds(c: Tx, u: User): Promise<string[]> {
-  const { rows } = await c.query("SELECT id FROM employees WHERE ($1 <> 'manager' OR manager_user_id = $2) AND archived_at IS NULL", [u.role, u.id]);
+  const { rows } = await c.query("SELECT id FROM employees WHERE (NOT $1 OR manager_user_id = $2) AND archived_at IS NULL", [u.team_only, u.id]);
   return rows.map((r) => r.id);
 }

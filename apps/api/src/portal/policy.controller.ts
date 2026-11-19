@@ -3,7 +3,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { ADMIN, ADMIN_IT, ADMIN_MANAGER, ALL, idOrNone, NO_COMPANY_ROLE, portalUser } from '../auth';
+import { ADMIN, idOrNone, NO_COMPANY_ROLE, portalUser } from '../auth';
 import { ApiError, Db, parse } from '../core';
 
 const NOTICE_MAX = 10_000;
@@ -36,7 +36,7 @@ export class PolicyController {
   @Get('block-rules')
   async blockRules(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ALL);
+      await portalUser(c, req, 'policy.view');
       return { data: (await c.query(`SELECT r.id, r.type, r.pattern, r.reason, r.created_at, u.name AS created_by_name
         FROM block_rules r LEFT JOIN users u ON u.id = r.created_by ORDER BY r.created_at, r.id`)).rows };
     });
@@ -45,7 +45,7 @@ export class PolicyController {
   @Post('block-rules')
   async addBlockRule(@Req() req: FastifyRequest, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_IT);
+      const u = await portalUser(c, req, 'policy.edit');
       const b = parse(z.object({ type: z.enum(['domain', 'url', 'regex']), pattern: z.string().trim().min(1).max(2048), reason: z.string().max(500).nullish() }), raw);
       let rules: { type: 'domain' | 'url'; pattern: string }[];
       if (b.type === 'regex') {
@@ -66,7 +66,7 @@ export class PolicyController {
   @Patch('block-rules/:id')
   async patchBlockRule(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, 'policy.edit');
       const b = parse(z.object({ pattern: z.string().trim().min(1).max(2048).optional(), reason: z.string().max(500).nullish() }), raw);
       const { rows: [cur] } = await c.query('SELECT id, type FROM block_rules WHERE id = $1', [idOrNone(id)]);
       if (!cur) throw new ApiError(404, 'NOT_FOUND', 'Rule not found');
@@ -83,7 +83,7 @@ export class PolicyController {
   @Delete('block-rules/:id')
   async deleteBlockRule(@Req() req: FastifyRequest, @Param('id') id: string, @Res({ passthrough: true }) res: FastifyReply) {
     await this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, 'policy.edit');
       if (!(await c.query('DELETE FROM block_rules WHERE id = $1', [idOrNone(id)])).rowCount) throw new ApiError(404, 'NOT_FOUND', 'Rule not found');
     });
     res.status(204);
@@ -92,7 +92,7 @@ export class PolicyController {
   @Get('sensitive-domains')
   async sensitive(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ALL);
+      await portalUser(c, req, 'policy.view');
       return { data: (await c.query('SELECT id, pattern, is_default, created_at FROM sensitive_domains ORDER BY lower(pattern)')).rows };
     });
   }
@@ -100,7 +100,7 @@ export class PolicyController {
   @Post('sensitive-domains')
   async addSensitive(@Req() req: FastifyRequest, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN);
+      const u = await portalUser(c, req, 'policy.edit');
       const { pattern } = parse(z.object({ pattern: z.string().trim().toLowerCase().min(1).max(253) }), raw);
       if (!isBareHost(pattern)) throw new ApiError(422, 'VALIDATION_FAILED', 'Must be a bare host name', { fields: ['pattern'] });
       const { rows: [r] } = await c.query(
@@ -115,7 +115,7 @@ export class PolicyController {
   @Delete('sensitive-domains/:id')
   async deleteSensitive(@Req() req: FastifyRequest, @Param('id') id: string, @Res({ passthrough: true }) res: FastifyReply) {
     await this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN);
+      await portalUser(c, req, 'policy.edit');
       if (!(await c.query('DELETE FROM sensitive_domains WHERE id = $1', [idOrNone(id)])).rowCount) throw new ApiError(404, 'NOT_FOUND', 'Not found');
     });
     res.status(204);
@@ -124,7 +124,7 @@ export class PolicyController {
   @Get('productivity-rules')
   async productivity(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ALL);
+      await portalUser(c, req, 'policy.view');
       return { data: (await c.query('SELECT id, match_type, pattern, category FROM productivity_rules ORDER BY match_type, lower(pattern)')).rows };
     });
   }
@@ -132,7 +132,7 @@ export class PolicyController {
   @Post('productivity-rules')
   async addProductivity(@Req() req: FastifyRequest, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN);
+      const u = await portalUser(c, req, 'policy.edit');
       const b = parse(z.object({ match_type: z.enum(['app', 'domain']), pattern: z.string().trim().min(1).max(512), category: z.enum(['productive', 'neutral', 'unproductive']) }), raw);
       const pattern = b.match_type === 'domain' ? b.pattern.toLowerCase() : b.pattern;
       if (b.match_type === 'domain' && !isBareHost(pattern)) throw new ApiError(422, 'VALIDATION_FAILED', 'Must be a bare host name', { fields: ['pattern'] });
@@ -148,7 +148,7 @@ export class PolicyController {
   @Patch('productivity-rules/:id')
   async patchProductivity(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN);
+      await portalUser(c, req, 'policy.edit');
       const b = parse(z.object({ category: z.enum(['productive', 'neutral', 'unproductive']) }), raw);
       const { rows: [r] } = await c.query('UPDATE productivity_rules SET category = $2 WHERE id = $1 RETURNING id, match_type, pattern, category', [idOrNone(id), b.category]);
       if (!r) throw new ApiError(404, 'NOT_FOUND', 'Rule not found');
@@ -159,7 +159,7 @@ export class PolicyController {
   @Delete('productivity-rules/:id')
   async deleteProductivity(@Req() req: FastifyRequest, @Param('id') id: string, @Res({ passthrough: true }) res: FastifyReply) {
     await this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN);
+      await portalUser(c, req, 'policy.edit');
       if (!(await c.query('DELETE FROM productivity_rules WHERE id = $1', [idOrNone(id)])).rowCount) throw new ApiError(404, 'NOT_FOUND', 'Rule not found');
     });
     res.status(204);

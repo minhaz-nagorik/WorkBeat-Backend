@@ -37,12 +37,14 @@ function inviteToken(email: string) {
   assert.ok(f, 'invitation email in outbox for ' + email);
   return /token=([^\s&]+)/.exec(JSON.parse(readFileSync(join(OUTBOX, f), 'utf8')).text)![1];
 }
-async function join_(admin: string, role: string) {
-  const email = `${role}-${run}@example.test`;
-  expect(await call('POST', '/v1/team/invitations', admin, { email, role }), 201);
+// roleId: a custom role's id, or null for a Company Admin.
+async function join_(admin: string, roleId: string | null, tag: string) {
+  const email = `${tag}-${run}@example.test`;
+  expect(await call('POST', '/v1/team/invitations', admin, roleId ? { email, role: 'member', role_id: roleId } : { email, role: 'company_admin' }), 201);
   const t = decodeURIComponent(inviteToken(email));
   const look = expect(await call('POST', '/v1/invitations/lookup', undefined, { token: t }), 200);
-  assert.equal(look.role, role);
+  assert.equal(look.role, roleId ? 'member' : 'company_admin');
+  const role = tag;
   const acc = expect(await call('POST', '/v1/invitations/accept', undefined, { token: t, name: `Test ${role}`, password: 'correct horse battery' }), 201);
   expect(await call('POST', '/v1/invitations/accept', undefined, { token: t, name: 'x', password: 'correct horse battery' }), 410, 'INVITATION_EXPIRED');
   return { token: acc.token as string, id: acc.user.id as string, email };
@@ -224,15 +226,27 @@ async function main() {
   expect(await call('GET', '/v1/me'), 401, 'UNAUTHENTICATED');
   ok(`login as ${me.email} (${me.company.name})`);
 
-  const mgr = await join_(admin, 'manager');
-  const it = await join_(admin, 'it_admin');
-  expect(await call('POST', '/v1/team/invitations', admin, { email: mgr.email, role: 'manager' }), 409, 'CONFLICT');
+  // Custom roles: the old Manager and IT Admin, made by the Company Admin (0013).
+  const mgrRole = expect(await call('POST', '/v1/roles', admin, { name: `Manager ${run}`, permissions: ['reports', 'employees.view', 'alerts.view', 'policy.view'], team_only: true }), 201);
+  const itRole = expect(await call('POST', '/v1/roles', admin, { name: `IT Admin ${run}`,
+    permissions: ['employees.edit', 'devices.edit', 'alerts.edit', 'policy.edit', 'deployment'] }), 201);
+  assert.ok(itRole.permissions.includes('devices.view'), 'an edit right brings its view right');
+  expect(await call('POST', '/v1/roles', admin, { name: `manager ${run}`, permissions: [] }), 409, 'CONFLICT');
+  expect(await call('POST', '/v1/roles', admin, { name: 'Bad', permissions: ['billing'] }), 422);
+  const mgr = await join_(admin, mgrRole.id, 'manager');
+  const it = await join_(admin, itRole.id, 'it_admin');
+  expect(await call('GET', '/v1/roles', mgr.token), 403, 'FORBIDDEN');
+  const meIt = expect(await call('GET', '/v1/me', it.token), 200);
+  assert.equal(meIt.role, 'member'); assert.equal(meIt.role_name, `IT Admin ${run}`); assert.equal(meIt.team_only, false);
+  expect(await call('DELETE', `/v1/roles/${itRole.id}`, admin), 409, 'CONFLICT');
+  expect(await call('POST', '/v1/team/invitations', admin, { email: mgr.email, role: 'member', role_id: mgrRole.id }), 409, 'CONFLICT');
   expect(await call('POST', '/v1/team/invitations', admin, { email: `x-${run}@example.test`, role: 'super_admin' }), 422);
   expect(await call('GET', '/v1/team', mgr.token), 403, 'FORBIDDEN');
   const team = expect(await call('GET', '/v1/team', admin), 200);
   assert.ok(team.users.some((u: any) => u.id === mgr.id));
-  expect(await call('PATCH', `/v1/team/users/${me.id}`, admin, { role: 'manager' }), team.users.filter((u: any) => u.role === 'company_admin').length > 1 ? 200 : 409);
-  ok('invitations → manager and it_admin accounts; last-admin guard');
+  assert.equal(team.users.filter((u: any) => u.role === 'company_admin').length, 1, 'the smoke company has one Company Admin');
+  expect(await call('PATCH', `/v1/team/users/${me.id}`, admin, { role: 'member', role_id: mgrRole.id }), 409);
+  ok('custom roles; invitations → manager and it_admin accounts; last-admin guard');
 
   // employees
   const ada = expect(await call('POST', '/v1/employees', admin, { name: `Ada ${run}`, email: `ada-${run}@example.test`, manager_user_id: mgr.id }), 201);
@@ -284,10 +298,10 @@ async function main() {
   const rej = expect(await call('POST', `/v1/changes/${again.id}/reject`, admin, { reason: 'Not now' }), 200).change;
   assert.equal(rej.status, 'rejected'); assert.equal(rej.reason, 'Not now');
   const mine2 = expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: `y-${dom}` }), 202).change;
-  expect(await call('DELETE', `/v1/changes/${mine2.id}`, admin), 403);
+  expect(await call('DELETE', `/v1/changes/${mine2.id}`, admin), 404); // only the one who asked cancels
   expect(await call('DELETE', `/v1/changes/${mine2.id}`, it.token), 204);
   expect(await call('DELETE', `/v1/changes/${mine2.id}`, it.token), 409, 'CONFLICT');
-  expect(await call('GET', '/v1/changes', mgr.token), 403);
+  assert.deepEqual(expect(await call('GET', '/v1/changes', mgr.token), 200), []); // everyone sees their own
   const itChanges = expect(await call('GET', '/v1/changes', it.token), 200);
   assert.deepEqual(itChanges.slice(0, 3).map((x: any) => x.status), ['cancelled', 'rejected', 'approved']);
   assert.ok(expect(await call('GET', '/v1/changes?status=pending', admin), 200).every((x: any) => x.status === 'pending'));
@@ -296,6 +310,19 @@ async function main() {
   const failed = expect(await call('POST', `/v1/changes/${delay.id}/approve`, admin), 200).change;
   assert.equal(failed.status, 'failed'); assert.equal(failed.error.code, 'CONFLICT');
   ok('change approvals: 202 pending, validated at once, approve applies, reject, cancel, failed replay');
+
+  // Maker-checker between Company Admins: with a second one, an admin's write waits for the other.
+  const admin2 = await join_(admin, null, 'admin2');
+  const own = expect(await call('POST', '/v1/block-rules', admin, { type: 'domain', pattern: `z-${dom}` }), 202).change;
+  expect(await call('POST', `/v1/changes/${own.id}/approve`, admin), 403, 'FORBIDDEN');
+  expect(await call('POST', `/v1/changes/${own.id}/reject`, admin), 403, 'FORBIDDEN');
+  assert.equal(expect(await call('POST', `/v1/changes/${own.id}/approve`, admin2.token), 200).change.status, 'approved');
+  const itAsk = expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: `w-${dom}` }), 202).change;
+  assert.equal(expect(await call('POST', `/v1/changes/${itAsk.id}/approve`, admin2.token), 200).change.status, 'approved', 'any admin approves a member alone');
+  const drop = expect(await call('DELETE', `/v1/team/users/${admin2.id}`, admin), 202).change;
+  expect(await call('POST', `/v1/changes/${drop.id}/approve`, admin2.token), 200);
+  expect(await call('POST', '/v1/block-rules', admin, { type: 'domain', pattern: `v-${dom}` }), 201); // alone again: no wait
+  ok('maker-checker: a second Company Admin approves, never the maker; a lone admin acts at once');
   const fromRegex = expect(await call('POST', '/v1/block-rules', admin, { type: 'regex', pattern: `^(www\\.)?(a-${run}\\.com|b-${run}\\.com)/games.*$` }), 201);
   assert.deepEqual(fromRegex.map((r: any) => r.pattern), [`a-${run}.com/games`, `b-${run}.com/games`]);
   expect(await call('POST', '/v1/block-rules', admin, { type: 'regex', pattern: '.*evil.*' }), 422);

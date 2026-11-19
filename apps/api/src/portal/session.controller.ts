@@ -2,7 +2,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { ADMIN, ALL, bearer, hashPassword, idOrNone, INVITATION_DAYS, newSession, portalUser, User, verifyPassword } from '../auth';
+import { ADMIN, ALL, TEAM_LEAD, bearer, hashPassword, idOrNone, INVITATION_DAYS, newSession, portalUser, User, verifyPassword } from '../auth';
 import { ApiError, config, Db, parse, sha256, token, Tx } from '../core';
 import { sendMail } from '../mail';
 
@@ -10,20 +10,37 @@ const RESET_MINUTES = 30;
 
 const password = z.string().min(10).max(200);
 const email = z.string().trim().toLowerCase().email().max(254);
-const companyRole = z.enum(['company_admin', 'manager', 'it_admin']);
+// A Company Admin, or a member of one of the company's roles.
+const roleChoice = z.union([
+  z.object({ role: z.literal('company_admin') }),
+  z.object({ role: z.literal('member'), role_id: z.string().uuid() }),
+]);
+const roleIdOf = (b: z.infer<typeof roleChoice>) => (b.role === 'member' ? b.role_id : null);
+async function assertRole(c: Tx, roleId: string | null) {
+  if (roleId && !(await c.query('SELECT 1 FROM roles WHERE id = $1', [roleId])).rowCount)
+    throw new ApiError(422, 'VALIDATION_FAILED', 'role_id is not a role of this company', { fields: ['role_id'] });
+}
 
 async function me(c: Tx, u: User) {
   const company = u.company_id
     ? (await c.query('SELECT id, name, slug, status, timezone FROM companies WHERE id = $1', [u.company_id])).rows[0] ?? null
     : null;
-  return { id: u.id, email: u.email, name: u.name, role: u.role, company, must_change_password: !!u.must_change_password };
+  return { id: u.id, email: u.email, name: u.name, role: u.role, role_id: u.role_id ?? null, role_name: u.role_name ?? null,
+    permissions: u.permissions ?? [], team_only: !!u.team_only, company, must_change_password: !!u.must_change_password };
 }
 
-async function mailInvitation(c: Tx, inviteToken: string, to: string, role: string) {
+async function mailInvitation(c: Tx, inviteToken: string, to: string, roleId: string | null) {
+  const role = roleId ? (await c.query('SELECT name FROM roles WHERE id = $1', [roleId])).rows[0]?.name ?? 'a team member' : 'Company Admin';
   const { rows: [co] } = await c.query('SELECT name FROM companies WHERE id = app_company_id()');
   const link = `${config().PORTAL_URL}/invite?token=${encodeURIComponent(inviteToken)}`;
   await sendMail(to, `You're invited to ${co.name} on WorkBeat`,
-    `You have been invited to ${co.name} on WorkBeat as ${role.replace('_', ' ')}.\n\nAccept the invitation: ${link}\n\nThe link expires in ${INVITATION_DAYS} days.`);
+    `You have been invited to ${co.name} on WorkBeat as ${role}.\n\nAccept the invitation: ${link}\n\nThe link expires in ${INVITATION_DAYS} days.`);
+}
+
+// Employees keep a manager only while that user is an enabled member of a team-only role.
+export async function unassignIfNotLead(c: Tx, userId: string) {
+  await c.query(`UPDATE employees SET manager_user_id = NULL WHERE manager_user_id = $1
+    AND NOT EXISTS (SELECT 1 FROM users WHERE id = $1 AND ${TEAM_LEAD})`, [userId]);
 }
 
 // The last enabled company_admin can be neither demoted nor removed.
@@ -131,7 +148,7 @@ export class SessionController {
     return this.db.tx(async (c) => {
       const inv = await this.invitation(c, b.token);
       const { rows: [co] } = await c.query('SELECT name FROM companies WHERE id = $1', [inv.company_id]);
-      return { data: { email: inv.email, role: inv.role, company_name: co?.name ?? null } };
+      return { data: { email: inv.email, role: inv.role, role_name: inv.role_name ?? null, company_name: co?.name ?? null } };
     });
   }
 
@@ -146,14 +163,14 @@ export class SessionController {
       if (!open.rowCount) throw new ApiError(410, 'INVITATION_EXPIRED', 'Invitation no longer valid');
       if ((await c.query('SELECT email_has_user($1) AS taken', [inv.email])).rows[0].taken) throw new ApiError(409, 'CONFLICT', 'An account with this email exists');
       const { rows: [u] } = await c.query(
-        'INSERT INTO users (email, name, role, company_id, password_hash) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-        [inv.email, b.name, inv.role, inv.company_id, hash],
+        'INSERT INTO users (email, name, role, role_id, company_id, password_hash) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [inv.email, b.name, inv.role, inv.role_id, inv.company_id, hash],
       );
       await c.query('UPDATE invitations SET accepted_at = now() WHERE id = $1', [inv.invitation_id]);
       res.status(201);
-      const user = await me(c, { id: u.id, email: inv.email, name: b.name, role: inv.role, company_id: inv.company_id, session_id: '' });
-      if (!inv.company_id) return { data: { user } }; // staff: no session, they sign in with their password
-      return { data: { ...(await newSession(c, u.id)), user } };
+      if (inv.company_id) return { data: await this.session(c, u.id) };
+      // staff: no session, they sign in with their password
+      return { data: { user: await me(c, { id: u.id, email: inv.email, name: b.name, role: inv.role, company_id: inv.company_id, session_id: '', permissions: [], team_only: false }) } };
     });
   }
 
@@ -174,8 +191,10 @@ export class SessionController {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN);
       const [users, invitations] = await Promise.all([
-        c.query('SELECT id, name, email, role, created_at FROM users WHERE disabled_at IS NULL ORDER BY name'),
-        c.query('SELECT id, email, role, created_at, expires_at FROM invitations WHERE accepted_at IS NULL AND revoked_at IS NULL ORDER BY created_at'),
+        c.query(`SELECT u.id, u.name, u.email, u.role, u.role_id, r.name AS role_name, r.team_only, u.created_at
+                   FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.disabled_at IS NULL ORDER BY u.name`),
+        c.query(`SELECT i.id, i.email, i.role, i.role_id, r.name AS role_name, i.created_at, i.expires_at FROM invitations i
+                   LEFT JOIN roles r ON r.id = i.role_id WHERE i.accepted_at IS NULL AND i.revoked_at IS NULL ORDER BY i.created_at`),
       ]);
       return { data: { users: users.rows, invitations: invitations.rows } };
     });
@@ -185,15 +204,16 @@ export class SessionController {
   async invite(@Req() req: FastifyRequest, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ADMIN);
-      const b = parse(z.object({ email, role: companyRole }), raw);
+      const b = parse(z.object({ email }).and(roleChoice), raw);
+      await assertRole(c, roleIdOf(b));
       if ((await c.query('SELECT email_has_user($1) AS taken', [b.email])).rows[0].taken) throw new ApiError(409, 'CONFLICT', 'This email already has an account');
       const t = token('wbi_');
       const { rows: [inv] } = await c.query( // invitations_one_open → 23505 → 409 CONFLICT
-        `INSERT INTO invitations (company_id, email, role, token_hash, invited_by, expires_at)
-         VALUES ($1, $2, $3, $4, $5, now() + make_interval(days => $6)) RETURNING id, email, role, expires_at`,
-        [u.company_id, b.email, b.role, sha256(t), u.id, INVITATION_DAYS],
+        `INSERT INTO invitations (company_id, email, role, role_id, token_hash, invited_by, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(days => $7)) RETURNING id, email, role, role_id, expires_at`,
+        [u.company_id, b.email, b.role, roleIdOf(b), sha256(t), u.id, INVITATION_DAYS],
       );
-      await mailInvitation(c, t, b.email, b.role);
+      await mailInvitation(c, t, b.email, inv.role_id);
       res.status(201);
       return { data: inv };
     });
@@ -209,10 +229,10 @@ export class SessionController {
       const t = token('wbi_');
       const { rows: [row] } = await c.query(
         `UPDATE invitations SET token_hash = $2, expires_at = now() + make_interval(days => $3) WHERE id = $1
-         RETURNING id, email, role, expires_at`,
+         RETURNING id, email, role, role_id, expires_at`,
         [inv.id, sha256(t), INVITATION_DAYS],
       );
-      await mailInvitation(c, t, row.email, row.role);
+      await mailInvitation(c, t, row.email, row.role_id);
       return { data: row };
     });
   }
@@ -238,11 +258,14 @@ export class SessionController {
   async changeRole(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN);
-      const b = parse(z.object({ role: companyRole }), raw);
+      const b = parse(roleChoice, raw);
+      await assertRole(c, roleIdOf(b));
       const target = await this.ownUser(c, id);
       if (target.role === 'company_admin' && b.role !== 'company_admin') await assertAnotherAdmin(c, target.id);
-      if (target.role === 'manager' && b.role !== 'manager') await c.query('UPDATE employees SET manager_user_id = NULL WHERE manager_user_id = $1', [target.id]);
-      const { rows: [row] } = await c.query('UPDATE users SET role = $2 WHERE id = $1 RETURNING id, name, email, role, created_at', [target.id, b.role]);
+      await c.query('UPDATE users SET role = $2, role_id = $3 WHERE id = $1', [target.id, b.role, roleIdOf(b)]);
+      await unassignIfNotLead(c, target.id);
+      const { rows: [row] } = await c.query(`SELECT u.id, u.name, u.email, u.role, u.role_id, r.name AS role_name, r.team_only, u.created_at
+        FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = $1`, [target.id]);
       return { data: row };
     });
   }
@@ -253,8 +276,8 @@ export class SessionController {
       await portalUser(c, req, ADMIN);
       const target = await this.ownUser(c, id);
       if (target.role === 'company_admin') await assertAnotherAdmin(c, target.id);
-      if (target.role === 'manager') await c.query('UPDATE employees SET manager_user_id = NULL WHERE manager_user_id = $1', [target.id]);
       await c.query('UPDATE users SET disabled_at = now() WHERE id = $1', [target.id]);
+      await unassignIfNotLead(c, target.id);
       await c.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [target.id]);
     });
     res.status(204);

@@ -1,7 +1,7 @@
 // Devices with derived status and badges, rollout counts, release, portal deactivate, alerts feed.
 import { Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import { ADMIN_IT, ALL, idOrNone, portalUser, User } from '../auth';
+import { idOrNone, portalUser, User } from '../auth';
 import { ApiError, Db, Tx } from '../core';
 import { cmpVersion, newestRelease } from '../device';
 import { HEALTH_FIELDS } from '../contract';
@@ -73,16 +73,16 @@ export async function deviceOne(c: Tx, id: string, lock = false): Promise<any> {
 
 // Portal side of POST /v1/devices/:id/deactivate (device-lifecycle): idempotent, 409 when released.
 export async function deactivateAsUser(c: Tx, req: FastifyRequest, id: string) {
-  await portalUser(c, req, ADMIN_IT);
+  await portalUser(c, req, 'devices.edit');
   const d = await deviceOne(c, id, true);
   if (d.released_at) throw new ApiError(409, 'CONFLICT', 'Device is released');
   await c.query('UPDATE devices SET deactivated_at = coalesce(deactivated_at, now()), key_hash = NULL WHERE id = $1', [d.id]);
   return deviceOne(c, id);
 }
 
-// alerts-feed: the caller's events, newest first; a manager sees devices of own team only.
+// alerts-feed: the caller's events, newest first; a team-only role sees devices of own team only.
 const ALERT_FROM = `FROM tamper_events t JOIN devices d ON d.id = t.device_id JOIN employees e ON e.id = d.employee_id
-  WHERE ($1 <> 'manager' OR e.manager_user_id = $2)
+  WHERE (NOT $1 OR e.manager_user_id = $2)
     AND ($3::text[] IS NULL OR t.event_type = ANY ($3))
     AND ($4::text IS NULL OR ($4 = 'open') = (t.resolved_at IS NULL))
     AND ($5::uuid IS NULL OR t.device_id = $5)
@@ -94,7 +94,7 @@ export async function alerts(c: Tx, u: User, q: Record<string, string | undefine
   const types = q.type ? q.type.split(',') : null;
   let cursorAt: string | null = null, cursorId: string | null = null;
   if (q.cursor) [cursorAt, cursorId] = Buffer.from(q.cursor, 'base64url').toString().split('|');
-  const filters = [u.role, u.id, types, q.state ?? null, q.device_id ? idOrNone(q.device_id) : null, q.from ?? null, q.to ?? null,
+  const filters = [u.team_only, u.id, types, q.state ?? null, q.device_id ? idOrNone(q.device_id) : null, q.from ?? null, q.to ?? null,
     q.employee_id ? idOrNone(q.employee_id) : null,
     // q: free text over event type, hostname, employee name and detail (labels are the web platform's)
     q.q ? `%${q.q.slice(0, 100).replace(/[\\%_]/g, (ch) => '\\' + ch)}%` : null];
@@ -124,7 +124,7 @@ export class DevicesController {
   @Get('devices')
   async list(@Req() req: FastifyRequest, @Query() q: Record<string, string>) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, 'devices.view');
       let rows = await listDevices(c, '($1::text IS NULL OR d.os = $1) AND ($2::uuid IS NULL OR d.employee_id = $2)',
         [q.os ?? null, q.employee_id ? idOrNone(q.employee_id) : null]);
       if (q.status) rows = rows.filter((d) => d.status === q.status);
@@ -136,7 +136,7 @@ export class DevicesController {
   @Get('devices/:id')
   async get(@Req() req: FastifyRequest, @Param('id') id: string) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, 'devices.view');
       return { data: await this.one(c, id) };
     });
   }
@@ -144,7 +144,7 @@ export class DevicesController {
   @Get('rollout')
   async rollout(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, 'deployment');
       const rows = await listDevices(c);
       const status: Record<string, number> = { online: 0, offline: 0, deactivated: 0, released: 0 };
       const badges: Record<string, number> = { outdated: 0, permission_pending: 0, browser_access_pending: 0, paused: 0, open_alert: 0 };
@@ -160,7 +160,7 @@ export class DevicesController {
   @HttpCode(200)
   async release(@Req() req: FastifyRequest, @Param('id') id: string) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, 'devices.edit');
       const d = await this.one(c, id, true);
       if (d.released_at) throw new ApiError(409, 'CONFLICT', 'Device already released');
       await c.query('UPDATE devices SET released_at = now() WHERE id = $1', [d.id]);
@@ -175,7 +175,7 @@ export class DevicesController {
   @Get('alerts')
   async alerts(@Req() req: FastifyRequest, @Query() q: Record<string, string>) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ALL);
+      const u = await portalUser(c, req, 'alerts.view');
       for (const k of ['from', 'to'] as const)
         if (q[k] && isNaN(Date.parse(q[k]))) throw new ApiError(422, 'VALIDATION_FAILED', `${k} must be an ISO date`, { fields: [k] });
       return { data: await alerts(c, u, q, ALERT_PAGE, true) };
@@ -186,7 +186,7 @@ export class DevicesController {
   @HttpCode(200)
   async resolve(@Req() req: FastifyRequest, @Param('id') id: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN_IT);
+      const u = await portalUser(c, req, 'alerts.edit');
       const r = await c.query('UPDATE tamper_events SET resolved_at = coalesce(resolved_at, now()), resolved_by = CASE WHEN resolved_at IS NULL THEN $2::uuid ELSE resolved_by END WHERE id = $1 RETURNING id', [idOrNone(id), u.id]);
       if (!r.rowCount) throw new ApiError(404, 'NOT_FOUND', 'Alert not found');
       return { data: (await alerts(c, u, { id: r.rows[0].id })).items[0] };

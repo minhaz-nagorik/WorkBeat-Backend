@@ -20,6 +20,7 @@ import { DevicesController } from './portal/devices.controller';
 import { EmployeesController } from './portal/employees.controller';
 import { PolicyController } from './portal/policy.controller';
 import { ReportsController } from './portal/reports.controller';
+import { RolesController } from './portal/roles.controller';
 import { SessionController } from './portal/session.controller';
 import { StaffController } from './portal/staff.controller';
 
@@ -61,7 +62,7 @@ class AllErrors implements ExceptionFilter {
 
 @Module({
   controllers: [InstallController, AgentsController, StorageController, SessionController, CompanyController,
-    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController, ChangesController, CronController],
+    EmployeesController, DevicesController, PolicyController, ReportsController, StaffController, ChangesController, RolesController, CronController],
   providers: [
     { provide: Db, useValue: new Db(cfg.DATABASE_URL) },
     { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY, {

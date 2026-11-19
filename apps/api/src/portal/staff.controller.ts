@@ -25,7 +25,9 @@ const newCompany = z.object({
   screenshot_tier: z.enum(['off', 'light', 'standard', 'intensive']), status: z.enum(['trial', 'active']),
   trial_days: z.number().int().min(1).max(90).optional(), timezone: z.string().min(1).max(64),
   data_retention_days: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(), admin_email: email,
+  admin_email_2: email.nullable().optional(), // a second Company Admin, optional
 }).superRefine((b, ctx) => {
+  if (b.admin_email_2 && b.admin_email_2 === b.admin_email) ctx.addIssue({ code: 'custom', path: ['admin_email_2'], message: 'must differ from admin_email' });
   if (b.seat_limit === null && b.plan !== 'enterprise') ctx.addIssue({ code: 'custom', path: ['seat_limit'], message: 'unlimited needs enterprise' });
   if (b.status === 'trial' && b.trial_days === undefined) ctx.addIssue({ code: 'custom', path: ['trial_days'], message: 'required for a trial' });
 });
@@ -126,21 +128,24 @@ export class StaffController {
   }
 
   // One transaction: company, licence with a new key, default sensitive domains and the first
-  // company_admin invitation. The key and the invitation link go by email only, after commit.
+  // company_admin invitations (one or two). The key and the invitation links go by email only, after commit.
   @Post('companies')
   async create(@Req() req: FastifyRequest, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     await this.db.tx((c) => staffUser(c, req)); // 401/403 before any validation answer
     const b = parse(newCompany, raw);
-    const key = newLicenceKey(), uninstall = token('wbu_'), invite = token('wbi_');
+    const key = newLicenceKey(), uninstall = token('wbu_');
+    const admins = [b.admin_email, b.admin_email_2].filter((e): e is string => !!e).map((email, i) => ({ email, field: i ? 'admin_email_2' : 'admin_email', invite: token('wbi_') }));
     const secret = config().SECRETS_ENCRYPTION_KEY;
     const out = await this.db.tx(async (c) => {
       const u = await staffUser(c, req);
       if (!(await c.query('SELECT is_timezone($1) AS ok', [b.timezone])).rows[0].ok)
         throw new ApiError(422, 'VALIDATION_FAILED', 'Unknown time zone', { fields: ['timezone'] });
       if ((await c.query('SELECT 1 FROM companies WHERE slug = $1', [b.slug])).rowCount) throw conflict('slug', 'This address is taken');
-      const taken = (await c.query('SELECT email_has_user($1) AS t', [b.admin_email])).rows[0].t
-        || (await c.query('SELECT 1 FROM invitations WHERE email = $1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now()', [b.admin_email])).rowCount;
-      if (taken) throw conflict('admin_email', 'This email already has an account or an open invitation');
+      for (const a of admins) {
+        const taken = (await c.query('SELECT email_has_user($1) AS t', [a.email])).rows[0].t
+          || (await c.query('SELECT 1 FROM invitations WHERE email = $1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now()', [a.email])).rowCount;
+        if (taken) throw conflict(a.field, 'This email already has an account or an open invitation');
+      }
       const { rows: [co] } = await c.query( // slug UNIQUE → 23505 → 409 on a race
         `INSERT INTO companies (name, slug, status, timezone, data_retention_days, uninstall_token_hash, uninstall_token_ciphertext, notice_text)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
@@ -152,17 +157,21 @@ export class StaffController {
         [co.id, sha256(key), encrypt(key, secret), key.slice(-4), b.plan, b.seat_limit, b.screenshot_tier, b.status === 'trial' ? b.trial_days : null],
       );
       await c.query('SELECT company_defaults($1)', [co.id]);
-      const { rows: [inv] } = await c.query(
-        `INSERT INTO invitations (company_id, email, role, token_hash, invited_by, expires_at)
-         VALUES ($1, $2, 'company_admin', $3, $4, now() + make_interval(days => $5)) RETURNING email, expires_at`,
-        [co.id, b.admin_email, sha256(invite), u.id, INVITATION_DAYS],
-      );
-      return { company: await company(c, co.id), invitation: inv };
+      const invitations = [];
+      for (const a of admins)
+        invitations.push((await c.query(
+          `INSERT INTO invitations (company_id, email, role, token_hash, invited_by, expires_at)
+           VALUES ($1, $2, 'company_admin', $3, $4, now() + make_interval(days => $5)) RETURNING email, expires_at`,
+          [co.id, a.email, sha256(a.invite), u.id, INVITATION_DAYS],
+        )).rows[0]);
+      return { company: await company(c, co.id), invitation: invitations[0], invitations };
     });
-    const link = `${config().PORTAL_URL}/invite?token=${encodeURIComponent(invite)}`;
-    void sendMail(b.admin_email, `Your WorkBeat account for ${b.name}`,
-      `WorkBeat has set up ${b.name} for you.\n\nCreate your Company Admin account: ${link}\n(The link expires in ${INVITATION_DAYS} days.)\n\nYour licence key, for installing WorkBeat on your team's computers:\n${key}\n\nKeep the key private; you can also see it in the console under Licence.`)
-      .catch(() => console.error(JSON.stringify({ t: new Date(), level: 'error', err: 'company_created_email_failed' })));
+    for (const a of admins) {
+      const link = `${config().PORTAL_URL}/invite?token=${encodeURIComponent(a.invite)}`;
+      void sendMail(a.email, `Your WorkBeat account for ${b.name}`,
+        `WorkBeat has set up ${b.name} for you.\n\nCreate your Company Admin account: ${link}\n(The link expires in ${INVITATION_DAYS} days.)\n\nYour licence key, for installing WorkBeat on your team's computers:\n${key}\n\nKeep the key private; you can also see it in the console under Licence.`)
+        .catch(() => console.error(JSON.stringify({ t: new Date(), level: 'error', err: 'company_created_email_failed' })));
+    }
     res.status(201);
     return { data: out };
   }

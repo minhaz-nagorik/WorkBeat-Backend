@@ -3,7 +3,7 @@ import { Body, Controller, Delete, Get, Inject, Patch, Post, Put, Query, Req, Re
 import { randomBytes } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { ADMIN, ADMIN_IT, ALL, NO_COMPANY_ROLE, portalUser } from '../auth';
+import { ADMIN, ALL, NO_COMPANY_ROLE, portalUser } from '../auth';
 import { ApiError, config, Db, decrypt, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { cmpVersion } from '../device';
@@ -17,7 +17,7 @@ const STAFF_FIELDS = ['name', 'data_retention_days'];
 const settingsPatch = z.object({
   idle_threshold_seconds: z.number().int().min(60).max(3600).optional(),
   alert_email: z.object({
-    roles: z.array(z.enum(['company_admin', 'manager', 'it_admin'])).min(1),
+    roles: z.array(z.union([z.literal('company_admin'), z.string().uuid()])).min(1), // 'company_admin' or a role id
     types: z.array(z.enum(EVENT_TYPES)),
     delivery: z.enum(['instant', 'hourly', 'daily']),
   }).optional(),
@@ -158,7 +158,7 @@ export class CompanyController {
   @Get('downloads')
   async downloads(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, 'deployment');
       const { rows } = await c.query(
         'SELECT product, platform, arch, version, size_bytes, sha256, storage_path FROM agent_releases WHERE withdrawn_at IS NULL',
       );
@@ -178,7 +178,7 @@ export class CompanyController {
   @Get('agent-versions')
   async agentVersions(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, ADMIN_IT);
+      await portalUser(c, req, 'deployment');
       const { rows } = await c.query("SELECT DISTINCT platform, version FROM agent_releases WHERE product = 'agent' AND withdrawn_at IS NULL");
       const out: Record<string, string[]> = { macos: [], windows: [] };
       for (const r of rows) out[r.platform].push(r.version);

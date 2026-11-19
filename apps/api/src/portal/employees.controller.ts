@@ -2,7 +2,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { ADMIN, ADMIN_MANAGER, ALL, employeeFor, idOrNone, portalUser, User } from '../auth';
+import { ADMIN, employeeFor, idOrNone, portalUser, TEAM_LEAD, User } from '../auth';
 import { ApiError, Db, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { Storage, thumbPath } from '../storage';
@@ -70,8 +70,8 @@ const PAUSE = `id, starts_at, ends_at, reason, note, created_by, (SELECT name FR
 
 async function assertManager(c: Tx, id: string | null | undefined) {
   if (!id) return;
-  const r = await c.query("SELECT 1 FROM users WHERE id = $1 AND role = 'manager' AND disabled_at IS NULL", [id]);
-  if (!r.rowCount) throw new ApiError(422, 'VALIDATION_FAILED', 'manager_user_id is not an enabled manager', { fields: ['manager_user_id'] });
+  const r = await c.query(`SELECT 1 FROM users WHERE id = $1 AND ${TEAM_LEAD}`, [id]);
+  if (!r.rowCount) throw new ApiError(422, 'VALIDATION_FAILED', 'manager_user_id is not an enabled user of a team-only role', { fields: ['manager_user_id'] });
 }
 function assertActive(e: { archived_at: Date | null }) {
   if (e.archived_at) throw new ApiError(409, 'CONFLICT', 'Employee is archived');
@@ -105,12 +105,12 @@ export class EmployeesController {
   @Get()
   async list(@Req() req: FastifyRequest, @Query('archived') archived?: string, @Query('manager_user_id') managerId?: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ALL);
+      const u = await portalUser(c, req, 'employees.view');
       const { rows } = await c.query(
         `SELECT ${FULL} FROM employees
-          WHERE ($1 OR archived_at IS NULL) AND ($2 <> 'manager' OR manager_user_id = $3)
+          WHERE ($1 OR archived_at IS NULL) AND (NOT $2 OR manager_user_id = $3)
             AND ($4::uuid IS NULL OR manager_user_id = $4) ORDER BY name, id`,
-        [archived === 'true', u.role, u.id, managerId ? idOrNone(managerId) : null],
+        [archived === 'true', u.team_only, u.id, managerId ? idOrNone(managerId) : null],
       );
       return { data: await withPresence(c, rows) };
     });
@@ -119,7 +119,7 @@ export class EmployeesController {
   @Post()
   async create(@Req() req: FastifyRequest, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN);
+      const u = await portalUser(c, req, 'employees.edit');
       const b = parse(employeeBody, raw);
       await assertManager(c, b.manager_user_id);
       const { rows: [e] } = await c.query( // employees_email unique → 409
@@ -134,12 +134,12 @@ export class EmployeesController {
   @Post('import')
   async import(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN);
+      const u = await portalUser(c, req, 'employees.edit');
       if (typeof req.body !== 'string') throw new ApiError(400, 'VALIDATION_FAILED', 'Send the CSV as text/csv', { fields: ['content-type'] });
       let rows = parseCsv(req.body);
       if (rows[0]?.[0]?.trim().toLowerCase() === 'name') rows = rows.slice(1);
       if (rows.length > IMPORT_MAX_ROWS) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', `At most ${IMPORT_MAX_ROWS} rows`);
-      const { rows: managers } = await c.query("SELECT id, lower(email) AS email FROM users WHERE role = 'manager' AND disabled_at IS NULL");
+      const { rows: managers } = await c.query(`SELECT id, lower(email) AS email FROM users WHERE ${TEAM_LEAD}`);
       const { rows: existing } = await c.query('SELECT lower(email) AS email FROM employees WHERE archived_at IS NULL AND email IS NOT NULL');
       const taken = new Set(existing.map((r) => r.email));
       // A returning employee is restored, not created again (D46): an email only an archived employee holds is refused.
@@ -176,7 +176,7 @@ export class EmployeesController {
   @Get(':id')
   async get(@Req() req: FastifyRequest, @Param('id') id: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ALL);
+      const u = await portalUser(c, req, 'employees.view');
       const e = await employeeFor(c, u, id);
       return { data: (await withPresence(c, [e]))[0] };
     });
@@ -185,7 +185,7 @@ export class EmployeesController {
   @Patch(':id')
   async patch(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN);
+      const u = await portalUser(c, req, 'employees.edit');
       const e = await employeeFor(c, u, id);
       assertActive(e);
       const b = parse(employeeBody.partial(), raw);
@@ -204,7 +204,7 @@ export class EmployeesController {
   @Delete(':id')
   async archive(@Req() req: FastifyRequest, @Param('id') id: string, @Res({ passthrough: true }) res: FastifyReply) {
     await this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN);
+      const u = await portalUser(c, req, 'employees.edit');
       const e = await employeeFor(c, u, id);
       await c.query('UPDATE employees SET archived_at = coalesce(archived_at, now()) WHERE id = $1', [e.id]); // trigger → 409 EMPLOYEE_HAS_DEVICES
     });
@@ -250,7 +250,7 @@ export class EmployeesController {
   @Get(':id/monitoring-settings')
   async getSettings(@Req() req: FastifyRequest, @Param('id') id: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ALL);
+      const u = await portalUser(c, req, 'employees.view');
       const e = await employeeFor(c, u, id);
       // screenshot_tier: the console offers only intervals the plan allows, without reading billing (staff-managed).
       const { rows: [s] } = await c.query(
@@ -266,7 +266,7 @@ export class EmployeesController {
   @Put(':id/monitoring-settings')
   async putSettings(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN);
+      const u = await portalUser(c, req, 'employees.edit');
       const e = await employeeFor(c, u, id);
       assertActive(e);
       const b = parse(settingsBody, raw);
@@ -289,7 +289,7 @@ export class EmployeesController {
   @Get(':id/pauses')
   async pauses(@Req() req: FastifyRequest, @Param('id') id: string) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ALL);
+      const u = await portalUser(c, req, 'employees.view');
       const e = await employeeFor(c, u, id);
       return { data: (await c.query(`SELECT ${PAUSE} FROM monitoring_pauses WHERE employee_id = $1 ORDER BY starts_at DESC`, [e.id])).rows };
     });
@@ -298,7 +298,7 @@ export class EmployeesController {
   @Post(':id/pauses')
   async addPause(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
-      const u = await portalUser(c, req, ADMIN);
+      const u = await portalUser(c, req, 'employees.edit');
       const e = await employeeFor(c, u, id);
       assertActive(e);
       const b = parse(z.object({
@@ -346,7 +346,7 @@ export class EmployeesController {
   }
 
   private async pauseFor(c: Tx, req: FastifyRequest, id: string, pauseId: string) {
-    const u = await portalUser(c, req, ADMIN);
+    const u = await portalUser(c, req, 'employees.edit');
     const e = await employeeFor(c, u, id);
     const { rows: [p] } = await c.query('SELECT id, starts_at, ends_at, cancelled_at FROM monitoring_pauses WHERE id = $1 AND employee_id = $2 FOR UPDATE', [idOrNone(pauseId), e.id]);
     if (!p) throw new ApiError(404, 'NOT_FOUND', 'Pause not found');
@@ -360,7 +360,7 @@ export class EmployeesController {
   @Get(':id/screenshots')
   async screenshots(@Req() req: FastifyRequest, @Param('id') id: string, @Query() q: Record<string, string | undefined>) {
     return this.db.tx(async (c) => {
-      const u: User = await portalUser(c, req, ADMIN_MANAGER);
+      const u: User = await portalUser(c, req, 'reports');
       const e = await employeeFor(c, u, id);
       const bad = (field: string, msg: string) => new ApiError(422, 'VALIDATION_FAILED', msg, { fields: [field] });
       const from = q.from ?? q.date, to = q.to ?? q.date;
