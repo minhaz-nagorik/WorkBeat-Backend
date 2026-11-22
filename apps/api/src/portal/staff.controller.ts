@@ -12,6 +12,7 @@ import { cmpVersion } from '../device';
 import { baseUrl } from '../http';
 import { sendMail } from '../mail';
 import { Storage } from '../storage';
+import { customDomain } from './company.controller';
 
 const TIER_ADDON: Record<string, number> = { off: 0, light: 0.5, standard: 1, intensive: 2 };
 const UPLOAD_URL_SECONDS = 60 * 60;
@@ -274,6 +275,36 @@ export class StaffController {
         [co.id, b.expired_blocking_grace_days ?? null, b.name ?? null, b.data_retention_days ?? null],
       );
       return { data: await company(c, co.id) };
+    });
+  }
+
+  // ------------------------------------------------------------ custom domain (custom-domains, B33)
+  // A company admin sets it (B33); staff read the records, check the TXT value by hand, then approve or reject.
+
+  @Get('companies/:id/custom-domain')
+  async getDomain(@Req() req: FastifyRequest, @Param('id') id: string) {
+    return this.db.tx(async (c) => {
+      await staffUser(c, req);
+      return { data: await customDomain(c, (await lockCompany(c, id)).id) };
+    });
+  }
+
+  // Approve (active) or reject (failed) after checking the TXT record by hand. `domain` must be the one
+  // reviewed, so a domain the admin replaced meanwhile is never approved. checked_at = when reviewed.
+  @Patch('companies/:id/custom-domain')
+  async reviewDomain(@Req() req: FastifyRequest, @Param('id') id: string, @Body() raw: unknown) {
+    return this.db.tx(async (c) => {
+      await staffUser(c, req);
+      const b = parse(z.object({ domain: z.string().max(253), status: z.enum(['active', 'failed']) }), raw, 422);
+      const co = await lockCompany(c, id);
+      const { rowCount } = await c.query(
+        `UPDATE companies SET custom_domain_status = $3, custom_domain_checked_at = now(),
+                custom_domain_verified_at = CASE WHEN $3 = 'active' THEN now() END
+          WHERE id = $1 AND custom_domain = $2::citext`,
+        [co.id, b.domain.trim().replace(/\.$/, ''), b.status],
+      );
+      if (!rowCount) throw new ApiError(409, 'CONFLICT', 'The company no longer has this domain');
+      return { data: await customDomain(c, co.id) };
     });
   }
 

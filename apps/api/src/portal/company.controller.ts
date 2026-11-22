@@ -28,14 +28,35 @@ const SEATS_USED = '(SELECT count(*)::int FROM devices WHERE deactivated_at IS N
 const DOWNLOAD_URL_SECONDS = 15 * 60;
 const CNAME_TARGET = 'proxy.workbeat.io';
 
-async function customDomain(c: Tx) {
+// The custom domain of company `id` with the DNS records to create; the caller's company when `id` is null.
+export async function customDomain(c: Tx, id: string | null = null) {
   const { rows: [r] } = await c.query(
-    'SELECT custom_domain AS domain, custom_domain_status AS status, custom_domain_token AS token, custom_domain_checked_at AS checked_at, custom_domain_verified_at AS verified_at FROM companies',
+    `SELECT custom_domain AS domain, custom_domain_status AS status, custom_domain_token AS token, custom_domain_checked_at AS checked_at,
+            custom_domain_verified_at AS verified_at FROM companies WHERE id = coalesce($1::uuid, app_company_id())`, [id],
   );
-  if (!r.domain) return null;
+  if (!r?.domain) return null;
   const { token, ...rest } = r;
   return { ...rest, cname_target: CNAME_TARGET, txt_name: `_workbeat.${r.domain}`, txt_value: `verify-${token}` };
 }
+
+// A company admin sets the domain; it stays pending until staff approve it (B33). The same domain again keeps its status and token.
+// custom_domain UNIQUE → 23505 → 409 for another company's.
+export async function setCustomDomain(c: Tx, id: string, raw: unknown) {
+  const b = parse(z.object({ domain: z.string().max(253) }), raw, 422);
+  const domain = b.domain.trim().toLowerCase().replace(/\.$/, '');
+  if (!isBareHost(domain) || !domain.includes('.') || domain === 'workbeat.io' || domain.endsWith('.workbeat.io'))
+    throw new ApiError(422, 'VALIDATION_FAILED', 'Not a host name you can use', { fields: ['domain'] });
+  await c.query(
+    `UPDATE companies SET custom_domain = $2, custom_domain_status = 'pending', custom_domain_token = $3,
+            custom_domain_checked_at = NULL, custom_domain_verified_at = NULL
+      WHERE id = $1 AND custom_domain IS DISTINCT FROM $2::citext`,
+    [id, domain, randomBytes(16).toString('hex')],
+  );
+  return customDomain(c, id);
+}
+
+export const CLEAR_DOMAIN = `custom_domain = NULL, custom_domain_status = NULL, custom_domain_token = NULL,
+  custom_domain_checked_at = NULL, custom_domain_verified_at = NULL`;
 
 @Controller('v1')
 export class CompanyController {
@@ -198,7 +219,7 @@ export class CompanyController {
   }
 
   // ------------------------------------------------------------ custom domain (custom-domains)
-// A company admin reads the domain; changing it is refused to every company role (staff-managed).
+// A company admin sets, reads and removes the domain; only staff approval makes it active (B33).
 
   @Get('company/custom-domain')
   async getDomain(@Req() req: FastifyRequest) {
@@ -211,28 +232,16 @@ export class CompanyController {
   @Put('company/custom-domain')
   async putDomain(@Req() req: FastifyRequest, @Body() raw: unknown) {
     return this.db.tx(async (c) => {
-      await portalUser(c, req, NO_COMPANY_ROLE);
-      const b = parse(z.object({ domain: z.string().max(253) }), raw);
-      const domain = b.domain.trim().toLowerCase().replace(/\.$/, '');
-      if (!isBareHost(domain) || !domain.includes('.') || domain === 'workbeat.io' || domain.endsWith('.workbeat.io'))
-        throw new ApiError(422, 'VALIDATION_FAILED', 'Not a host name you can use', { fields: ['domain'] });
-      // The same domain again keeps its status and token. custom_domain UNIQUE → 23505 → 409 for another company's.
-      await c.query(
-        `UPDATE companies SET custom_domain = $1, custom_domain_status = 'pending', custom_domain_token = $2,
-                custom_domain_checked_at = NULL, custom_domain_verified_at = NULL
-          WHERE id = app_company_id() AND custom_domain IS DISTINCT FROM $1::citext`,
-        [domain, randomBytes(16).toString('hex')],
-      );
-      return { data: await customDomain(c) };
+      const u = await portalUser(c, req, ADMIN);
+      return { data: await setCustomDomain(c, u.company_id, raw) };
     });
   }
 
   @Delete('company/custom-domain')
   async deleteDomain(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
     await this.db.tx(async (c) => {
-      await portalUser(c, req, NO_COMPANY_ROLE);
-      await c.query(`UPDATE companies SET custom_domain = NULL, custom_domain_status = NULL, custom_domain_token = NULL,
-        custom_domain_checked_at = NULL, custom_domain_verified_at = NULL WHERE id = app_company_id()`);
+      await portalUser(c, req, ADMIN);
+      await c.query(`UPDATE companies SET ${CLEAR_DOMAIN} WHERE id = app_company_id()`);
     });
     res.status(204);
   }

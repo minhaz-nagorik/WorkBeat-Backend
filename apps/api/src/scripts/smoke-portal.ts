@@ -191,17 +191,31 @@ async function staffRound5(t: string) {
 }
 
 // Company routes and gaps of admin round 4.
-async function round4(admin: string) {
+async function round4(admin: string, companyId: string) {
   const host = `smoke-${run}.example.com`;
-  // Staff-managed: a company admin reads the domain but cannot change it.
-  expect(await call('PUT', '/v1/company/custom-domain', admin, { domain: host }), 403, 'FORBIDDEN');
-  expect(await call('DELETE', '/v1/company/custom-domain', admin), 403, 'FORBIDDEN');
-  expect(await call('GET', '/v1/company/custom-domain', admin), 200);
+  // B33: the company admin sets the domain; it resolves only after staff approve it.
+  const set = expect(await call('PUT', '/v1/company/custom-domain', admin, { domain: `${host.toUpperCase()}.` }), 200);
+  assert.equal(set.domain, host); assert.equal(set.status, 'pending'); assert.equal(set.txt_name, `_workbeat.${host}`);
+  assert.equal(expect(await call('PUT', '/v1/company/custom-domain', admin, { domain: host }), 200).txt_value, set.txt_value, 'same domain keeps its token');
+  expect(await call('PUT', '/v1/company/custom-domain', admin, { domain: 'WORKBEAT.IO' }), 422, 'VALIDATION_FAILED');
   expect(await call('GET', `/v1/hosts/resolve?host=${host}`), 404, 'NOT_FOUND');
+  if (process.env.STAFF1_EMAIL) {
+    const t = expect(await call('POST', '/v1/auth/login', undefined, { email: process.env.STAFF1_EMAIL, password: process.env.STAFF1_PASSWORD }), 200).token;
+    const path = `/v1/staff/companies/${companyId}/custom-domain`;
+    assert.equal(expect(await call('GET', path, t), 200).txt_value, set.txt_value);
+    expect(await call('PATCH', path, admin, { domain: host, status: 'active' }), 403, 'FORBIDDEN');
+    expect(await call('PATCH', path, t, { domain: `old-${host}`, status: 'active' }), 409, 'CONFLICT');
+    assert.ok(expect(await call('PATCH', path, t, { domain: host, status: 'active' }), 200).verified_at);
+    expect(await call('GET', `/v1/hosts/resolve?host=${host.toUpperCase()}`), 200);
+    expect(await call('PATCH', path, t, { domain: host, status: 'failed' }), 200);
+    expect(await call('GET', `/v1/hosts/resolve?host=${host}`), 404, 'NOT_FOUND');
+  }
+  expect(await call('DELETE', '/v1/company/custom-domain', admin), 204);
+  assert.equal((await call('GET', '/v1/company/custom-domain', admin)).json.data, null);
   const slug = expect(await call('GET', '/v1/company/settings', admin), 200).slug;
   assert.equal(expect(await call('GET', `/v1/hosts/resolve?host=${slug.toUpperCase()}.workbeat.io`), 200).slug, slug);
   expect(await call('GET', `/v1/hosts/resolve?host=x.${slug}.workbeat.io`), 404, 'NOT_FOUND');
-  ok('custom domain: read only for a company admin; hosts/resolve');
+  ok('custom domain: admin sets, staff approve, only active resolves');
 
   assert.deepEqual((await call('PATCH', '/v1/company/settings', admin, { alert_email: { roles: [], types: [], delivery: 'instant' } })).json.fields, ['alert_email.roles']);
   assert.ok('min_agent_version' in expect(await call('GET', '/v1/license', admin), 200));
@@ -550,7 +564,7 @@ async function main() {
   expect(await call('POST', '/v1/auth/logout', it.token), 204);
   expect(await call('GET', '/v1/me', it.token), 401);
   ok('removed user and logged-out session lose access');
-  await round4(admin);
+  await round4(admin, login.user.company.id);
   if (process.env.STAFF1_EMAIL) await staff();
   console.log('\nall portal checks passed against', BASE);
 }

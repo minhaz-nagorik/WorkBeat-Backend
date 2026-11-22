@@ -338,8 +338,8 @@ Response `200` (`data` is `null` when no domain is set):
 Errors: `403 FORBIDDEN`.
 
 ### `PUT /v1/company/custom-domain`
-Roles: none (every company role gets `403 FORBIDDEN`; staff-managed, B29) · Spec: [`custom-domains`][custom-domains]
-Set or replace the custom domain.
+Roles: company_admin (B33) · Spec: [`custom-domains`][custom-domains]
+Set or replace the custom domain. It resolves only after staff approve it.
 Request:
 
 | field | type | required | notes |
@@ -352,13 +352,13 @@ Errors:
 | status | code | when |
 |---|---|---|
 | 403 | `FORBIDDEN` | not company_admin |
-| 409 | `CONFLICT` | another company holds the domain |
+| 409 | `CONFLICT` | another company holds the domain, in any status |
 | 422 | `VALIDATION_FAILED` | under `workbeat.io` or not a valid host name |
 
-Notes: sets `custom_domain_status` `pending`, a new `custom_domain_token`, clears `custom_domain_verified_at`. `/cron/domain-verify` activates it.
+Notes: a new domain sets `custom_domain_status` `pending`, a new `custom_domain_token`, clears `custom_domain_checked_at` and `custom_domain_verified_at`; the current domain again changes nothing. Staff make it `active` with `PATCH /v1/staff/companies/:id/custom-domain`; there is no DNS job (B33).
 
 ### `DELETE /v1/company/custom-domain`
-Roles: none (every company role gets `403 FORBIDDEN`; staff-managed, B29) · Spec: [`custom-domains`][custom-domains]
+Roles: company_admin (B33) · Spec: [`custom-domains`][custom-domains]
 Remove the custom domain.
 Request: none.
 Response `204`.
@@ -1128,7 +1128,7 @@ Nothing is left open (round 3 of the WorkBeat Admin requests, 16 Nov 2026). Sett
 - **Portal writes while suspended or expired:** never refused for billing
   ([`company-status`](../../openspec/changes/provision-companies/specs/company-status/spec.md)).
 - **`EXPORT_TOO_LARGE`:** `422` with `cap` (the row limit, 100,000).
-- **Not built yet:** Stripe billing writes (`PUT /v1/billing/screenshot-tier`, `POST /v1/billing/portal-session`) and `/cron/domain-verify`, so a custom domain stays `pending` for now.
+- **Not built yet:** Stripe billing writes (`PUT /v1/billing/screenshot-tier`, `POST /v1/billing/portal-session`). TLS certificates for customer domains (Q15): an approved custom domain works locally over http only.
 
 [user-authentication]: ../../openspec/changes/authenticate-users/specs/user-authentication/spec.md
 [role-access]: ../../openspec/changes/authenticate-users/specs/role-access/spec.md

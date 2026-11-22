@@ -7,7 +7,7 @@ one run per job at a time, safe to repeat, each run logged.
 
 ### Requirement: Scheduled work runs only through cron routes
 <!-- source: B10 · Plan-v3.5 §3 "Scheduled jobs" · Plan-v3.5 §6.4 -->
-Every scheduled job SHALL be a `POST /cron/<job>` route called by the server's scheduler (cron or a systemd timer): `heartbeat-check` and `domain-verify` every 5 minutes, `token-expiry` and `usage-summary` hourly, `cleanup` daily at 02:00 UTC, and the digest jobs of `alert-emails`. The API MUST NOT run a job from an in-process timer.
+Every scheduled job SHALL be a `POST /cron/<job>` route called by the server's scheduler (cron or a systemd timer): `heartbeat-check` every 5 minutes, `token-expiry` and `usage-summary` hourly, `cleanup` daily at 02:00 UTC, and the digest jobs of `alert-emails`. The API MUST NOT run a job from an in-process timer.
 
 #### Scenario: Three API instances are running
 - **WHEN** 02:00 UTC passes with three instances up
@@ -63,7 +63,7 @@ Every transaction of a job run SHALL first take `pg_try_advisory_xact_lock` for 
 - **THEN** one runs and the other returns `200` with `skipped` = `true`
 
 #### Scenario: Different jobs at the same time
-- **WHEN** `/cron/heartbeat-check` and `/cron/domain-verify` run at the same moment
+- **WHEN** `/cron/heartbeat-check` and `/cron/cleanup` run at the same moment
 - **THEN** neither is skipped, because each job has its own lock
 
 #### Scenario: A run that failed is retried

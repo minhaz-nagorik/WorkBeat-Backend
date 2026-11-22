@@ -1,33 +1,33 @@
 ## Purpose
 
-How a company opens its dashboard at its own domain: it is set for the company (B29: no company role may change it), proves it with a DNS TXT
-record, the verification job activates it, and the API resolves a host name to its company.
+How a company opens its dashboard at its own domain: its company admin sets the domain (B33), WorkBeat
+staff check the DNS TXT record by hand and approve it, and the API resolves a host name to its company.
 
 ## ADDED Requirements
 
-### Requirement: No company role changes the custom domain
-<!-- source: B29 -->
-`PUT` and `DELETE /v1/company/custom-domain` SHALL answer `403 FORBIDDEN` to every company role, `company_admin` included, and MUST change nothing. A company admin MUST still read the domain with `GET`.
-
-#### Scenario: A company admin adds a domain
-- **WHEN** a company admin puts `{ "domain": "monitor.acme.com" }`
-- **THEN** the response is `403` with `code` `FORBIDDEN` and `custom_domain` is unchanged
-
 ### Requirement: Setting a custom domain
-<!-- source: PRD "Tenants and custom domains" · Plan-v3.5 §4.4 -->
-`PUT /v1/company/custom-domain` with `domain`, when allowed, It MUST set `custom_domain` (lower case), `custom_domain_status` `pending`, a new random `custom_domain_token`, and clear `custom_domain_verified_at`. A domain under `workbeat.io` or not a valid host name MUST get `422 VALIDATION_FAILED`; a domain another company holds MUST get `409 CONFLICT`.
+<!-- source: B33 · PRD "Tenants and custom domains" · Plan-v3.5 §4.4 -->
+`PUT /v1/company/custom-domain` with `domain` SHALL be allowed to `company_admin` only; every other company role and staff MUST get `403 FORBIDDEN`. It MUST set `custom_domain` (lower case, no trailing dot), `custom_domain_status` `pending`, a new random `custom_domain_token`, and clear `custom_domain_checked_at` and `custom_domain_verified_at`.
 
 #### Scenario: An admin adds a domain
 - **WHEN** a company admin puts `{ "domain": "Monitor.Acme.com" }`
 - **THEN** `custom_domain` is `monitor.acme.com` with `custom_domain_status` `pending`
 
+#### Scenario: Another role adds a domain
+- **WHEN** a member with a custom role puts a domain
+- **THEN** the response is `403` with `code` `FORBIDDEN` and `custom_domain` is unchanged
+
+#### Scenario: An active domain is replaced
+- **WHEN** a company admin puts a new domain while the current one is `active`
+- **THEN** the new domain is `pending` and the old domain no longer resolves
+
+### Requirement: Domains that cannot be set
+<!-- source: B33 · PRD "Tenants and custom domains" -->
+A domain under `workbeat.io` or not a valid host name SHALL get `422 VALIDATION_FAILED`; a domain another company holds, in any status, MUST get `409 CONFLICT` and leave that company's domain unchanged. Putting the company's own current domain again MUST change nothing.
+
 #### Scenario: The domain is taken
 - **WHEN** another company already holds `monitor.acme.com`
 - **THEN** the response is `409` with `code` `CONFLICT`
-
-#### Scenario: Another company's active domain
-- **WHEN** a company admin puts a domain that is `active` for another company
-- **THEN** the response is `409` with `code` `CONFLICT` and the other company's domain is unchanged
 
 #### Scenario: Two companies claim one domain at once
 - **WHEN** two companies put `monitor.acme.com` concurrently
@@ -42,48 +42,52 @@ record, the verification job activates it, and the API resolves a host name to i
 - **THEN** the first is stored as `monitor.acme.com` and the second gets `422 VALIDATION_FAILED`
 
 ### Requirement: The admin sees the records to create
-<!-- source: PRD "Tenants and custom domains" -->
-`GET /v1/company/custom-domain` SHALL return, to `company_admin` only, `domain`, `status`, `cname_target` `proxy.workbeat.io`, `txt_name` `_workbeat.{domain}`, `txt_value` `verify-{token}`, `checked_at` and `verified_at`, or `data` `null` when none is set. `DELETE /v1/company/custom-domain` MUST clear every `custom_domain*` column.
+<!-- source: B33 · PRD "Tenants and custom domains" -->
+`GET /v1/company/custom-domain` SHALL return, to `company_admin` only, `domain`, `status`, `cname_target` `proxy.workbeat.io`, `txt_name` `_workbeat.{domain}`, `txt_value` `verify-{token}`, `checked_at` and `verified_at`, or `data` `null` when none is set.
 
 #### Scenario: A pending domain
 - **WHEN** a company admin reads a pending domain `monitor.acme.com`
 - **THEN** the response carries `txt_name` `_workbeat.monitor.acme.com` and `txt_value` `verify-` followed by the token
 
-### Requirement: The verification job activates a matching domain
-<!-- source: Plan-v3.5 §6.4 · PRD "Tenants and custom domains" -->
-`/cron/domain-verify`, run every 5 minutes, SHALL look up the TXT record `_workbeat.{domain}` of every `pending` domain and set `custom_domain_checked_at`. When a value equals `verify-{token}` it MUST set `custom_domain_status` `active` and `custom_domain_verified_at`. A domain still unmatched after the cut-off in `packages/shared` MUST become `failed`.
+### Requirement: Removing a custom domain
+<!-- source: B33 -->
+`DELETE /v1/company/custom-domain` SHALL be allowed to `company_admin` only and MUST clear every `custom_domain*` column, answering `204`. Other roles MUST get `403 FORBIDDEN`.
 
-#### Scenario: The TXT record is found
-- **WHEN** `_workbeat.monitor.acme.com` holds `verify-{token}` and the job runs
-- **THEN** the domain's status is `active` and `custom_domain_verified_at` is set
+#### Scenario: An admin removes an active domain
+- **WHEN** a company admin deletes the custom domain
+- **THEN** the response is `204`, `GET` returns `data` `null` and the domain no longer resolves
 
-#### Scenario: The record is not there yet
-- **WHEN** the TXT record is missing and the cut-off has not passed
-- **THEN** the domain stays `pending` and `custom_domain_checked_at` is updated
+### Requirement: Staff read the records of a company's domain
+<!-- source: B33 -->
+`GET /v1/staff/companies/:id/custom-domain` SHALL return, to `super_admin` only, the same object as `GET /v1/company/custom-domain` for that company, or `data` `null`. An unknown company MUST get `404 NOT_FOUND`; any company role MUST get `403 FORBIDDEN`.
 
-#### Scenario: Several TXT values
-- **WHEN** `_workbeat.monitor.acme.com` holds three values, one of them `verify-{token}`
-- **THEN** the domain becomes `active`
+#### Scenario: Staff open a pending domain
+- **WHEN** a super admin reads the custom domain of a company whose domain is pending
+- **THEN** the response carries the `txt_name` and `txt_value` the company was shown
 
-#### Scenario: A token from before a re-set
-- **WHEN** the TXT record holds the token of a domain value the company replaced
-- **THEN** the domain stays `pending`
+### Requirement: Staff approve or reject a domain
+<!-- source: B33 -->
+`PATCH /v1/staff/companies/:id/custom-domain` with `domain` and `status` (`active` or `failed`) SHALL be allowed to `super_admin` only. It MUST set `custom_domain_status` and `custom_domain_checked_at` to now; `active` MUST set `custom_domain_verified_at`, `failed` MUST clear it. No job or other route MUST make a domain `active`.
 
-#### Scenario: Verification flaps
-- **WHEN** an `active` domain's TXT record is later removed or the lookup fails
-- **THEN** the domain stays `active`, because only `pending` domains are checked
+#### Scenario: Staff approve
+- **WHEN** a super admin patches `{ "domain": "monitor.acme.com", "status": "active" }` for Acme
+- **THEN** the domain is `active`, `custom_domain_verified_at` is set and it resolves to Acme
 
-### Requirement: A failed DNS lookup changes nothing
-<!-- source: Plan-v3.5 §6.4 -->
-A TXT lookup that times out or errors SHALL leave the domain's status unchanged, and one domain's failure MUST NOT stop the job checking the others.
+#### Scenario: Staff deactivate an active domain
+- **WHEN** a super admin patches `status` `failed` for an `active` domain
+- **THEN** the domain is `failed` and no longer resolves
 
-#### Scenario: DNS times out
-- **WHEN** the lookup for one domain times out
-- **THEN** that domain stays `pending` and the next domain is still checked
+#### Scenario: A company role approves
+- **WHEN** a company admin calls the route
+- **THEN** the response is `403` with `code` `FORBIDDEN`
 
-#### Scenario: Every lookup fails
-- **WHEN** the resolver is down for a whole run
-- **THEN** every domain keeps its status and the run still answers `200`
+### Requirement: Staff never approve a replaced domain
+<!-- source: B33 -->
+`PATCH /v1/staff/companies/:id/custom-domain` SHALL change the domain only when `domain` equals the company's current `custom_domain`; otherwise, or when no domain is set, it MUST answer `409 CONFLICT` and change nothing. Invalid `status` or a missing field MUST get `422 VALIDATION_FAILED`.
+
+#### Scenario: The admin changed the domain during the review
+- **WHEN** staff approve `old.acme.com` after the admin replaced it with `monitor.acme.com`
+- **THEN** the response is `409` with `code` `CONFLICT` and `monitor.acme.com` stays `pending`
 
 ### Requirement: A host name resolves to its company
 <!-- source: PRD "Tenants and custom domains" · B3 · Plan-v3.5 §6.1 -->
@@ -108,15 +112,3 @@ A TXT lookup that times out or errors SHALL leave the domain's status unchanged,
 #### Scenario: Upper case host
 - **WHEN** the host is `Monitor.ACME.com` for an active `monitor.acme.com`
 - **THEN** it resolves to that company
-
-### Requirement: A failed domain is released
-<!-- source: PRD "Tenants and custom domains" · Plan-v3.5 §6.4 -->
-`/cron/domain-verify` SHALL clear every `custom_domain*` column of a domain that has been `failed` for longer than the release period in `packages/shared`, so a domain a company never proved is free for the company that owns it. A `failed` domain MUST stay visible to its admin until then.
-
-#### Scenario: A squatted domain
-- **WHEN** company B set `monitor.acme.com`, it failed, and the release period passed
-- **THEN** company B's `custom_domain` is NULL and company A can set `monitor.acme.com`
-
-#### Scenario: Within the release period
-- **WHEN** a domain failed yesterday
-- **THEN** `GET /v1/company/custom-domain` still shows it with `status` `failed`

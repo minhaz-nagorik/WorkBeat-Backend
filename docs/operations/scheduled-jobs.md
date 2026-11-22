@@ -9,7 +9,6 @@ three times (rule 8). The mechanism is specified in `run-scheduled-jobs` (`cron-
 | Route | Schedule (UTC) | Does | Owning change | Expected runtime |
 |---|---|---|---|---|
 | `/cron/heartbeat-check` | `*/5 * * * *` | Marks devices silent for over 15 min `offline` and raises one `offline` event each; skips released, deactivated and ended devices; hands new events to alert emails | `receive-device-health` (`offline-detection`) | Seconds: one `UPDATE … RETURNING` plus inserts |
-| `/cron/domain-verify` | `*/5 * * * *` | Looks up TXT `_workbeat.{domain}` for every `pending` custom domain; `active` on match, `failed` after the cut-off | `configure-company` (`custom-domains`) | Seconds; bounded by the per-lookup DNS timeout × pending domains |
 | `/cron/token-expiry` | `0 * * * *` | Deletes unused enrollment tokens past `expires_at`; used tokens stay | `run-scheduled-jobs` (`cron-routes`) | Under a second |
 | `/cron/usage-summary` | `0 * * * *` | Deletes each company's summaries past retention, then builds the summary of every finished company day not built yet, newest first | `summarize-usage` (`usage-summaries`) | Seconds once caught up; after deploy or a timezone change it backfills up to 90 days per company and returns `more: true` until done |
 | `/cron/alert-digest` | `0 * * * *` | Hourly digests; daily digests at the run that falls at 09:00 in each company's `timezone`; retries failed instant emails under 24 h old | `process-tamper-alerts` (`alert-emails`) | Seconds; one Resend call per recipient |
@@ -45,7 +44,6 @@ Built so far: `/cron/usage-summary` (summarize-usage) and `/cron/cleanup` (data-
 | any | Always `skipped` | A run is stuck holding the lock: look for a long transaction in `pg_stat_activity` and end it |
 | `heartbeat-check` | Offline alerts late or missing | Job runs every 5 min; devices' `last_heartbeat_at` moving; the 15 min threshold in `packages/shared` |
 | `heartbeat-check` | Many devices offline at once | Usually the API, not the devices: check API errors and heartbeat `5xx` first |
-| `domain-verify` | Domains stay `pending` | DNS timeouts in the log; the customer's TXT record with `dig TXT _workbeat.<domain>` |
 | `token-expiry` | Validated-but-unused tokens pile up | Harmless for 24 h; check the job is scheduled |
 | `alert-digest` | No emails | Resend status and API key; events with `emailed_at` NULL; company `alert_email` settings |
 | `usage-summary` | Reports slow for past days | `more: true` on every run: the backfill is not done; `usage_days` has no row for those days |

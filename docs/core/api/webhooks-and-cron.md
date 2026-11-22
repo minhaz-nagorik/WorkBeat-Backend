@@ -78,7 +78,6 @@ Scheduler; the API runs no in-process timer ([`cron-routes`][cron-routes], B10).
 | Route | Schedule | Owner change |
 |---|---|---|
 | `POST /cron/heartbeat-check` | every 5 min | receive-device-health |
-| `POST /cron/domain-verify` | every 5 min | configure-company |
 | `POST /cron/token-expiry` | hourly | run-scheduled-jobs |
 | `POST /cron/cleanup` | daily 02:00 UTC | run-scheduled-jobs |
 | `POST /cron/alert-digest` | hourly | process-tamper-alerts |
@@ -91,15 +90,6 @@ Notes:
 - Inserts exactly one `tamper_events` row per offline period: server-made `id`, `event_type` `offline`, current `hostname`, `occurred_at` = run time, `detail` holding `last_heartbeat_at`. No second one until a heartbeat clears `offline_since`, even across concurrent runs.
 - Skips devices with `released_at` or `deactivated_at` set, and devices of an expired company whose `blocking_ends_at` has passed.
 - The only writer of `offline` events. For `instant` companies, emails each event within 1 minute after commit.
-
-### `POST /cron/domain-verify`
-Roles: scheduler · Spec: [`custom-domains`][custom-domains]
-Activate custom domains whose DNS TXT record matches.
-Notes:
-- For every `pending` domain, looks up TXT `_workbeat.{domain}` and sets `custom_domain_checked_at`.
-- A value equal to `verify-{token}` → `custom_domain_status` `active`, `custom_domain_verified_at` set.
-- Still unmatched after the cut-off in `packages/shared` → `failed`.
-- A lookup timeout or error leaves the domain unchanged; one failure never stops the others.
 
 ### `POST /cron/token-expiry`
 Roles: scheduler · Spec: [`cron-routes`][cron-routes]
@@ -151,8 +141,6 @@ Notes: returns no tenant data. No `/v1` prefix.
   refused).
 - Whether `invoice.payment_failed` on a non-renewal invoice does anything ("for a renewal").
 - `rows_affected` shape beyond "count per table"; whether `more` is always present.
-- The cut-off after which a pending custom domain becomes `failed` (named only as a `packages/shared`
-  value).
 - `/cron/alert-digest`'s exact cron expression (spec says hourly) and how the 09:00 local run is
   matched for zones with a non-whole-hour offset.
 
@@ -163,5 +151,4 @@ Notes: returns no tenant data. No `/v1` prefix.
 [data-retention]: ../../openspec/changes/run-scheduled-jobs/specs/data-retention/spec.md
 [offline-detection]: ../../openspec/changes/receive-device-health/specs/offline-detection/spec.md
 [alert-emails]: ../../openspec/changes/process-tamper-alerts/specs/alert-emails/spec.md
-[custom-domains]: ../../openspec/changes/configure-company/specs/custom-domains/spec.md
 [schema-migrations]: ../../openspec/changes/establish-api-foundation/specs/schema-migrations/spec.md

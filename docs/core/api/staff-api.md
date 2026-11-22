@@ -125,7 +125,7 @@ Response `200`: the rows plus totals.
 | mrr_estimate | number | `active`: `seats_used` × ($1.00 + tier add-on: off 0, light 0.50, standard 1.00, intensive 2.00); 0 for trial, suspended, expired. An estimate; invoices stay in Stripe |
 | key_last4 | string | |
 | expired_blocking_grace_days | int | |
-| custom_domain_checked_at | ISO-8601 datetime \| null | |
+| custom_domain_checked_at | ISO-8601 datetime \| null | when staff last approved or rejected the domain (B33) |
 | data_retention_days | int | 30, 60 or 90 (B29) |
 
 The body is `{ items: [ …rows above… ], totals: { companies, seats_used, mrr_estimate, suspended } }`,
@@ -211,6 +211,33 @@ Notes: applies at once: `blocking_ends_at` = `licenses.expired_at` + grace is co
 ---
 
 ## Licences
+
+### `GET /v1/staff/companies/:id/custom-domain`
+Roles: super_admin · Spec: [`custom-domains`][custom-domains]
+The company's custom domain with the records it was asked to create, so staff can check them.
+Response `200`: the `GET /v1/company/custom-domain` object (portal-api.md), or `data` `null`.
+Errors: `404 NOT_FOUND`.
+
+### `PATCH /v1/staff/companies/:id/custom-domain`
+Roles: super_admin · Spec: [`custom-domains`][custom-domains]
+Approve or reject a custom domain after checking its TXT record by hand (B33).
+Request:
+
+| field | type | required | notes |
+|---|---|---|---|
+| domain | string | yes | must equal the company's current domain |
+| status | enum(active\|failed) | yes | `active` approves; `failed` rejects or deactivates |
+
+Response `200`: the `GET` object above.
+Errors:
+
+| status | code | when |
+|---|---|---|
+| 404 | `NOT_FOUND` | no such company |
+| 409 | `CONFLICT` | no domain set, or `domain` is not the current one |
+| 422 | `VALIDATION_FAILED` | missing field or other `status` |
+
+Notes: sets `custom_domain_checked_at` to now; `active` sets `custom_domain_verified_at`, `failed` clears it.
 
 ### `PATCH /v1/staff/companies/:id/license`
 Roles: super_admin · Spec: [`staff-companies`][staff-companies]
@@ -334,3 +361,4 @@ Nothing is left open; the staff API is built (17 Nov 2026). Settled (16 Nov 2026
 [company-status]: ../../openspec/changes/provision-companies/specs/company-status/spec.md
 [subscription-sync]: ../../openspec/changes/provision-companies/specs/subscription-sync/spec.md
 [agent-releases]: ../../openspec/changes/distribute-agents/specs/agent-releases/spec.md
+[custom-domains]: ../../openspec/changes/configure-company/specs/custom-domains/spec.md

@@ -81,7 +81,7 @@ signing secret.
 
 ## Cron idempotency
 
-For each of `heartbeat-check`, `domain-verify`, `token-expiry`, `cleanup`, `alert-digest`:
+For each of `heartbeat-check`, `token-expiry`, `cleanup`, `alert-digest`:
 
 - No secret, wrong secret, a user JWT → `401`, nothing changes.
 - Two concurrent calls → one runs, the other returns `skipped: true`.

@@ -70,8 +70,8 @@ cloudflared forwards). Check it from outside: `BASE_URL=https://….trycloudflar
 
 ## Not built yet
 
-Stripe (signup, tier change, billing portal, webhooks), custom domains and `/v1/hosts/resolve`,
-`timesheet.pdf`, staff routes (`/v1/staff/*`), alert emails, `/cron/*` (offline detection, domain
-verification, partitions, retention), agent release upload. Partitions exist for last month to two months ahead
+Stripe (signup, tier change, billing portal, webhooks), TLS for custom domains (Q15; they work locally over http),
+`timesheet.pdf`, staff routes (`/v1/staff/*`), alert emails, `/cron/*` (offline detection,
+partitions, retention), agent release upload. Partitions exist for last month to two months ahead
 (`ensure_month_partitions`); run `SELECT ensure_month_partitions();` as the owner monthly until
 `/cron/cleanup` exists.

@@ -13,11 +13,21 @@
 
 ## 2. custom-domains
 
-- [ ] 2.1 `GET`, `PUT`, `DELETE /v1/company/custom-domain`; hostname validation; random token
-- [ ] 2.2 `/cron/domain-verify` handler: TXT lookup with a short timeout per domain, batch of pending domains, failure cut-off constant in `packages/shared`
-- [ ] 2.3 `GET /v1/hosts/resolve` through `company_by_host`
-- [ ] 2.4 Tests: taken domain → 409; `*.workbeat.io` → 422; TXT match → `active`; no match → still `pending` with `custom_domain_checked_at`; past the cut-off → `failed`; DNS timeout leaves the row unchanged; a `pending` domain does not resolve; tenant isolation: the job's update of one company never changes another's row
-- [ ] 2.5 Normalise the domain (lower case, strip trailing dot) before the uniqueness check; PUT of the current domain is a no-op; failed domains cleared once `custom_domain_checked_at` is older than the release period in `packages/shared`
+- [x] 2.1 `GET`, `PUT`, `DELETE /v1/company/custom-domain` for `company_admin` (B33); hostname validation; random token
+- [x] 2.2 `GET`, `PATCH /v1/staff/companies/:id/custom-domain`: staff read the records, approve (`active`) or reject (`failed`); `domain` must match the current one, else 409
+- [x] 2.3 `GET /v1/hosts/resolve` through `company_by_host`
+- [ ] 2.4 Smoke tests, written but not yet run (`smoke-portal.ts` round 4): admin sets → pending; same domain keeps the token; `WORKBEAT.IO` → 422; pending does not resolve; staff with a stale domain → 409; approve → resolves; deactivate → 404; company admin on the staff route → 403; delete → 204
+- [x] 2.5 Normalise the domain (lower case, strip trailing dot) before the uniqueness check; PUT of the current domain is a no-op
 - [x] 2.6 Fixed in `db/migrations/0002_spec_gaps.sql`: `company_by_host` matches `x.acme-ltd.workbeat.io` to slug `x`; it must resolve only a single label before `.workbeat.io`
-- [ ] 2.7 Tests (edge cases): another company's active domain → 409, theirs unchanged; concurrent claims → one pending, one 409; own domain again unchanged; trailing dot stored without it; `WORKBEAT.IO` → 422; one of several TXT values matches; stale token stays pending; active domain never re-checked (flapping); resolver down → all unchanged, 200; deeper workbeat.io sub-domain → 404; suspended company host resolves; upper-case host resolves; failed domain released after the period and claimable by another company; still shown within the period
-- [x] 2.8 B29: `PUT`/`DELETE /v1/company/custom-domain` refused to every company role (`NO_COMPANY_ROLE`); `PATCH /v1/company/settings` refuses `name` and `data_retention_days` with `403` naming them, before any write
+- [ ] 2.7 Tests (edge cases): another company's active domain → 409, theirs unchanged; concurrent claims → one pending, one 409; member with a custom role → 403; replacing an active domain stops it resolving; suspended company host resolves
+- [x] 2.8 B29: `PATCH /v1/company/settings` refuses `name` and `data_retention_days` with `403` naming them, before any write (the custom domain moved to the company admin in B33)
+
+## 3. Before launch (not needed for local testing)
+
+Local testing runs over plain http with a hosts-file entry. A real customer domain needs all of these first.
+
+- [ ] 3.1 TLS for every customer domain (Q15). Pick who issues and renews a certificate per domain; recommended: the console's host (Vercel project domains API or Cloudflare for SaaS custom hostnames), registered when staff approve and removed when the domain is rejected, deactivated, replaced or deleted
+- [ ] 3.2 Make `proxy.workbeat.io` (the `cname_target`) exist and route to the console
+- [ ] 3.3 Staff approve a domain only once its certificate is valid; until then the browser shows a full-page "connection is not private" warning and sign-in can fail
+- [ ] 3.4 Staff runbook for the manual check: `dig +short TXT _workbeat.<domain>` must show the `txt_value`, and the CNAME must point at `proxy.workbeat.io`
+- [ ] 3.5 If the host's API checks domain ownership itself, decide whether it replaces the manual TXT check

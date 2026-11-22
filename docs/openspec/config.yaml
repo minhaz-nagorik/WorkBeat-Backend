@@ -34,7 +34,6 @@ context: |
     sync          every 10 min per device     POST /agents/activity, screenshot uploads
     offline       15 min without a heartbeat  /cron/heartbeat-check every 5 min
     retention     daily 02:00                 /cron/cleanup
-    custom domain every 5 min                 /cron/domain-verify
 
   SOURCE AUTHORITY. Precedence, highest first:
     1. WorkBeat Plan v3.5 (16 Nov 2026)          The source of truth. D1–D48 are its rulings.
