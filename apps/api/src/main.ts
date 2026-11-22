@@ -11,6 +11,7 @@ import { LIMITS } from './contract';
 import { ApiError, config, Db, fromDbError, sha256 } from './core';
 import type { LogCtx } from './http';
 import { InstallController } from './install.controller';
+import { PolicyEvents } from './policy-events';
 import { Storage } from './storage';
 import { StorageController } from './storage.controller';
 import { CronController } from './cron.controller';
@@ -30,6 +31,11 @@ const TIGHT = ['/v1/license/validate', '/v1/auth/', '/api/v1/license/validate', 
 const AGENT_PACKAGE_MAX_BYTES = 300 * 1024 * 1024;
 
 const cfg = config();
+const db = new Db(cfg.DATABASE_URL);
+const storage = new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY, {
+  endpoint: cfg.R2_ENDPOINT, accessKeyId: cfg.R2_ACCESS_KEY_ID, secretAccessKey: cfg.R2_SECRET_ACCESS_KEY, bucket: cfg.R2_SCREENSHOTS_BUCKET,
+});
+const policyEvents = PolicyEvents.forDb(db, storage);
 
 // Every error → { error, code } (api-envelope). Unknown errors → 500 INTERNAL with nothing leaked.
 function toApiError(e: any): ApiError {
@@ -64,10 +70,9 @@ class AllErrors implements ExceptionFilter {
   controllers: [InstallController, AgentsController, StorageController, SessionController, CompanyController,
     EmployeesController, DevicesController, PolicyController, ReportsController, StaffController, ChangesController, RolesController, CronController],
   providers: [
-    { provide: Db, useValue: new Db(cfg.DATABASE_URL) },
-    { provide: Storage, useValue: new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY, {
-      endpoint: cfg.R2_ENDPOINT, accessKeyId: cfg.R2_ACCESS_KEY_ID, secretAccessKey: cfg.R2_SECRET_ACCESS_KEY, bucket: cfg.R2_SCREENSHOTS_BUCKET,
-    }) },
+    { provide: Db, useValue: db },
+    { provide: Storage, useValue: storage },
+    { provide: PolicyEvents, useValue: policyEvents },
   ],
 })
 class AppModule {}
@@ -126,6 +131,7 @@ async function main() {
   });
 
   app.useGlobalFilters(new AllErrors());
+  policyEvents.listen(cfg.DATABASE_URL); // one LISTEN connection, outside the pool (B32)
   await app.listen(cfg.PORT, '0.0.0.0');
   console.log(JSON.stringify({ t: new Date(), level: 'info', msg: `WorkBeat API on :${cfg.PORT}` }));
 }

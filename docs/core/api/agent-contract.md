@@ -17,6 +17,7 @@ Clients branch on HTTP status and `code`, never on `error`. Every response carri
 | Agent service | `POST /devices/enroll` | `Authorization: Bearer <enrollment token>` | Bind the device ID, the licence and the token's employee; get `device_id` and the device key (D3, D2, D48) |
 | Agent service | `POST /agents/heartbeat` | `X-Device-Key` | Every 5 min; response carries `policy_version` and `monitoring_pause` |
 | Agent service | `GET /agents/policy` | `X-Device-Key`, `If-None-Match` | Every 30 min; `304` when the ETag matches (D8) |
+| Agent service (Mac) | `GET /agents/events` | `X-Device-Key`, `Accept: text/event-stream` | Server-Sent Events: the policy on connect and within 5 s of every change; comment keepalive at least every 25 s (B32). Optional: the heartbeat check and the 30-min poll stay |
 | Agent service | `POST /agents/activity` | `X-Device-Key`, `Idempotency-Key` | One sealed batch: `app_sessions[]`, `url_visits[]`, `activity_buckets[]`, `idle_intervals[]`; any may be empty (D13, D37) |
 | Agent service | `POST /agents/screenshots` | `X-Device-Key`, `Idempotency-Key` | Request a signed upload URL for screenshot `id`; then `PUT` the JPEG; then `POST /agents/screenshots/:id/confirm`. Optional `thumb_bytes` (≤ 256 KB) also returns `thumb_upload_url` for a small JPEG used on timeline tiles; a missing or wrong thumbnail never fails the screenshot (19 Nov 2026) |
 | Agent service | `POST /agents/tamper` | `X-Device-Key` | One tamper event, sent as soon as detected; `id` is its idempotency key (D24) |
@@ -64,6 +65,22 @@ Clients branch on HTTP status and `code`, never on `error`. Every response carri
 - **Tamper event:** `id`, `event_type` (`process_restart`, `hosts_modified`, `config_changed`,
   `clock_tampered`, `permission_revoked`), `detail`, `occurred_at`, `repeat_count`. The agents
   never send `offline` or `duplicate_device_id`; the backend writes those.
+
+## Policy events
+
+`GET /agents/events` answers like `GET /agents/policy` when it cannot stream (`401`, `402`, `429`).
+On `200` it sends `text/event-stream`:
+
+```
+event: policy
+data: {"etag":"\"<same ETag as GET /agents/policy>\"","data":{<same body as GET /agents/policy>}}
+
+: ping
+```
+
+The first `policy` event comes on connect; another follows within 0–5 s of every committed change to
+that device's policy. A device holds one stream; a second closes the first. Release or revocation
+closes it. Anything else may close it at any time; the agent reopens with backoff and keeps polling.
 
 ## Status and code catalog
 

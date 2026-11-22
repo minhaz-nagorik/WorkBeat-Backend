@@ -51,6 +51,7 @@ Downloader:  POST /v1/license/validate            (step 1: key → company + emp
              download package_url, check package_sha256, install, hand the token to the agent
 Agent:       POST /v1/devices/enroll              (token → device_id + device_key; store both)
              GET  /v1/agents/policy               (at start, then every 30 min, or sooner when heartbeat's policy_version moves)
+             GET  /v1/agents/events               (held open: the policy again within 0–5 s of every change)
              POST /v1/agents/heartbeat            (every 5 min)
              POST /v1/agents/activity             (one sealed batch every 10 min)
              POST /v1/agents/screenshots → PUT upload_url → POST …/confirm   (per capture)
@@ -243,6 +244,14 @@ nothing changed.
 | `collection_notice` | Show `text` when `version` is new; acknowledge on the heartbeat |
 | `monitoring_features` | Switch each collector on or off |
 | `monitoring_pauses` | Current and future pauses (cancelled and ended ones are left out), current first |
+
+### Policy stream: `GET /v1/agents/events`
+
+Same `X-Device-Key`, `Accept: text/event-stream`. It answers `401`, `402` and `429` like the policy route. On
+`200` it stays open and sends `event: policy` with `data: {"etag": <the ETag above>, "data": <the body above>}`
+on connect and within 0–5 s of every change; `: ping` comes at least every 25 s. A second stream from the device
+closes the first; release or revocation closes it. Reopen with backoff and keep the 30-minute poll
+([agent-contract.md](../core/api/agent-contract.md#policy-events)).
 
 ## 5. `POST /v1/agents/activity`
 

@@ -8,10 +8,15 @@ export type RouteKind = 'normal' | 'upload' | 'deactivate';
 
 // Throws 401s. Returns the 402 the route must answer (heartbeat still writes before answering it).
 export async function authDevice(c: Tx, key: string | undefined, kind: RouteKind): Promise<{ dev: DeviceAuth; billing: ApiError | null }> {
-  const revoked = new ApiError(401, 'DEVICE_REVOKED', 'Device key not accepted');
-  if (!key) throw revoked;
-  const { rows } = await c.query('SELECT * FROM auth_device($1)', [sha256(key)]);
-  if (!rows[0]) throw revoked;
+  if (!key) throw new ApiError(401, 'DEVICE_REVOKED', 'Device key not accepted');
+  return authDeviceHash(c, sha256(key), kind);
+}
+
+// The same check from the key's hash: the policy stream re-checks access on every push without
+// keeping the key (agent-policy-events).
+export async function authDeviceHash(c: Tx, keyHash: string, kind: RouteKind): Promise<{ dev: DeviceAuth; billing: ApiError | null }> {
+  const { rows } = await c.query('SELECT * FROM auth_device($1)', [keyHash]);
+  if (!rows[0]) throw new ApiError(401, 'DEVICE_REVOKED', 'Device key not accepted');
   const d = rows[0];
   if (d.released) {
     const uploadWindow = d.released_at.getTime() + LIMITS.releasedUploadDays * 86400_000;

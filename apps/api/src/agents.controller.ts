@@ -3,7 +3,9 @@ import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Res
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { activityBody, HEALTH_FIELDS, heartbeatBody, LIMITS, screenshotBody, tamperBody, uuid } from './contract';
 import { ApiError, Db, parse, sha256 } from './core';
-import { authDevice, cmpVersion, newestRelease, pauseInForce, policyVersion } from './device';
+import { authDevice, pauseInForce, policyVersion } from './device';
+import { buildPolicy } from './policy';
+import { PolicyEvents } from './policy-events';
 import { baseUrl, tag } from './http';
 import { Storage, thumbPath } from './storage';
 import { rebuildLateDays } from './usage';
@@ -16,7 +18,11 @@ const json = (v: unknown) => (v === undefined || v === null ? null : JSON.string
 
 @Controller('v1/agents')
 export class AgentsController {
-  constructor(@Inject(Db) private db: Db, @Inject(Storage) private storage: Storage) {}
+  constructor(
+    @Inject(Db) private db: Db,
+    @Inject(Storage) private storage: Storage,
+    @Inject(PolicyEvents) private events_: PolicyEvents,
+  ) {}
 
   // receive-device-health/heartbeat + notice-acknowledgement. Still written when answered 402 (D5).
   @Post('heartbeat')
@@ -61,55 +67,30 @@ export class AgentsController {
   // serve-agent-policy/agent-policy. One snapshot; ETag = hash of the body (D8).
   @Get('policy')
   async policy(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Res() res: FastifyReply) {
-    const data = await this.db.tx(async (c) => {
+    const { body, etag } = await this.db.tx(async (c) => {
       const { dev, billing } = await authDevice(c, key, 'normal');
       tag(req, dev);
       if (billing) throw billing;
-      const { rows: [p] } = await c.query(
-        `SELECT d.os, d.arch, d.agent_version, c.idle_threshold_seconds, c.min_agent_version, c.uninstall_token_hash,
-                c.notice_text, c.notice_version, l.screenshot_tier, tier_interval(l.screenshot_tier) AS tier_min, s.activity, s.app_usage, s.window_titles,
-                s.website_visits, s.screenshot_interval_seconds
-           FROM devices d JOIN companies c ON c.id = d.company_id JOIN licenses l ON l.company_id = c.id
-           JOIN employee_monitoring_settings s ON s.employee_id = d.employee_id
-          WHERE d.id = $1`,
-        [dev.device_id],
-      );
-      const [rules, sensitive, pauses] = await Promise.all([
-        c.query('SELECT id, type, pattern, reason FROM block_rules ORDER BY created_at, id'),
-        c.query('SELECT pattern FROM sensitive_domains ORDER BY lower(pattern)'),
-        c.query(
-          `SELECT id AS pause_id, starts_at, ends_at FROM monitoring_pauses
-            WHERE employee_id = $1 AND cancelled_at IS NULL AND ends_at > now() ORDER BY starts_at, id`,
-          [dev.employee_id],
-        ),
-      ]);
-      const rel = await newestRelease(c, p.os, p.arch);
-      let minVersion: string | null = p.min_agent_version;
-      if (rel && (!minVersion || cmpVersion(rel.min_supported, minVersion) > 0)) minVersion = rel.min_supported;
-      // Re-signed once per UTC day so the ETag only moves daily for it (B16).
-      const dayEnd = Math.floor(Date.now() / 86400_000) * 86400 + 2 * 86400;
-      const update = rel && cmpVersion(rel.version, p.agent_version) > 0 ? rel : null;
-      return {
-        policy_version: await policyVersion(c, dev),
-        block_rules: rules.rows,
-        sensitive_domains: sensitive.rows.map((r) => r.pattern),
-        // Never faster than the plan: a lowered tier slows a faster stored interval (B30); off stops screenshots.
-        screenshot_interval_seconds: p.screenshot_tier === 'off' || !p.screenshot_interval_seconds ? 0 : Math.max(p.screenshot_interval_seconds, p.tier_min),
-        idle_threshold_seconds: p.idle_threshold_seconds,
-        min_agent_version: minVersion,
-        update_package_url: update ? this.storage.sign(baseUrl(req), 'GET', 'agents', update.storage_path, dayEnd) : null,
-        update_package_sha256: update?.sha256 ?? null,
-        uninstall_token_hash: p.uninstall_token_hash,
-        collection_notice: { text: p.notice_text, version: p.notice_version },
-        monitoring_features: { activity: p.activity, app_usage: p.app_usage, window_titles: p.window_titles, website_visits: p.website_visits },
-        monitoring_pauses: pauses.rows,
-      };
+      return buildPolicy(c, dev, this.storage, baseUrl(req));
     }, { snapshot: true });
-    const body = JSON.stringify({ data });
-    const etag = `"${sha256(body).slice(0, 32)}"`;
     res.header('ETag', etag);
     if (req.headers['if-none-match'] === etag) return res.status(304).send();
     return res.status(200).type('application/json').send(body);
+  }
+
+  // agent-policy-events (B32): authenticated and first policy in one short snapshot, then the
+  // connection is handed to PolicyEvents and holds no database connection.
+  @Get('events')
+  async events(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Res() res: FastifyReply) {
+    const base = baseUrl(req);
+    const { dev, policy } = await this.db.tx(async (c) => {
+      const { dev, billing } = await authDevice(c, key, 'normal');
+      tag(req, dev);
+      if (billing) throw billing;
+      return { dev, policy: await buildPolicy(c, dev, this.storage, base) };
+    }, { snapshot: true });
+    res.hijack();
+    this.events_.open(res.raw, { ...dev, key_hash: sha256(key ?? ''), base }, policy);
   }
 
   // ingest-activity/activity-ingestion. One transaction; ingest_batches is the idempotency record (D13).

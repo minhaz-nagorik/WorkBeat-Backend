@@ -3,7 +3,7 @@
 NestJS (Fastify) on plain PostgreSQL. Implements the agent contract
 ([docs/core/api/agent-contract.md](../../docs/core/api/agent-contract.md)): `/health`,
 `/v1/license/validate`, `/v1/devices/enroll`, `/v1/devices/:id/deactivate`, `/v1/agents/heartbeat`,
-`/v1/agents/policy`, `/v1/agents/activity`, `/v1/agents/screenshots` (+ `/:id/confirm`),
+`/v1/agents/policy`, `/v1/agents/events`, `/v1/agents/activity`, `/v1/agents/screenshots` (+ `/:id/confirm`),
 `/v1/agents/tamper`. Screenshots and agent packages are stored on local disk (`STORAGE_DIR`) behind
 signed URLs served by the API (`/v1/storage/...`) until a bucket provider is chosen.
 
