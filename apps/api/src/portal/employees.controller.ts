@@ -1,5 +1,5 @@
 // Employee directory, CSV import, monitoring settings, pauses, notice evidence, screenshots (manage-employees).
-import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ADMIN, employeeFor, idOrNone, portalUser, TEAM_LEAD, User } from '../auth';
@@ -174,6 +174,7 @@ export class EmployeesController {
   }
 
   @Post('import/check')
+  @HttpCode(200) // read-only check (employee-directory); Nest would answer 201
   async importCheck(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, 'employees.edit');
