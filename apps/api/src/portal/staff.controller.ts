@@ -13,6 +13,7 @@ import { baseUrl } from '../http';
 import { sendMail } from '../mail';
 import { Storage } from '../storage';
 import { customDomain } from './company.controller';
+import { isBareHost } from './policy.controller';
 
 const TIER_ADDON: Record<string, number> = { off: 0, light: 0.5, standard: 1, intensive: 2 };
 const UPLOAD_URL_SECONDS = 60 * 60;
@@ -422,6 +423,44 @@ export class StaffController {
       if (w.product === 'agent') await bumpAllPolicies(c);
       return { data: w };
     });
+  }
+
+  // ------------------------------------------------------------ WorkBeat private sites (A19)
+
+  @Get('sensitive-domains')
+  async sensitive(@Req() req: FastifyRequest) {
+    return this.db.tx(async (c) => {
+      await staffUser(c, req);
+      const { rows } = await c.query(
+        `SELECT p.id, p.pattern, p.created_at, u.name AS created_by_name
+           FROM platform_sensitive_domains p LEFT JOIN users u ON u.id = p.created_by ORDER BY lower(p.pattern)`,
+      );
+      return { data: rows };
+    });
+  }
+
+  @Post('sensitive-domains')
+  async addSensitive(@Req() req: FastifyRequest, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
+    return this.db.tx(async (c) => {
+      const u = await staffUser(c, req);
+      const { pattern } = parse(z.object({ pattern: z.string().trim().toLowerCase().min(1).max(253) }), raw);
+      if (!isBareHost(pattern)) throw new ApiError(422, 'VALIDATION_FAILED', 'Must be a bare host name', { fields: ['pattern'] });
+      const { rows: [r] } = await c.query( // unique on lower(pattern) → 23505 → 409
+        'INSERT INTO platform_sensitive_domains (pattern, created_by) VALUES ($1, $2) RETURNING id, pattern, created_at',
+        [pattern, u.id],
+      );
+      res.status(201);
+      return { data: { ...r, created_by_name: u.name } };
+    });
+  }
+
+  @Delete('sensitive-domains/:id')
+  async deleteSensitive(@Req() req: FastifyRequest, @Param('id') id: string, @Res({ passthrough: true }) res: FastifyReply) {
+    await this.db.tx(async (c) => {
+      await staffUser(c, req);
+      if (!(await c.query('DELETE FROM platform_sensitive_domains WHERE id = $1', [idOrNone(id)])).rowCount) throw new ApiError(404, 'NOT_FOUND', 'Not found');
+    });
+    res.status(204);
   }
 
   // ------------------------------------------------------------ staff team

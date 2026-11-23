@@ -93,7 +93,11 @@ export class PolicyController {
   async sensitive(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, 'policy.view');
-      return { data: (await c.query('SELECT id, pattern, is_default, created_at FROM sensitive_domains WHERE company_id = app_company_id() ORDER BY lower(pattern)')).rows };
+      const { rows } = await c.query(
+        `SELECT id, pattern, is_default, 'company' AS source, created_at FROM sensitive_domains WHERE company_id = app_company_id()
+         UNION ALL SELECT id, pattern, false, 'workbeat', created_at FROM platform_sensitive_domains ORDER BY 2`,
+      );
+      return { data: rows };
     });
   }
 
@@ -103,8 +107,10 @@ export class PolicyController {
       const u = await portalUser(c, req, 'policy.edit');
       const { pattern } = parse(z.object({ pattern: z.string().trim().toLowerCase().min(1).max(253) }), raw);
       if (!isBareHost(pattern)) throw new ApiError(422, 'VALIDATION_FAILED', 'Must be a bare host name', { fields: ['pattern'] });
+      if ((await c.query('SELECT 1 FROM platform_sensitive_domains WHERE lower(pattern) = $1', [pattern])).rowCount)
+        throw new ApiError(409, 'CONFLICT', 'WorkBeat already keeps this site private');
       const { rows: [r] } = await c.query(
-        'INSERT INTO sensitive_domains (company_id, pattern, created_by) VALUES ($1, $2, $3) RETURNING id, pattern, is_default, created_at',
+        'INSERT INTO sensitive_domains (company_id, pattern, created_by) VALUES ($1, $2, $3) RETURNING id, pattern, is_default, \'company\' AS source, created_at',
         [u.company_id, pattern, u.id],
       );
       res.status(201);
