@@ -5,9 +5,9 @@
 
 ## 1. company-settings
 
-- [ ] 1.1 `GET /v1/company/settings` and `PATCH /v1/company/settings` with zod schemas in `packages/shared` (alert types = tamper `event_type` values)
+- [ ] 1.1 `GET /v1/company/settings` and `PATCH /v1/company/settings` with zod schemas in `packages/shared`
 - [ ] 1.2 `GET /v1/company/setup` and `POST /v1/company/setup/steps`; step names in `packages/shared`
-- [ ] 1.3 Tests: retention 45, 180 and 365 → 422; idle threshold change bumps `companies.policy_version`; unknown alert role → 422; `install_first_device` and `first_device_seen` follow device rows; manager → 403; tenant isolation: company A's settings and checklist never reflect company B's devices or values
+- [ ] 1.3 Tests: retention 45, 180 and 365 → 422; idle threshold change bumps `companies.policy_version`; `install_first_device` and `first_device_seen` follow device rows; manager → 403; tenant isolation: company A's settings and checklist never reflect company B's devices or values
 - [ ] 1.4 Bump `companies.policy_version` only when `idle_threshold_seconds` actually changes; step marking with `array_append` guarded by `NOT (step = ANY(...))`
 - [ ] 1.5 Tests (edge cases): name 100 → ok, 101 or blank → 422; `slug` in body ignored; retention 30/60/90 ok, 0, 45 and 30.5 → 422; lowering 90 → 30 deletes nothing in the request; idle 60/3600 ok, 59/3601 → 422; same idle value → no bump; empty `roles` saved; `super_admin` role → 422; step twice stored once; derived or unknown step → 422; released first device keeps both steps done; timezone change re-days past reports; `Europe/London` DST day is 23 h
 

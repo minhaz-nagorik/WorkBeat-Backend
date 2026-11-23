@@ -119,8 +119,8 @@ Unique open invite: `(company_id, email) WHERE accepted_at IS NULL AND revoked_a
 | custom_domain_status | text NULL | `pending` \| `active` \| `failed` |
 | custom_domain_token | text NULL | TXT `_workbeat.{domain}` = `verify-{token}` |
 | custom_domain_checked_at, custom_domain_verified_at | timestamptz NULL | |
-| alert_email | jsonb NOT NULL | `{roles[], types[], delivery: instant\|hourly\|daily}`; defaults to every event type (0002) |
-| timezone | text NOT NULL DEFAULT 'UTC' | IANA name; bounds days in reports and digests (B19, 0002) |
+| alert_email | jsonb NOT NULL | unused: there are no alert emails (B34); kept until a migration drops it |
+| timezone | text NOT NULL DEFAULT 'UTC' | IANA name; bounds days in reports (B19, 0002) |
 | setup_completed_steps | text[] NOT NULL DEFAULT '{}' | onboarding checklist |
 | created_at, updated_at | timestamptz NOT NULL | |
 
@@ -272,7 +272,7 @@ released and the next enrollment makes a new row.
 | enrolled_at | timestamptz NOT NULL | |
 | last_heartbeat_at | timestamptz NULL | |
 | last_input_at | timestamptz NULL | Heartbeat receipt time minus `input_idle_seconds`; NULL when the latest heartbeat did not send it (0012) |
-| offline_since | timestamptz NULL | set by `/cron/heartbeat-check`, cleared on heartbeat |
+| offline_since | timestamptz NULL | unused: offline is derived from `last_heartbeat_at` at read time (B34); kept until a migration drops it |
 | policy_version | bigint NOT NULL | taken at insert; never bumped (0003 drops `devices_policy_bump`) |
 | reported_policy_version | bigint NULL | |
 | helper_status, browser_access, permissions | jsonb NULL | latest heartbeat (D39, W11) |
@@ -365,12 +365,12 @@ Not partitioned (low row count). `id uuid PK` (agent's), `company_id`, `device_i
 Index `(company_id, employee_id, captured_at)`.
 
 ### tamper_events
-Also the alerts feed. `id uuid PK` (agent's; server-made for `offline`), `company_id`,
+Also the alerts feed. `id uuid PK` (agent's; server-made for `duplicate_device_id`), `company_id`,
 `device_id`, `hostname` (snapshot, survives device removal — prototype), `event_type`
 (`process_restart` \| `hosts_modified` \| `config_changed` \| `clock_tampered` \|
-`permission_revoked` \| `offline` \| `duplicate_device_id`), `detail jsonb`, `repeat_count int`, `occurred_at`,
-`received_at`, `resolved_at NULL` (offline: set when the heartbeat returns), `resolved_by NULL`,
-`emailed_at NULL` (digests). Index `(company_id, occurred_at DESC)`,
+`permission_revoked` \| `duplicate_device_id`; the check also allows `offline`, which nothing writes, B34), `detail jsonb`, `repeat_count int`, `occurred_at`,
+`received_at`, `resolved_at NULL`, `resolved_by NULL`,
+`emailed_at NULL` (unused, B34). Index `(company_id, occurred_at DESC)`,
 `(device_id) WHERE resolved_at IS NULL`.
 
 ## 7. Retention
@@ -384,7 +384,7 @@ Usage summaries past retention are deleted by `/cron/usage-summary`, not by clea
 
 Gaps found while writing the OpenSpec changes:
 
-- `companies.timezone` (B19); `alert_email` defaults to every event type.
+- `companies.timezone` (B19).
 - `ingest_batches.body_sha256`, so a reused `Idempotency-Key` with another body answers `409`.
 - `agent_releases.signature` nullable (Windows MSIs are unsigned, W35); `productivity_rules.created_by`.
 - Exclusion constraint: an employee never has two live pauses that overlap.

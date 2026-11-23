@@ -41,7 +41,7 @@ Conventional Commits, scoped to the capability:
 ```
 feat(device-enrollment): reuse the device row on reinstall
 fix(activity-ingestion): count records outside the B7 window
-spec(run-scheduled-jobs): add the alert-digest schedule
+spec(run-scheduled-jobs): add the token-expiry schedule
 db(0003): add companies.example column
 chore(ci): run self-checks on PostgreSQL 15
 ```

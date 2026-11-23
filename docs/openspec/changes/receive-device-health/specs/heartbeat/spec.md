@@ -1,7 +1,7 @@
 ## Purpose
 
 What `POST /v1/agents/heartbeat` stores on the device row, what it answers, and how it keeps a
-suspended device from being flagged offline.
+suspended device from showing as offline.
 
 ## ADDED Requirements
 
@@ -52,14 +52,13 @@ The API SHALL store `store_bytes`, `oldest_unsent_at`, `dropped_records`, `dropp
 - **WHEN** a heartbeat reports every counter as 0 and `oldest_unsent_at` null
 - **THEN** it is accepted and `devices.health` holds those values
 
-### Requirement: A heartbeat marks the device seen and ends an offline period
-<!-- source: PRD "Online status and tamper detection" · Plan-v3.5 §6.4 -->
-Each accepted heartbeat SHALL set `devices.last_heartbeat_at` to the server time, set `offline_since` to null and set `resolved_at` on the device's open `offline` tamper event, in the same transaction.
+### Requirement: A heartbeat marks the device seen
+<!-- source: PRD "Online status and tamper detection" · B34 -->
+Each accepted heartbeat SHALL set `devices.last_heartbeat_at` to the server time, in the same transaction as the health fields.
 
 #### Scenario: An offline device comes back
-- **WHEN** a device with `offline_since` set sends a heartbeat
-- **THEN** `offline_since` is null and its open `offline` event has `resolved_at` set
-- **AND** `resolved_by` stays null
+- **WHEN** a device that last heartbeated an hour ago sends a heartbeat
+- **THEN** `last_heartbeat_at` is the server time and its status is `online` at the next read
 
 #### Scenario: The same heartbeat is sent twice
 - **WHEN** a heartbeat's response was lost and the agent sends the same body again
@@ -88,12 +87,12 @@ A `200` response SHALL carry `policy_version`, the device's resolved version as 
 
 ### Requirement: A suspended or expired company's heartbeat is still recorded
 <!-- source: D5 · D29 · D30 · D36 · enroll-devices/device-authentication -->
-When `device-authentication` answers a heartbeat with `402` (`COMPANY_SUSPENDED` or `LICENSE_EXPIRED`), the API SHALL still write the health fields, `last_heartbeat_at`, the offline clearing and the notice acknowledgement, and MUST return the `402` body unchanged. A heartbeat answered with `401` MUST write nothing.
+When `device-authentication` answers a heartbeat with `402` (`COMPANY_SUSPENDED` or `LICENSE_EXPIRED`), the API SHALL still write the health fields, `last_heartbeat_at` and the notice acknowledgement, and MUST return the `402` body unchanged. A heartbeat answered with `401` MUST write nothing.
 
 #### Scenario: A suspended company's device stays online
 - **WHEN** a device of a suspended company heartbeats every 5 minutes for an hour
 - **THEN** each heartbeat gets `402 COMPANY_SUSPENDED`
-- **AND** `last_heartbeat_at` is updated each time and no `offline` event is raised
+- **AND** `last_heartbeat_at` is updated each time and the device stays `online`
 
 #### Scenario: A released device calls once more
 - **WHEN** a released device's heartbeat gets `401 DEVICE_RELEASED`
@@ -101,7 +100,7 @@ When `device-authentication` answers a heartbeat with `402` (`COMPANY_SUSPENDED`
 
 #### Scenario: A deactivated device calls once more
 - **WHEN** a deactivated device's heartbeat gets `401 DEVICE_REVOKED`
-- **THEN** no row is updated and no `offline` event is resolved
+- **THEN** no row is updated
 
 #### Scenario: An ended company's hourly heartbeat
 - **WHEN** a device of an `expired` company past `blocking_ends_at` heartbeats once an hour

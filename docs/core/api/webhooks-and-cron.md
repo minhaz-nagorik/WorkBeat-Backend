@@ -77,19 +77,12 @@ Scheduler; the API runs no in-process timer ([`cron-routes`][cron-routes], B10).
 
 | Route | Schedule | Owner change |
 |---|---|---|
-| `POST /cron/heartbeat-check` | every 5 min | receive-device-health |
 | `POST /cron/token-expiry` | hourly | run-scheduled-jobs |
+| `POST /cron/usage-summary` | hourly | summarize-usage |
 | `POST /cron/cleanup` | daily 02:00 UTC | run-scheduled-jobs |
-| `POST /cron/alert-digest` | hourly | process-tamper-alerts |
 
-### `POST /cron/heartbeat-check`
-Roles: scheduler (`X-Cron-Secret`) · Spec: [`offline-detection`][offline-detection], [`alert-emails`][alert-emails]
-Mark silent devices offline and raise one `offline` event each.
-Notes:
-- Sets `offline_since` on every device whose `last_heartbeat_at` (or `enrolled_at` if none) is more than 15 minutes old (threshold in `packages/shared`) and `offline_since` is null.
-- Inserts exactly one `tamper_events` row per offline period: server-made `id`, `event_type` `offline`, current `hostname`, `occurred_at` = run time, `detail` holding `last_heartbeat_at`. No second one until a heartbeat clears `offline_since`, even across concurrent runs.
-- Skips devices with `released_at` or `deactivated_at` set, and devices of an expired company whose `blocking_ends_at` has passed.
-- The only writer of `offline` events. For `instant` companies, emails each event within 1 minute after commit.
+There is no `/cron/heartbeat-check` or `/cron/alert-digest` (B34): a device's `offline` status is
+worked out from `last_heartbeat_at` when it is read, and there are no alert emails.
 
 ### `POST /cron/token-expiry`
 Roles: scheduler · Spec: [`cron-routes`][cron-routes]
@@ -110,29 +103,6 @@ Never deletes `notice_acknowledgements`, `employees`, `devices`, `users`, `compa
 any rule or settings row. Exempt from B2's one-transaction rule (B15); each batch still sets the scope
 and takes the job lock.
 
-### `POST /cron/alert-digest`
-Roles: scheduler · Spec: [`alert-emails`][alert-emails]
-Send hourly and daily alert digests, and retry failed instant emails.
-Notes:
-- `hourly` companies: one email per recipient listing the unemailed events of the last hour.
-- `daily` companies: at the run that falls at 09:00 in the company `timezone`, one email per recipient listing the last 24 hours' unemailed events.
-- Retries an instant email that failed, if the event is under 24 hours old.
-- Recipients: enabled users whose role is in `alert_email.roles`, only for `event_type`s in `alert_email.types`; managers only for their team's devices; never a `super_admin`.
-- Sets `emailed_at` once Resend accepted the email for every recipient, or when there is none; never emails an event twice.
-- Email content: event type, device `hostname`, employee name, `occurred_at`, `repeat_count` only. Never `detail`, a URL, domain, window title or signed URL.
-
----
-
-## Health
-
-### `GET /health`
-Roles: none (no credential) · Spec: [`schema-migrations`][schema-migrations]
-Tell operators whether the API can reach its database.
-Request: none.
-Response `200` when a database query succeeds.
-Errors: `503 SERVICE_UNAVAILABLE` when it does not.
-Notes: returns no tenant data. No `/v1` prefix.
-
 ---
 
 ## Unspecified
@@ -141,14 +111,10 @@ Notes: returns no tenant data. No `/v1` prefix.
   refused).
 - Whether `invoice.payment_failed` on a non-renewal invoice does anything ("for a renewal").
 - `rows_affected` shape beyond "count per table"; whether `more` is always present.
-- `/cron/alert-digest`'s exact cron expression (spec says hourly) and how the 09:00 local run is
-  matched for zones with a non-whole-hour offset.
 
 [company-signup]: ../../openspec/changes/provision-companies/specs/company-signup/spec.md
 [subscription-sync]: ../../openspec/changes/provision-companies/specs/subscription-sync/spec.md
 [staff-accounts]: ../../openspec/changes/authenticate-users/specs/staff-accounts/spec.md
 [cron-routes]: ../../openspec/changes/run-scheduled-jobs/specs/cron-routes/spec.md
 [data-retention]: ../../openspec/changes/run-scheduled-jobs/specs/data-retention/spec.md
-[offline-detection]: ../../openspec/changes/receive-device-health/specs/offline-detection/spec.md
-[alert-emails]: ../../openspec/changes/process-tamper-alerts/specs/alert-emails/spec.md
 [schema-migrations]: ../../openspec/changes/establish-api-foundation/specs/schema-migrations/spec.md

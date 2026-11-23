@@ -278,7 +278,6 @@ Response `200`:
 | slug | string | read-only |
 | data_retention_days | int | 30, 60 or 90 |
 | idle_threshold_seconds | int | 60–3600 |
-| alert_email | object | `{ roles: array<enum(company_admin\|manager\|it_admin)>, types: array<enum(process_restart\|hosts_modified\|config_changed\|clock_tampered\|permission_revoked\|offline\|duplicate_device_id)>, delivery: enum(instant\|hourly\|daily) }` |
 | timezone | string | IANA name, default `UTC` |
 
 Errors: `403 FORBIDDEN` (manager, it_admin).
@@ -291,11 +290,10 @@ Request (all optional):
 | field | type | required | notes |
 |---|---|---|---|
 | idle_threshold_seconds | int | no | 60–3600 |
-| alert_email | object | no | shape as in GET |
 | timezone | string | no | known IANA name |
 
 Response `200`: the settings as in GET.
-Errors: `403 FORBIDDEN` (other roles; or `name` / `data_retention_days` in the body, named in `fields`, nothing changed: staff set them, B29); `422 VALIDATION_FAILED` (out of range, unknown zone, bad `alert_email`).
+Errors: `403 FORBIDDEN` (other roles; or `name` / `data_retention_days` in the body, named in `fields`, nothing changed: staff set them, B29); `422 VALIDATION_FAILED` (out of range, unknown zone). An `alert_email` in the body is ignored: there are no alert emails (B34).
 Notes: `slug` is not writable. An `idle_threshold_seconds` change raises `companies.policy_version`.
 
 ### `GET /v1/company/setup`
@@ -870,7 +868,7 @@ Notes: a changed text raises `notice_version` by one and `companies.policy_versi
 
 ### `GET /v1/alerts`
 Roles: company_admin, it_admin (all devices), manager (devices of own team) · Spec: [`alerts-feed`][alerts-feed]
-Tamper and offline events, newest `occurred_at` first.
+Tamper events, newest `occurred_at` first. A silent device is not an event; it shows as `offline` in `GET /v1/devices` (B34).
 Query (all optional):
 
 | field | type | required | notes |

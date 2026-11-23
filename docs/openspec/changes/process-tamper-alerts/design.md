@@ -15,9 +15,8 @@ agent reports.
 **Why:** D24 and Plan-v3.5 §4.1 make `offline` backend-only; the agents' `tamper-detection` spec
 says they never send it. A `POST /v1/agents/tamper` with `offline` is refused with `422`.
 
-### Digests run from a new `/cron/alert-digest` route, in the company time zone
+### No alert emails
 
-**Amends:** Plan-v3.5 §6.4, whose job table has no digest job.
-**Why:** hourly and daily delivery (`companies.alert_email.delivery`) needs a scheduled sender, and
-scheduled work runs only through `/cron/*` (Plan §3, B10). The daily digest is sent by the run inside the
-09:00 local hour of `companies.timezone` (B19, migration 0002).
+**Amends:** Plan-v3.5 §4.4 "Tamper event processing and alerting" and §6.4 (B34).
+**Why:** the product owner dropped alert emails (23 Nov 2026). Alerts are read in the portal's feed only, so
+there is no instant send, no digest and no `/cron/alert-digest`.

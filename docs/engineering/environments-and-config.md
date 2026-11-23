@@ -33,7 +33,7 @@ The API validates all of these at start and refuses to boot when one is missing 
 | `STRIPE_WEBHOOK_SECRET` | `POST /v1/webhooks/stripe` signature check | yes | `whsec_…` |
 | `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWTH`, `STRIPE_PRICE_ENTERPRISE` | Price → plan map | no | `price_1Q…` |
 | `STRIPE_PRICE_TIER_LIGHT`, `_STANDARD`, `_INTENSIVE` | Price → screenshot tier map | no | `price_1Q…` |
-| `RESEND_API_KEY` | Welcome, invitation, key reissue and alert emails | yes | `re_…` |
+| `RESEND_API_KEY` | Welcome, invitation, key reissue and password emails (no alert emails, B34) | yes | `re_…` |
 | `EMAIL_FROM` | Sender of every email | no | `WorkBeat <no-reply@mail.workbeat.io>` |
 | `STORAGE_BUCKET_SCREENSHOTS` | Screenshot upload, view and retention sweep | no | `screenshots` |
 | `STORAGE_BUCKET_AGENTS` | Agent and Downloader releases, installer downloads, `update_package_url` | no | `agents` |
@@ -59,7 +59,7 @@ each of these in `packages/shared`, so they change only through a spec change an
 | Rate limits per device key, licence key, user and IP | `rate-limiting` |
 | Screenshot view URL lifetime (5 min), upload URL lifetime, max JPEG size | `screenshot-access`, `screenshot-upload` |
 | Installer download URL lifetime | `installer-downloads` |
-| Offline threshold (15 min) | `offline-detection` |
+| Offline threshold (15 min) | `device-status` |
 | Custom-domain verification cut-off | `custom-domains` |
 | Invitation lifetime | `team-invitations` |
 | Cleanup batch size and time budget | `data-retention` |

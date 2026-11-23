@@ -1,12 +1,12 @@
 > **Read first — this task list is not the requirement.**
-> Capabilities: `heartbeat · notice-acknowledgement · offline-detection · device-status`
+> Capabilities: `heartbeat · notice-acknowledgement · device-status`
 > The requirements are in [`specs/`](specs/). Run `cd docs && openspec show receive-device-health`.
 > Contract: [agent-contract.md](../../../core/api/agent-contract.md) · Schema: [data-model.md](../../../core/architecture/data-model.md).
 
 ## 1. heartbeat
 
 - [ ] 1.1 Heartbeat zod schema in `packages/shared`, including Windows `permissions` = `not_required` (W11)
-- [ ] 1.2 `POST /v1/agents/heartbeat`: update the device row and `health` in one transaction; clear `offline_since`, resolve the open `offline` event
+- [ ] 1.2 `POST /v1/agents/heartbeat`: update the device row, `health` and `last_heartbeat_at` in one transaction
 - [ ] 1.3 Pause in force for the device's employee (not cancelled, `starts_at` ≤ now < `ends_at`, latest `ends_at`) and `policy_version` from `agent-policy`
 - [ ] 1.4 Write path that still runs when `device-authentication` answers `402`, and never on `401`
 - [ ] 1.5 Tests: `402` heartbeat updates `last_heartbeat_at`; `401` writes nothing; pause extended / cancelled reaches the next response; invalid body leaves the row unchanged
@@ -23,12 +23,7 @@
 
 ## 3. offline-detection
 
-- [ ] 3.1 `/cron/heartbeat-check` handler: one `UPDATE … WHERE offline_since IS NULL … RETURNING` then insert the `offline` events, in `system` scope
-- [ ] 3.2 Skip released, deactivated and companies past `blocking_ends_at` (`expired_at` + `expired_blocking_grace_days`)
-- [ ] 3.3 Hand each new event to `alert-emails` (process-tamper-alerts)
-- [ ] 3.4 Tests: 16 min silent → one event; two concurrent runs → one event; released and ended devices skipped; heartbeat resolves it
-- [ ] 3.5 Mark and insert the event in one transaction; the `UPDATE` re-checks `last_heartbeat_at` and `offline_since` on the locked row
-- [ ] 3.6 Edge tests: exactly 15 min → not offline; never heartbeated past 15 min → offline; suspended and in-grace expired devices checked; second offline period → second event; deactivated skipped; heartbeat committed mid-run → not marked; heartbeat waiting on the job → clears and resolves the new event
+Removed (B34, 23 Nov 2026): no `/cron/heartbeat-check`; offline is derived in `device-status` (4.6).
 
 ## 4. device-status
 
@@ -37,4 +32,5 @@
 - [ ] 4.2 `GET /v1/devices`, `GET /v1/devices/:id`, `GET /v1/rollout` for `company_admin` and `it_admin`
 - [ ] 4.3 Semver comparison of `agent_version` against the effective minimum (`companies.min_agent_version` only, until `distribute-agents` ships)
 - [ ] 4.4 Tests: status order; Windows never `permission_pending`; manager and staff refused; tenant isolation: two companies' devices never appear in each other's list or counts
-- [ ] 4.5 Edge tests: deactivated beats offline; new device `online` before its first heartbeat; on-minimum not `outdated`; 1.10.0 > 1.9.0; pause in force with null `active_pause_id` → `paused`, future pause → none; Windows never `permission_pending`; archived employee's devices listed; another company's `employee_id` filter → empty; no devices → all zero; `super_admin` → 403
+- [ ] 4.6 Offline from `last_heartbeat_at` (or `enrolled_at`) older than 15 min at read time; drop the `offline_since` check from `deviceStatus()`
+- [ ] 4.5 Edge tests: exactly 15 min → online; never heartbeated past 15 min → offline; suspended company heartbeating → online; deactivated beats offline; new device `online` before its first heartbeat; on-minimum not `outdated`; 1.10.0 > 1.9.0; pause in force with null `active_pause_id` → `paused`, future pause → none; Windows never `permission_pending`; archived employee's devices listed; another company's `employee_id` filter → empty; no devices → all zero; `super_admin` → 403

@@ -8,13 +8,16 @@ three times (rule 8). The mechanism is specified in `run-scheduled-jobs` (`cron-
 
 | Route | Schedule (UTC) | Does | Owning change | Expected runtime |
 |---|---|---|---|---|
-| `/cron/heartbeat-check` | `*/5 * * * *` | Marks devices silent for over 15 min `offline` and raises one `offline` event each; skips released, deactivated and ended devices; hands new events to alert emails | `receive-device-health` (`offline-detection`) | Seconds: one `UPDATE … RETURNING` plus inserts |
 | `/cron/token-expiry` | `0 * * * *` | Deletes unused enrollment tokens past `expires_at`; used tokens stay | `run-scheduled-jobs` (`cron-routes`) | Under a second |
 | `/cron/usage-summary` | `0 * * * *` | Deletes each company's summaries past retention, then builds the summary of every finished company day not built yet, newest first | `summarize-usage` (`usage-summaries`) | Seconds once caught up; after deploy or a timezone change it backfills up to 90 days per company and returns `more: true` until done |
-| `/cron/alert-digest` | `0 * * * *` | Hourly digests; daily digests at the run that falls at 09:00 in each company's `timezone`; retries failed instant emails under 24 h old | `process-tamper-alerts` (`alert-emails`) | Seconds; one Resend call per recipient |
 | `/cron/cleanup` | `0 2 * * *` | Ensures monthly partitions, deletes each company's activity and screenshots past retention in batches, deletes old `ingest_batches` and resolved old tamper events, drops partitions past 90 days (screenshots not yet, task 3.2) | `run-scheduled-jobs` (`data-retention`) | Up to the time budget in `packages/shared`; may return `more: true` |
 
 Runtimes are expectations until the load test measures them (`data-retention` task 3.5).
+
+There is no `/cron/heartbeat-check` and no `/cron/alert-digest` (B34). A device shows as `offline`
+when its last heartbeat is over 15 minutes old, worked out at read time; there are no alert emails.
+If many devices show offline at once, it is usually the API, not the devices: check API errors and
+heartbeat `5xx` first.
 
 ## What every run returns
 
@@ -33,7 +36,7 @@ Runtimes are expectations until the load test measures them (`data-retention` ta
 
 Every job is safe to repeat and safe to call by hand with the secret.
 
-Built so far: `/cron/usage-summary` (summarize-usage) and `/cron/cleanup` (data-retention; screenshots are not deleted yet, task 3.2). The other routes answer `404` until their changes land.
+All three are built: `/cron/usage-summary` (summarize-usage), `/cron/token-expiry` (cron-routes) and `/cron/cleanup` (data-retention; screenshots are not deleted yet, task 3.2). Any other job name answers `404`.
 
 ## When a job fails
 
@@ -42,10 +45,7 @@ Built so far: `/cron/usage-summary` (summarize-usage) and `/cron/cleanup` (data-
 | any | `401` | Secret in Vault / Cloud Scheduler equals `CRON_SECRET`; no stray whitespace; rotated on both sides |
 | any | No log line at all | Scheduler job exists and is active; `net._http_response` (pg_net) or Cloud Scheduler's last attempt; API host reachable from the scheduler |
 | any | Always `skipped` | A run is stuck holding the lock: look for a long transaction in `pg_stat_activity` and end it |
-| `heartbeat-check` | Offline alerts late or missing | Job runs every 5 min; devices' `last_heartbeat_at` moving; the 15 min threshold in `packages/shared` |
-| `heartbeat-check` | Many devices offline at once | Usually the API, not the devices: check API errors and heartbeat `5xx` first |
 | `token-expiry` | Validated-but-unused tokens pile up | Harmless for 24 h; check the job is scheduled |
-| `alert-digest` | No emails | Resend status and API key; events with `emailed_at` NULL; company `alert_email` settings |
 | `usage-summary` | Reports slow for past days | `more: true` on every run: the backfill is not done; `usage_days` has no row for those days |
 | `cleanup` | `more: true` every night | Raise the budget or batch size in `packages/shared` (a release); check for missing indexes after a migration |
 | `cleanup` | Screenshot rows not shrinking | Storage deletes failing: rows are kept on purpose until the object is gone |

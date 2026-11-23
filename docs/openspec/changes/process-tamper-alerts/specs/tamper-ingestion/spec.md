@@ -41,7 +41,7 @@ A stored `id` sent with another `event_type`, or by another device, SHALL get `4
 
 ### Requirement: Only the five agent event types are accepted
 <!-- source: D24 · D46 · D48 · W11 · W14 · Plan-v3.5 §4.1 "Tamper detection" · Plan-v3.5 §4.4 "Duplicate device ID alert" -->
-`event_type` SHALL be one of `process_restart`, `hosts_modified`, `config_changed`, `clock_tampered` or `permission_revoked`. `offline` and `duplicate_device_id`, which only the backend raises, or any other value MUST get `422 VALIDATION_FAILED`; `repeat_count` MUST be at least 1 and `detail` a JSON object within the size limit in `packages/shared`.
+`event_type` SHALL be one of `process_restart`, `hosts_modified`, `config_changed`, `clock_tampered` or `permission_revoked`. `offline` (B34), `duplicate_device_id` (backend-only) or any other value MUST get `422 VALIDATION_FAILED`; `repeat_count` MUST be at least 1 and `detail` a JSON object within the size limit in `packages/shared`.
 
 #### Scenario: An agent sends offline
 - **WHEN** a request carries `event_type` `offline`
@@ -86,11 +86,11 @@ An event SHALL be stored whatever the age of its `occurred_at`; the B7 window MU
 
 #### Scenario: An event detected during a monitoring pause
 - **WHEN** a device of a paused employee reports a `config_changed` event
-- **THEN** the event is stored and raises an alert like any other
+- **THEN** the event is stored and listed in the feed like any other
 
 ### Requirement: An unresolved event flags the device and raises an alert
 <!-- source: PRD "Online status and tamper detection" · Plan-v3.5 §5.9 -->
-A stored event SHALL stay unresolved until `resolved_at` is set; while it is, the device MUST carry the `open_alert` badge (`device-status`, receive-device-health), and its first insertion MUST be handed to `alert-emails`.
+A stored event SHALL stay unresolved until `resolved_at` is set; while it is, the device MUST carry the `open_alert` badge (`device-status`, receive-device-health). No email MUST be sent for it (B34).
 
 #### Scenario: Hosts file edited
 - **WHEN** a `hosts_modified` event is stored
@@ -98,7 +98,7 @@ A stored event SHALL stay unresolved until `resolved_at` is set; while it is, th
 
 #### Scenario: A repeat is not a second alert
 - **WHEN** a stored event's `id` is sent again
-- **THEN** no alert email is handed over for the repeat
+- **THEN** the feed still lists one event for it
 
 #### Scenario: A suspended company's device reports
 - **WHEN** a device of a `suspended` company calls `POST /v1/agents/tamper`

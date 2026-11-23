@@ -6,8 +6,8 @@ one run per job at a time, safe to repeat, each run logged.
 ## ADDED Requirements
 
 ### Requirement: Scheduled work runs only through cron routes
-<!-- source: B10 · Plan-v3.5 §3 "Scheduled jobs" · Plan-v3.5 §6.4 -->
-Every scheduled job SHALL be a `POST /cron/<job>` route called by the server's scheduler (cron or a systemd timer): `heartbeat-check` every 5 minutes, `token-expiry` and `usage-summary` hourly, `cleanup` daily at 02:00 UTC, and the digest jobs of `alert-emails`. The API MUST NOT run a job from an in-process timer.
+<!-- source: B10 · Plan-v3.5 §3 "Scheduled jobs" · Plan-v3.5 §6.4 · B33 · B34 -->
+Every scheduled job SHALL be a `POST /cron/<job>` route called by the server's scheduler (cron or a systemd timer): `token-expiry` and `usage-summary` hourly and `cleanup` daily at 02:00 UTC. There MUST be no `heartbeat-check`, `alert-digest` or `domain-verify` job. The API MUST NOT run a job from an in-process timer.
 
 #### Scenario: Three API instances are running
 - **WHEN** 02:00 UTC passes with three instances up
@@ -55,7 +55,7 @@ A cron route SHALL set `app.scope` = `system` and no `app.company_id` before its
 Every transaction of a job run SHALL first take `pg_try_advisory_xact_lock` for that job. When the lock is held the run MUST stop and return `200` with `skipped` = `true`. Running a job twice in a row MUST leave the same state as running it once.
 
 #### Scenario: The scheduler retries during a run
-- **WHEN** `POST /cron/heartbeat-check` arrives while a previous run holds the lock
+- **WHEN** `POST /cron/usage-summary` arrives while a previous run holds the lock
 - **THEN** the second call returns `200` with `skipped` = `true` and changes nothing
 
 #### Scenario: The scheduler fires the same job twice at once
@@ -63,15 +63,15 @@ Every transaction of a job run SHALL first take `pg_try_advisory_xact_lock` for 
 - **THEN** one runs and the other returns `200` with `skipped` = `true`
 
 #### Scenario: Different jobs at the same time
-- **WHEN** `/cron/heartbeat-check` and `/cron/cleanup` run at the same moment
+- **WHEN** `/cron/usage-summary` and `/cron/token-expiry` run at the same moment
 - **THEN** neither is skipped, because each job has its own lock
 
 #### Scenario: A run that failed is retried
-- **WHEN** a `/cron/heartbeat-check` run answers `500` after part of its work and the scheduler calls again
-- **THEN** the second run finishes the work and no event or row is written twice
+- **WHEN** a `/cron/usage-summary` run answers `500` after part of its work and the scheduler calls again
+- **THEN** the second run finishes the work and no row is written twice
 
 #### Scenario: A run longer than the interval
-- **WHEN** a `/cron/heartbeat-check` run is still going when the next 5-minute call arrives
+- **WHEN** a `/cron/cleanup` run is still going when the next day's call arrives
 - **THEN** the new call answers `skipped` = `true` and the job runs again at the following call
 
 ### Requirement: Each run is reported and logged

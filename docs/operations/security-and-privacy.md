@@ -44,8 +44,7 @@ At any level, including errors (`api-logging`):
 - Window titles, URLs, domains, employee names, from any request or response body
 - Request and response bodies, ever. Validation errors log field names only
 
-Emails follow the same idea: alert emails carry event type, hostname, employee name, time and
-count, never `detail`, a URL or a title (`alert-emails`).
+Emails follow the same idea: no email carries activity content. There are no alert emails (B34).
 
 ## Staff boundary (D41)
 

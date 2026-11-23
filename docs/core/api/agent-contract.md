@@ -64,7 +64,8 @@ Clients branch on HTTP status and `code`, never on `error`. Every response carri
   `dropped_out_of_window` (B7).
 - **Tamper event:** `id`, `event_type` (`process_restart`, `hosts_modified`, `config_changed`,
   `clock_tampered`, `permission_revoked`), `detail`, `occurred_at`, `repeat_count`. The agents
-  never send `offline` or `duplicate_device_id`; the backend writes those.
+  never send `offline` or `duplicate_device_id`: the backend writes `duplicate_device_id`, and
+  `offline` is not a tamper event (B34). Both get `422`.
 
 ## Policy events
 

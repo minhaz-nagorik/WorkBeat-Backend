@@ -78,11 +78,11 @@ are [backend decisions](../decisions/backend-decisions.md). The schema is
 | Term | Meaning | Avoid |
 |---|---|---|
 | **Heartbeat** | `POST /v1/agents/heartbeat` every 5 min. Latest values only, no history | "ping" |
-| **Offline** | No heartbeat for 15 min, decided only by `/cron/heartbeat-check` | An agent-sent event |
+| **Offline** | No heartbeat for 15 min, worked out when the status is read (B34) | An event or an alert |
 | **Tamper event** | One of five agent types, or backend `offline`. Also the alerts feed | "incident" |
 | **Device status** | Derived on read: `released`, `deactivated`, `tamper`, `offline`, `online` | A stored column |
 | **Badge** | `outdated`, `permission_pending`, `browser_access_pending`, `paused` | "status" |
 | **Batch** | One sealed activity upload, `batch_id` = `Idempotency-Key` (D13) | "sync" |
 | **Time window** | Records outside [now − 8 days, now + 1 day] are dropped and counted (B7) | — |
 | **Retention** | `companies.data_retention_days`: 30, 60 or 90 (B13) | — |
-| **Company timezone** | `companies.timezone`, IANA, default `UTC`; bounds days and digests (B19) | — |
+| **Company timezone** | `companies.timezone`, IANA, default `UTC`; bounds days in reports (B19) | — |

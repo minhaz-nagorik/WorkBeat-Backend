@@ -81,8 +81,8 @@ Cleanup SHALL delete `ingest_batches` rows with `received_at` older than 14 days
 - **WHEN** an `ingest_batches` row's `received_at` equals the run's start minus 14 days
 - **THEN** it is kept until the next run
 
-#### Scenario: A resolved offline event past retention
-- **WHEN** an `offline` event resolved long ago is older than the company's retention
+#### Scenario: A resolved clock event past retention
+- **WHEN** a `clock_tampered` event resolved long ago is older than the company's retention
 - **THEN** it is deleted like any resolved tamper event
 
 ### Requirement: Screenshots never confirmed are deleted after a day

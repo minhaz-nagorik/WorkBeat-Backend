@@ -1,14 +1,14 @@
 ## Purpose
 
-The company-wide settings: the idle threshold, timezone and alert email recipients a company admin
+The company-wide settings: the idle threshold and timezone a company admin
 edits, the name and retention WorkBeat staff set (B29), and the onboarding checklist that tracks the
 first install.
 
 ## ADDED Requirements
 
 ### Requirement: A company admin reads and edits company settings
-<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Permission matrix" · B29 -->
-`GET /v1/company/settings` and `PATCH /v1/company/settings` SHALL be allowed to `company_admin` only. `GET` returns `name`, `slug`, `data_retention_days`, `idle_threshold_seconds`, `alert_email` and `timezone`. `PATCH` MUST write only `idle_threshold_seconds`, `alert_email` and `timezone`. Other roles MUST get `403 FORBIDDEN`.
+<!-- source: Plan-v3.5 §4.5 "Settings" · PRD "Permission matrix" · B29 · B34 -->
+`GET /v1/company/settings` and `PATCH /v1/company/settings` SHALL be allowed to `company_admin` only. `GET` returns `name`, `slug`, `data_retention_days`, `idle_threshold_seconds` and `timezone`. `PATCH` MUST write only `idle_threshold_seconds` and `timezone`; there is no alert email setting. Other roles MUST get `403 FORBIDDEN`.
 
 #### Scenario: An IT admin edits settings
 - **WHEN** an `it_admin` calls `PATCH /v1/company/settings`
@@ -17,6 +17,10 @@ first install.
 #### Scenario: A slug in the body
 - **WHEN** a company admin patches `{ "slug": "new-slug", "timezone": "UTC" }`
 - **THEN** `slug` is unchanged
+
+#### Scenario: An alert email setting in the body
+- **WHEN** a company admin patches `{ "alert_email": { "delivery": "daily" }, "timezone": "UTC" }`
+- **THEN** only `timezone` is written and the response carries no `alert_email`
 
 ### Requirement: Name and retention are set by WorkBeat staff
 <!-- source: B29 -->
@@ -67,22 +71,6 @@ A `PATCH /v1/company/settings` body holding `name` or `data_retention_days` SHAL
 - **WHEN** a company admin patches `idle_threshold_seconds` with its current value
 - **THEN** `companies.policy_version` is unchanged
 
-### Requirement: Alert email recipients are configurable
-<!-- source: Plan-v3.5 §4.4 "Tamper event processing" · data-model.md "companies" -->
-`alert_email` SHALL be `{ roles, types, delivery }` where `roles` is a non-empty subset of `company_admin`, `manager` and `it_admin`, `types` a subset of the tamper `event_type` values including `offline`, and `delivery` one of `instant`, `hourly`, `daily`. Any other value MUST get `422 VALIDATION_FAILED`.
-
-#### Scenario: Daily digest for IT
-- **WHEN** a company admin sets `{ "roles": ["it_admin"], "types": ["offline"], "delivery": "daily" }`
-- **THEN** the stored `alert_email` equals it
-
-#### Scenario: Nobody is to be emailed
-- **WHEN** a company admin sets `roles` to `[]`
-- **THEN** the response is `422 VALIDATION_FAILED` with `fields` `["alert_email.roles"]` and the stored value is unchanged
-
-#### Scenario: Staff as a recipient role
-- **WHEN** a company admin sets `roles` to `["super_admin"]`
-- **THEN** the response is `422 VALIDATION_FAILED`
-
 ### Requirement: The setup checklist tracks the first install
 <!-- source: Plan-v3.5 §4.5 "Onboarding" -->
 `GET /v1/company/setup` SHALL return, to `company_admin` and `it_admin`, the steps `download_downloader`, `copy_license_key`, `install_first_device` and `first_device_seen` with `done` for each. The first two MUST come from `setup_completed_steps`, marked by `POST /v1/company/setup/steps` with `step`; `install_first_device` MUST be true once the company has a device row and `first_device_seen` once one has `last_heartbeat_at`.
@@ -109,7 +97,7 @@ A `PATCH /v1/company/settings` body holding `name` or `data_retention_days` SHAL
 
 ### Requirement: The company sets its timezone
 <!-- source: B19 · PRD "Activity levels, productivity, calendar and timesheets" -->
-`PATCH /v1/company/settings` SHALL accept `timezone`, an IANA name, from a `company_admin`, and MUST refuse an unknown name with `422 VALIDATION_FAILED`. The default is `UTC`. Reports, calendars, timesheets, the screenshot day and daily alert digests MUST use it.
+`PATCH /v1/company/settings` SHALL accept `timezone`, an IANA name, from a `company_admin`, and MUST refuse an unknown name with `422 VALIDATION_FAILED`. The default is `UTC`. Reports, calendars, timesheets and the screenshot day MUST use it.
 
 #### Scenario: A Dhaka company sets its zone
 - **WHEN** a `company_admin` sets `timezone` to `Asia/Dhaka`

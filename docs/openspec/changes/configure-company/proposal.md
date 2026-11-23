@@ -1,7 +1,7 @@
 ## Why
 
 After signup a company admin tunes the company: its name, how long data is kept (B13, PRD
-"Retention and suspension"), who gets alert emails, the idle threshold every device uses, and the
+"Retention and suspension"), the idle threshold every device uses, and the
 onboarding checklist that walks IT to the first device (Plan-v3.5 §4.5 "Onboarding",
 "Settings"). A company may also open the dashboard at its own domain: its admin adds it and WorkBeat staff
 approve it after checking a DNS TXT record by hand (B33, Plan-v3.5 §4.4, PRD "Tenants and custom domains").
@@ -9,7 +9,7 @@ approve it after checking a DNS TXT record by hand (B33, Plan-v3.5 §4.4, PRD "T
 ## What Changes
 
 - **Company settings** read and write: `name`, `data_retention_days` (30, 60 or 90),
-  `idle_threshold_seconds`, `alert_email`.
+  `idle_threshold_seconds`, `timezone`. No alert email setting (B34).
 - **Setup checklist**: two steps marked by the admin, two derived from devices.
 - **Custom domain**: the company admin sets, reads (with the DNS records to create) and removes it;
   staff read the records and approve or reject it; host lookup through `company_by_host`. No cron job (B33).
@@ -18,7 +18,7 @@ approve it after checking a DNS TXT record by hand (B33, Plan-v3.5 §4.4, PRD "T
 
 ### New Capabilities
 
-- `company-settings`: company profile, retention, idle threshold, alert email, setup checklist.
+- `company-settings`: company profile, retention, idle threshold, timezone, setup checklist.
 - `custom-domains`: domain setup, staff approval, host resolution.
 
 ### Modified Capabilities
@@ -28,7 +28,7 @@ None.
 ## Impact
 
 - Consumed by the web platform (Settings, Onboarding, sign-in page on a company host).
-- `alert_email` is read by `process-tamper-alerts` (`alert-emails`); `data_retention_days` by
+- `data_retention_days` is read by
   `run-scheduled-jobs` (`data-retention`); `idle_threshold_seconds` reaches devices through
   `serve-agent-policy` (`agent-policy`). The notice text belongs to `collection-notice`.
 - The staff Custom domains page (web platform `staff-domains`) approves domains.

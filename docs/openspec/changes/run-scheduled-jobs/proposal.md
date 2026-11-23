@@ -14,8 +14,8 @@ company keeps activity and screenshots for its own `data_retention_days`, 30, 60
 - **Retention cleanup** (`/cron/cleanup`, daily 02:00 UTC): creates future partitions, deletes
   each company's activity, screenshots and their Storage objects past retention, old
   `ingest_batches` and resolved tamper events, and drops partitions that ended more than 90 days ago (the longest retention, B13).
-- `/cron/heartbeat-check` and the alert digests use this mechanism; their
-  logic stays in their own changes.
+- No `/cron/heartbeat-check` or `/cron/alert-digest` (B34): offline is derived from the last
+  heartbeat at read time and there are no alert emails.
 
 ## Capabilities
 
@@ -32,8 +32,7 @@ None.
 
 - A scheduler on the server (cron or a systemd timer running `curl`) calls the routes; the secret is in the API's
   environment (establish-api-foundation 1.2).
-- Jobs specified elsewhere: `offline-detection` (receive-device-health), `custom-domains`
-  (configure-company), `alert-emails` (process-tamper-alerts).
+- Jobs specified elsewhere: `usage-summaries` (summarize-usage).
 - Schema: `0002_spec_gaps.sql` adds `cron_ensure_month_partitions()` and
   `cron_drop_old_partitions()`, which run as the owner and only in `system` scope.
 - Object storage (B26): screenshot objects are deleted with their rows.

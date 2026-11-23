@@ -32,7 +32,7 @@ context: |
     heartbeat     every 5 min per device      POST /agents/heartbeat
     policy        every 30 min per device     GET  /agents/policy with ETag
     sync          every 10 min per device     POST /agents/activity, screenshot uploads
-    offline       15 min without a heartbeat  /cron/heartbeat-check every 5 min
+    offline       15 min without a heartbeat  derived at read time (B34)
     retention     daily 02:00                 /cron/cleanup
 
   SOURCE AUTHORITY. Precedence, highest first:

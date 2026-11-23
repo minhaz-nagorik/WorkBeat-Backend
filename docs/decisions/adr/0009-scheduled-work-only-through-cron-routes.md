@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-11-15
+**Amended:** 2026-11-23. There is no custom-domain check (B33), offline detection or alert digest
+(B34); the jobs are token expiry, usage summaries and cleanup. The Context below is as first written.
 
 ## Context
 
@@ -30,8 +32,7 @@ and stops at a time budget, answering `more: true` (B15).
 A job runs once per schedule however many instances are up, and scaling the API changes nothing.
 A job can be run by hand with the secret, which makes testing and recovery simple. The schedule
 lives outside the code, in the scheduler. The cost: one shared secret guards every `system` route,
-so it must be rotated and never logged; a scheduler outage stops every job, and offline alerts
-stop with it; and the scheduler, not the API, must be configured per environment.
+so it must be rotated and never logged; a scheduler outage stops every job; and the scheduler, not the API, must be configured per environment.
 
 ## Alternatives considered
 
@@ -53,6 +54,4 @@ Any in-process timer, interval or queue consumer that does scheduled work (CLAUD
 - Design: [run-scheduled-jobs](../../openspec/changes/run-scheduled-jobs/design.md).
 - Specs: [cron-routes](../../openspec/changes/run-scheduled-jobs/specs/cron-routes/spec.md),
   [data-retention](../../openspec/changes/run-scheduled-jobs/specs/data-retention/spec.md),
-  [offline-detection](../../openspec/changes/receive-device-health/specs/offline-detection/spec.md),
-  [custom-domains](../../openspec/changes/configure-company/specs/custom-domains/spec.md),
-  [alert-emails](../../openspec/changes/process-tamper-alerts/specs/alert-emails/spec.md).
+  [usage-summaries](../../openspec/changes/summarize-usage/specs/usage-summaries/spec.md).

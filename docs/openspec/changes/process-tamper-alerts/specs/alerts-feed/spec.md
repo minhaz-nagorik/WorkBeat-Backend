@@ -1,6 +1,6 @@
 ## Purpose
 
-The in-app alerts feed: which tamper and offline events each role sees, how they are filtered and
+The in-app alerts feed: which tamper events each role sees, how they are filtered and
 resolved, and how fresh the feed is.
 
 ## ADDED Requirements
@@ -33,9 +33,9 @@ resolved, and how fresh the feed is.
 <!-- source: Plan-v3.5 §4.5 "Dashboard" · B9 -->
 `GET /v1/alerts` SHALL accept `type` (one or more event types, comma-separated), `state` (`open` or `resolved`), `device_id`, `employee_id`, `from`, `to` and `cursor`, and MUST return `{ items, next_cursor, counts }`: at most the page size in `packages/shared`, the next cursor, and `counts` per `event_type` for the same filters without `type` and `cursor`.
 
-#### Scenario: IT reviews open offline alerts
-- **WHEN** an IT admin calls `GET /v1/alerts?type=offline&state=open`
-- **THEN** only unresolved `offline` events are returned
+#### Scenario: IT reviews open hosts-file alerts
+- **WHEN** an IT admin calls `GET /v1/alerts?type=hosts_modified&state=open`
+- **THEN** only unresolved `hosts_modified` events are returned
 
 #### Scenario: Events with the same occurred_at across a page break
 - **WHEN** several events share one `occurred_at` and a page ends among them

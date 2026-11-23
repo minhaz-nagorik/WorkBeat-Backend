@@ -13,9 +13,9 @@ specify the same behaviour.
 | 5 | `manage-employees` | `employee-directory`, `manager-teams`, `monitoring-settings`, `monitoring-pauses` | 2, 3 |
 | 6 | `enroll-devices` | `license-validation`, `device-enrollment`, `device-authentication`, `device-lifecycle` | 3, 5 |
 | 7 | `serve-agent-policy` | `agent-policy`, `block-rules`, `sensitive-domains`, `productivity-rules`, `collection-notice` | 5, 6 |
-| 8 | `receive-device-health` | `heartbeat`, `notice-acknowledgement`, `offline-detection`, `device-status` | 6, 7 |
+| 8 | `receive-device-health` | `heartbeat`, `notice-acknowledgement`, `device-status` | 6, 7 |
 | 9 | `ingest-activity` | `activity-ingestion`, `screenshot-upload`, `screenshot-access` | 6 |
-| 10 | `process-tamper-alerts` | `tamper-ingestion`, `alerts-feed`, `alert-emails` | 6, 8 |
+| 10 | `process-tamper-alerts` | `tamper-ingestion`, `alerts-feed` | 6, 8 |
 | 11 | `report-usage` | `usage-reports`, `calendar-and-timesheets`, `data-export`, `dashboard-summary` | 7, 9 |
 | 12 | `distribute-agents` | `agent-releases`, `installer-downloads`, `agent-updates` | 6, 7 |
 | 13 | `administer-platform` | `staff-companies`, `staff-license-reissue`, `staff-data-boundary` | 2, 3 |

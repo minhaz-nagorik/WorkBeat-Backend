@@ -6,11 +6,11 @@ and the device list and rollout counts that serve them to admins and IT.
 ## ADDED Requirements
 
 ### Requirement: Status is derived in a fixed order and never stored
-<!-- source: Plan-v3.5 §2.4, §5.9 · D38 · D47 -->
-A device's `status` SHALL be computed at read time as the first that applies: `released` (`released_at` set), `deactivated` (`deactivated_at` set), `offline` (`offline_since` set), else `online`. No column MUST store it, and there MUST be no `unassigned` or `tamper` status.
+<!-- source: Plan-v3.5 §2.4, §5.9 · D38 · D47 · B34 -->
+A device's `status` SHALL be computed at read time as the first that applies: `released` (`released_at` set), `deactivated` (`deactivated_at` set), `offline` (`last_heartbeat_at`, or `enrolled_at` when null, more than 15 minutes before the read; threshold in `packages/shared`), else `online`. No column MUST store it, and there MUST be no `unassigned` or `tamper` status.
 
 #### Scenario: A tampered device goes offline
-- **WHEN** a device has an unresolved `hosts_modified` event and `offline_since` set
+- **WHEN** a device has an unresolved `hosts_modified` event and last heartbeated 16 minutes ago
 - **THEN** its status is `offline`
 
 #### Scenario: A released device had tamper events
@@ -18,8 +18,16 @@ A device's `status` SHALL be computed at read time as the first that applies: `r
 - **THEN** its status is `released`
 
 #### Scenario: A deactivated device was offline
-- **WHEN** a device has `deactivated_at` and `offline_since` set
+- **WHEN** a device has `deactivated_at` set and last heartbeated a day ago
 - **THEN** its status is `deactivated`
+
+#### Scenario: Exactly 15 minutes
+- **WHEN** a device last heartbeated exactly 15 minutes before the read
+- **THEN** its status is `online`
+
+#### Scenario: Enrolled but never heard from
+- **WHEN** a device enrolled 20 minutes ago and has `last_heartbeat_at` null
+- **THEN** its status is `offline`
 
 #### Scenario: Enrolled minutes ago
 - **WHEN** a device enrolled 3 minutes ago and has not heartbeated
@@ -56,7 +64,7 @@ Each device SHALL carry `badges`: `outdated` when `agent_version` is below the e
 
 ### Requirement: An open tamper alert is a badge, not a status
 <!-- source: B31 · tamper-ingestion (process-tamper-alerts) -->
-A device SHALL carry the badge `open_alert` while it has an unresolved tamper event other than `offline`, and its `status` MUST be derived as if it had none.
+A device SHALL carry the badge `open_alert` while it has an unresolved tamper event, and its `status` MUST be derived as if it had none.
 
 #### Scenario: Hosts file edited
 - **WHEN** an online device has an unresolved `hosts_modified` event
