@@ -7,13 +7,14 @@ import { timingSafeEqual } from 'node:crypto';
 import { ApiError, config, Db, sha256, Tx } from './core';
 import type { LogCtx } from './http';
 import { cleanupJob } from './cleanup';
+import { Storage } from './storage';
 import { tokenExpiryJob } from './token-expiry';
 import { JobTx, Rows, usageSummaryJob } from './usage';
 
-type Job = (tx: JobTx, rows: Rows) => Promise<{ skipped: boolean; more: boolean }>;
+type Job = (tx: JobTx, rows: Rows, storage: Storage) => Promise<{ skipped: boolean; more: boolean }>;
 const JOBS: Record<string, Job> = {
   'usage-summary': usageSummaryJob,
-  cleanup: cleanupJob,
+  cleanup: (tx, rows, storage) => cleanupJob(tx, rows, (path) => storage.remove('screenshots', path)),
   'token-expiry': tokenExpiryJob,
 };
 
@@ -26,7 +27,7 @@ function secretOk(got: string | undefined) {
 
 @Controller('cron')
 export class CronController {
-  constructor(@Inject(Db) private db: Db) {}
+  constructor(@Inject(Db) private db: Db, @Inject(Storage) private storage: Storage) {}
 
   @Post(':job')
   @HttpCode(200)
@@ -43,7 +44,7 @@ export class CronController {
     });
     const started = new Date(), rows: Rows = {};
     try {
-      const { skipped, more } = await fn(tx, rows);
+      const { skipped, more } = await fn(tx, rows, this.storage);
       const duration_ms = Date.now() - started.getTime();
       console.log(JSON.stringify({ t: new Date(), level: 'info', job, duration_ms, rows_affected: rows, skipped, more }));
       return { data: { job, started_at: started, duration_ms, rows_affected: rows, skipped, more } };

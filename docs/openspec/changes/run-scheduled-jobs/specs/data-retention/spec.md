@@ -64,6 +64,7 @@ Cleanup SHALL delete each stored object (B26) at `screenshots.storage_path` whos
 #### Scenario: Storage is down for the whole run
 - **WHEN** every Storage delete fails
 - **THEN** no `screenshots` row is deleted and the activity tables are still cleaned
+- **AND** the run answers `more` false, so the scheduler does not call it again until its next run
 
 #### Scenario: The object was already gone
 - **WHEN** an expired screenshot's object no longer exists in Storage

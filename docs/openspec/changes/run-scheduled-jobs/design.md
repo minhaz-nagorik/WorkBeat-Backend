@@ -37,6 +37,11 @@ Postgres skip the other months' partitions and use the `(company_id, employee_id
 decides whether hours are needed instead. The budget is `LIMITS.cleanupBudgetMs` (5 min) in
 `apps/api/src/contract.ts`, where the shared constants live until `packages/shared` exists.
 
-### Screenshots are not deleted until task 3.2 (product owner, 19 Nov 2026)
-The first build of cleanup leaves `screenshots` rows and their R2 files alone. Deleting rows alone
-would lose the only record of each file's path; rows and files go together when 3.2 is built.
+### Screenshots go last, files before rows (task 3.2, 23 Nov 2026)
+The first build left screenshots alone, because deleting rows alone would lose the only record of
+each file's path. The sweep now runs after the activity and short-lived deletes, so a Storage outage
+never holds them up. Per company it walks expired and stale-pending rows by `id`, 100 at a time,
+deletes each object and thumbnail (8 in flight), then deletes only the rows whose objects are gone.
+The cursor moves past a row whose delete failed, so one bad object cannot make a run spin. A batch's
+worth of failures in a row means Storage is down: the sweep stops with `more: false`, because the
+scheduler calls again on `more: true` and would only repeat the failures; the next night retries.

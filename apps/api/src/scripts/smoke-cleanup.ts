@@ -33,10 +33,17 @@ async function main() {
       return r;
     } catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); }
   };
-  const run = async () => { const rows: Rows = {}; return { ...(await cleanupJob(tx, rows)), rows }; };
+  // Fake R2: objects that exist, paths whose delete fails, and a switch for Storage being down.
+  const objects = new Set<string>(), broken = new Set<string>();
+  let down = false;
+  const remove = async (path: string) => { if (down || broken.has(path)) throw new Error('R2 DELETE 500'); objects.delete(path); };
+  const run = async () => { const rows: Rows = {}; return { ...(await cleanupJob(tx, rows, remove)), rows }; };
   const runAll = async () => { const total: Rows = {}; let r;
     do { r = await run(); for (const [k, v] of Object.entries(r.rows)) total[k] = (total[k] ?? 0) + v; } while (r.more);
     return total; };
+
+  // Clear whatever earlier runs or seeds left in this _test database, so totals count only this test's rows.
+  await runAll();
 
   // ---- data: company A keeps 30 days, B keeps 90 (B has a released device)
   const q = (sql: string, p: unknown[] = []) => admin.query(sql, p);
@@ -96,9 +103,22 @@ async function main() {
   const batch = async (at: Date) => (await q(`INSERT INTO ingest_batches (device_id, batch_id, company_id, received_at, counts, body_sha256)
       VALUES ($1, $2, $3, $4, '{}', 'x') RETURNING batch_id`, [aDev, randomUUID(), A.id, at])).rows[0].batch_id as string;
   const ibOld = await batch(ago(15)), ibNew = await batch(ago(13));
-  const shot = randomUUID();
-  await q(`INSERT INTO screenshots (id, company_id, device_id, employee_id, captured_at, storage_path, bytes, status, created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, 10, 'pending', $5)`, [shot, A.id, aDev, A.emp, ago(45), `${A.id}/${aDev}/${shot}.jpg`]);
+  const shot = async (co: { id: string; emp: string }, dev: string, captured: Date, o: { pending?: Date; thumb?: boolean; missing?: boolean; broken?: boolean } = {}) => {
+    const id = randomUUID(), path = `${co.id}/${dev}/${id}.jpg`;
+    await q(`INSERT INTO screenshots (id, company_id, device_id, employee_id, captured_at, storage_path, bytes, thumb_bytes, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, 10, $7, $8, $9)`,
+      [id, co.id, dev, co.emp, captured, path, o.thumb ? 5 : null, o.pending ? 'pending' : 'uploaded', o.pending ?? captured]);
+    if (!o.missing) { objects.add(path); if (o.thumb) objects.add(path.replace(/\.jpg$/, '.thumb.jpg')); }
+    if (o.broken) broken.add(path);
+    return { id, path };
+  };
+  const sOld = await shot(A, aDev, ago(45), { thumb: true });         // past 30 days: file, thumbnail and row go
+  const sNew = await shot(A, aDev, ago(29));                          // kept
+  const sMissing = await shot(A, aDev, ago(45), { missing: true });   // file already gone: row goes, counted
+  const sBroken = await shot(A, aDev, ago(45), { broken: true });     // Storage refuses: row kept for next run
+  const sB = await shot(B, bDev, ago(45));                            // B keeps 90: kept
+  const sStale = await shot(B, bDev, ago(0, -3600_000), { pending: ago(0, -25 * 3600_000) }); // pending 25 h: goes
+  const sFresh = await shot(B, bDev, ago(0, -3600_000), { pending: ago(0, -23 * 3600_000) }); // pending 23 h: kept
   await q(`INSERT INTO notice_acknowledgements (company_id, device_id, employee_id, notice_version, acknowledged_at)
     VALUES ($1, $2, $3, 1, $4)`, [A.id, aDev, A.emp, ago(400)]);
 
@@ -140,9 +160,24 @@ async function main() {
   assert.equal(await has('SELECT 1 FROM tamper_events WHERE id = $1', [tResolvedB]), true, 'B event inside 90 days kept');
   assert.equal(await has('SELECT 1 FROM ingest_batches WHERE batch_id = $1', [ibOld]), false, 'ingest batch 15 days old deleted');
   assert.equal(await has('SELECT 1 FROM ingest_batches WHERE batch_id = $1', [ibNew]), true, 'ingest batch 13 days old kept');
-  assert.equal(await has('SELECT 1 FROM screenshots WHERE id = $1', [shot]), true, 'screenshots untouched (task 3.2 later)');
   assert.equal(await count('notice_acknowledgements', A.id), 1, 'notice acknowledgement kept');
-  ok('tamper events, ingest_batches, screenshots untouched, notice acknowledgements kept');
+  ok('tamper events, ingest_batches, notice acknowledgements kept');
+
+  const shotRow = (id: string) => has('SELECT 1 FROM screenshots WHERE id = $1', [id]);
+  assert.equal(total.screenshots, 3, 'three screenshot rows deleted');
+  assert.equal(total.screenshot_delete_failed, 1, 'one failed delete counted');
+  assert.equal(await shotRow(sOld.id), false); assert.equal(objects.has(sOld.path), false, 'file deleted');
+  assert.equal(objects.has(sOld.path.replace(/\.jpg$/, '.thumb.jpg')), false, 'thumbnail deleted');
+  assert.equal(await shotRow(sMissing.id), false, 'already-missing file counts as deleted');
+  assert.equal(await shotRow(sBroken.id), true, 'refused delete keeps the row'); assert.ok(objects.has(sBroken.path));
+  assert.equal(await shotRow(sNew.id), true, 'inside retention kept'); assert.ok(objects.has(sNew.path));
+  assert.equal(await shotRow(sB.id), true, 'B keeps 90 days');
+  assert.equal(await shotRow(sStale.id), false, 'pending 25 h deleted');
+  assert.equal(await shotRow(sFresh.id), true, 'pending 23 h kept');
+  broken.clear();
+  assert.deepEqual(await runAll(), { screenshots: 1 }, 'the refused one goes on the next run');
+  assert.equal(objects.has(sBroken.path), false);
+  ok('screenshots: file and thumbnail before row; missing file counted; refused kept then retried; pending > 24 h');
 
   const parts = (await q(`SELECT c.relname, pg_get_expr(c.relpartbound, c.oid) AS b FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
      JOIN pg_class p ON p.oid = i.inhparent WHERE p.relname = 'app_sessions'`)).rows;
@@ -163,6 +198,22 @@ async function main() {
   assert.equal(lowered.app_sessions, 2, 'lowering retention deletes the backlog');
   for (const [t, col] of TABLES) assert.equal(await count(t, B.id), 0, `${t}: B now keeps 30 days`);
   ok('run twice = once; 30 → 90 deletes nothing; 90 → 30 clears the backlog');
+
+  // ---- Storage down: activity is still cleaned, no screenshot row goes, and the sweep stops after
+  // a batch's worth of failures in a row with more: false (the scheduler would only repeat them).
+  const downShots = [await shot(B, bDev, ago(45)), await shot(B, bDev, ago(45)), await shot(B, bDev, ago(45))];
+  await activity(B, bDev, ago(45));
+  const batchSize = LIMITS.cleanupScreenshotBatch;
+  LIMITS.cleanupScreenshotBatch = 2; down = true;
+  const out = await run();
+  assert.equal(out.more, false, 'Storage down does not ask to be called again');
+  assert.equal(out.rows.app_sessions, 1, 'activity still cleaned');
+  assert.equal(out.rows.screenshots, undefined, 'no screenshot row deleted');
+  assert.equal(out.rows.screenshot_delete_failed, 2, 'stops after a batch of failures in a row');
+  for (const d of downShots) assert.equal(await shotRow(d.id), true);
+  LIMITS.cleanupScreenshotBatch = batchSize; down = false;
+  assert.equal((await runAll()).screenshots, 3, 'all go once Storage is back');
+  ok('Storage down: activity cleaned, rows kept, sweep stops with more: false, recovers next run');
 
   await admin.end(); await api.end();
   console.log('all cleanup checks passed');

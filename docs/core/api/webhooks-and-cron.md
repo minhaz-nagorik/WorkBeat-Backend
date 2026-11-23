@@ -95,7 +95,7 @@ Apply each company's retention and prepare partitions.
 Notes, in order:
 1. `cron_ensure_month_partitions()`: partitions from last month to two months ahead on the four partitioned tables; idempotent.
 2. Per company: deletes `app_sessions`, `url_visits`, `activity_buckets`, `idle_intervals` rows older than now − `data_retention_days`, in batches (size in `packages/shared`), each batch its own short `system`-scope transaction, until done or the time budget is spent (`more` true).
-3. *(Not built yet, task 3.2: screenshot rows and files are kept.)* Screenshots past retention: deletes the Storage object at `storage_path`, then the row. A failed object delete keeps the row for next run; a missing object counts as deleted.
+3. Screenshots past retention (`captured_at`) or still `pending` 24 h after `created_at`, run last so a Storage outage never holds up the other deletes: deletes the R2 object at `storage_path` and its thumbnail, then the row, 100 rows per batch. A failed object delete keeps the row for the next run (`rows_affected.screenshot_delete_failed`); a missing object counts as deleted. After a batch's worth of failures in a row Storage is taken as down and the sweep stops with `more` false, so the scheduler does not repeat the failures.
 4. Deletes `ingest_batches` older than 14 days (`received_at`) and **resolved** `tamper_events` older than retention. Unresolved events are kept.
 5. `cron_drop_old_partitions(90)`: drops monthly partitions ending more than 90 days ago; the count is in `rows_affected.partitions_dropped`.
 

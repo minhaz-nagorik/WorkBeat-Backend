@@ -34,6 +34,8 @@ export const LIMITS = {
   // the scheduler calls again (db/cron). Rows per batch for ingest_batches and tamper_events.
   cleanupBudgetMs: 5 * 60_000,
   cleanupBatchRows: 5_000,
+  cleanupScreenshotBatch: 100, // screenshot rows per batch; their R2 objects are deleted first
+  cleanupStorageParallel: 8, // R2 deletes in flight at once
   ingestBatchKeepDays: 14, // D13
 };
 

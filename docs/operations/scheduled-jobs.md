@@ -36,7 +36,7 @@ heartbeat `5xx` first.
 
 Every job is safe to repeat and safe to call by hand with the secret.
 
-All three are built: `/cron/usage-summary` (summarize-usage), `/cron/token-expiry` (cron-routes) and `/cron/cleanup` (data-retention; screenshots are not deleted yet, task 3.2). Any other job name answers `404`.
+All three are built: `/cron/usage-summary` (summarize-usage), `/cron/token-expiry` (cron-routes) and `/cron/cleanup` (data-retention, screenshots and their R2 files included). Any other job name answers `404`.
 
 ## When a job fails
 

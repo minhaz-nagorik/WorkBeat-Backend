@@ -7,14 +7,14 @@
 
 **Built:** `/cron/cleanup` (`apps/api/src/cleanup.ts`): partitions ahead, each company's activity
 past retention, `ingest_batches` > 14 days, resolved tamper events past retention, partitions past
-90 days. Checked by `pnpm smoke:cleanup` against a local `_test` database (all checks passed) and
+90 days, and screenshots past retention or pending over 24 h with their R2 files and thumbnails (3.2). Checked by `pnpm smoke:cleanup` against a local `_test` database (all checks passed) and
 through the HTTP route (401 without the secret, 200 with it). systemd timers for `usage-summary`
 and `cleanup` in `db/cron/`.
 
 **Not running anywhere yet:** install the timers on one server and set `CRON_SECRET` in the API
 (`db/cron/README.md`).
 
-**Left:** 2.5–2.6 cron-route tests, 3.2 screenshot rows and R2 files (deferred),
+**Left:** 2.5–2.6 cron-route tests,
 3.5 load test, the rest of 3.7 (see 4.3), 4.1 tables with no retention rule, 4.2 partition time zone.
 
 ## 1. Schema
@@ -33,9 +33,9 @@ and `cleanup` in `db/cron/`.
 ## 3. data-retention
 
 - [x] 3.1 `POST /cron/cleanup`: partitions, per-company batched deletes of the four activity tables, time budget and `more`
-- [ ] 3.2 Screenshot sweep: Storage delete first (batched), then rows; failed objects keep their rows — **deferred (product owner, 19 Nov 2026)**: cleanup leaves `screenshots` rows and R2 files untouched until this lands, so the row keeps the only record of each file's path
+- [x] 3.2 Screenshot sweep: Storage delete first (batched), then rows; failed objects keep their rows — Done 23 Nov 2026 in `cleanup.ts` (last step; past retention or pending > 24 h; thumbnail too; id cursor; Storage down → stop with `more: false`); `pnpm smoke:cleanup` covers file and thumbnail deleted, missing file counted, refused delete kept then retried, pending 25 h / 23 h, Storage down
 - [x] 3.3 `ingest_batches` > 14 days, resolved `tamper_events` past retention, `cron_drop_old_partitions(90)`
-- [x] 3.4 Tests (`pnpm smoke:cleanup`, a `_test` database; the Storage parts wait for 3.2): two companies with 30 and 90 days — each keeps its own window (tenant isolation); released device follows retention; Storage failure keeps the row; open tamper event kept; `notice_acknowledgements` never deleted; budget spent → `more` and the next run finishes
+- [x] 3.4 Tests (`pnpm smoke:cleanup`, a `_test` database, with a fake Storage): two companies with 30 and 90 days — each keeps its own window (tenant isolation); released device follows retention; Storage failure keeps the row; open tamper event kept; `notice_acknowledgements` never deleted; budget spent → `more` and the next run finishes
 - [ ] 3.5 Load test: one night's cleanup on the 5,000-device data set finishes within the budget
 - [x] 3.6 Delete oldest first per company, cut-off fixed at the run's start time, retention read per company at run start
 - [ ] 3.7 Tests (edge cases; done in `smoke:cleanup`: existing partition no-op, 90 → 30 backlog, 30 → 90, ±1 min of the cut-off instead of 1-day retention, `ingest_batches` 13/15 days, old resolved tamper event, partition partly inside 90 days, run twice = once, held lock → skipped; rest in 4.3): December run creates Nov–Feb; existing partition is a no-op; 90 → 30 backlog returns `more` and finishes over runs; 30 → 90 deletes nothing new; row exactly at the cut-off kept; 1-day retention; suspended and expired companies follow retention; Storage fully down keeps all screenshot rows and still cleans activity; missing object counted; `ingest_batches` exactly 14 days kept; old resolved tamper event deleted; partition partly inside 90 days kept; nothing to drop → 0; run killed after N batches resumes; kill between object and row delete resumes; two overlapping runs delete no row twice

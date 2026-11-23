@@ -1,8 +1,12 @@
 // POST /cron/cleanup (run-scheduled-jobs `data-retention`, B15): partitions (created ahead, dropped past
-// 90 days), then each company's activity past its retention, old ingest_batches and resolved tamper events.
-// Screenshots are not deleted yet: rows and their R2 files go together in a later change (task 3.2).
+// 90 days), then each company's activity past its retention, old ingest_batches and resolved tamper events,
+// then screenshots past retention or never confirmed: their R2 files first, then their rows (task 3.2).
 import { LIMITS } from './contract';
+import { thumbPath } from './storage';
 import { add, JobTx, Rows } from './usage';
+
+/** Deletes one screenshot object; a missing object counts as deleted (Storage.remove ignores 404). */
+export type RemoveObject = (path: string) => Promise<void>;
 
 const DAY = 24 * 3600 * 1000;
 const ACTIVITY: [table: string, col: string][] = [
@@ -11,7 +15,7 @@ const ACTIVITY: [table: string, col: string][] = [
 
 type Result = { skipped: boolean; more: boolean };
 
-export async function cleanupJob(tx: JobTx, rows: Rows): Promise<Result> {
+export async function cleanupJob(tx: JobTx, rows: Rows, remove: RemoveObject): Promise<Result> {
   const start = new Date(), t0 = Date.now();
   const late = () => Date.now() - t0 > LIMITS.cleanupBudgetMs;
 
@@ -63,5 +67,53 @@ export async function cleanupJob(tx: JobTx, rows: Rows): Promise<Result> {
       if (n.value < LIMITS.cleanupBatchRows) break;
     }
   }
+
+  // Screenshots: past the company's retention by captured_at, or still pending a day after the
+  // upload URL was issued. Objects first, then only the rows whose objects are gone; a row whose
+  // delete failed stays for the next night, and the id cursor moves past it so this run cannot spin.
+  // A full batch's worth of failures in a row means Storage is down: stop with more: false, because the
+  // scheduler calls again on more: true and would only repeat the failures.
+  const pendingCut = new Date(start.getTime() - DAY);
+  let failing = 0; // deletes failed since the last one that worked
+  shots: for (const co of first.value) {
+    for (let after = '00000000-0000-0000-0000-000000000000'; ;) {
+      if (late()) return { skipped: false, more: true };
+      const batch = await tx(async (c) => (await c.query(
+        `SELECT id, storage_path, thumb_bytes FROM screenshots
+          WHERE company_id = $1 AND id > $4 AND (captured_at < $2 OR (status = 'pending' AND created_at < $3))
+          ORDER BY id LIMIT ${LIMITS.cleanupScreenshotBatch}`, [co.id, cutoff(co.days), pendingCut, after])).rows as
+          { id: string; storage_path: string; thumb_bytes: number | null }[]);
+      if (!batch) return { skipped: false, more: true };
+      if (!batch.value.length) break;
+      const gone = await removeAll(batch.value, remove);
+      add(rows, 'screenshot_delete_failed', batch.value.length - gone.length);
+      failing = gone.length ? 0 : failing + batch.value.length;
+      if (failing >= LIMITS.cleanupScreenshotBatch) break shots;
+      if (gone.length) {
+        const n = await tx(async (c) => (await c.query('DELETE FROM screenshots WHERE id = ANY($1::uuid[])', [gone])).rowCount);
+        if (!n) return { skipped: false, more: true };
+        add(rows, 'screenshots', n.value);
+      }
+      if (batch.value.length < LIMITS.cleanupScreenshotBatch) break;
+      after = batch.value[batch.value.length - 1].id;
+    }
+  }
   return { skipped: false, more: false };
+}
+
+// Deletes each screenshot's object and thumbnail, a few at a time; returns the ids fully removed.
+async function removeAll(shots: { id: string; storage_path: string; thumb_bytes: number | null }[], remove: RemoveObject) {
+  const gone: string[] = [];
+  let i = 0;
+  const worker = async () => {
+    for (let s; (s = shots[i++]);) {
+      try {
+        if (s.thumb_bytes !== null) await remove(thumbPath(s.storage_path));
+        await remove(s.storage_path);
+        gone.push(s.id);
+      } catch { /* row kept for the next run; counted, not logged */ }
+    }
+  };
+  await Promise.all(Array.from({ length: LIMITS.cleanupStorageParallel }, worker));
+  return gone;
 }
