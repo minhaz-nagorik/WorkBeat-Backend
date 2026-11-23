@@ -10,6 +10,7 @@ const SAFE_PATH = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
 // A screenshot's thumbnail sits next to it: {company}/{device}/{id}.thumb.jpg.
 export const thumbPath = (path: string) => path.replace(/\.jpg$/, '.thumb.jpg');
 const SAFE_NAME = /^[A-Za-z0-9._-]{1,200}$/; // download file names: safe inside a quoted header value
+const R2_TIMEOUT_MS = 5_000; // a hung R2 call fails the request instead of waiting forever
 
 export type R2 = { endpoint: string; accessKeyId: string; secretAccessKey: string; bucket: string };
 
@@ -89,7 +90,7 @@ export class Storage {
 
   async size(bucket: Bucket, path: string): Promise<number | null> {
     if (bucket === 'screenshots') {
-      const r = await fetch(this.r2Url('HEAD', path, 60), { method: 'HEAD' });
+      const r = await fetch(this.r2Url('HEAD', path, 60), { method: 'HEAD', signal: AbortSignal.timeout(R2_TIMEOUT_MS) });
       if (r.status === 404) return null;
       if (!r.ok) throw new Error(`R2 HEAD ${r.status}`);
       return Number(r.headers.get('content-length'));
@@ -99,7 +100,7 @@ export class Storage {
 
   async remove(bucket: Bucket, path: string) {
     if (bucket === 'screenshots') {
-      const r = await fetch(this.r2Url('DELETE', path, 60), { method: 'DELETE' });
+      const r = await fetch(this.r2Url('DELETE', path, 60), { method: 'DELETE', signal: AbortSignal.timeout(R2_TIMEOUT_MS) });
       if (!r.ok && r.status !== 404) throw new Error(`R2 DELETE ${r.status}`);
       return;
     }

@@ -7,7 +7,7 @@ The API runs scheduled work only when the scheduler calls a `/cron/<job>` route 
 |---|---|---|
 | `workbeat-cron@usage-summary.timer` | hourly | `/cron/usage-summary` |
 | `workbeat-cron@token-expiry.timer` | hourly | `/cron/token-expiry` |
-| `workbeat-cron@cleanup.timer` | daily 02:00 | `/cron/cleanup` |
+| `workbeat-cron@cleanup.timer` | daily 02:00 | `/cron/cleanup`, called again while it answers `"more":true` (at most 12 calls) |
 
 These are all the jobs. There is no `heartbeat-check`, `alert-digest` or `domain-verify` job (B33,
 B34); a new job needs its own timer here.

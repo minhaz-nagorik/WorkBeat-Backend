@@ -39,13 +39,13 @@ async function mailInvitation(c: Tx, inviteToken: string, to: string, roleId: st
 
 // Employees keep a manager only while that user is an enabled member of a team-only role.
 export async function unassignIfNotLead(c: Tx, userId: string) {
-  await c.query(`UPDATE employees SET manager_user_id = NULL WHERE manager_user_id = $1
+  await c.query(`UPDATE employees SET manager_user_id = NULL WHERE company_id = app_company_id() AND manager_user_id = $1
     AND NOT EXISTS (SELECT 1 FROM users WHERE id = $1 AND ${TEAM_LEAD})`, [userId]);
 }
 
 // The last enabled company_admin can be neither demoted nor removed.
 async function assertAnotherAdmin(c: Tx, userId: string) {
-  const { rows } = await c.query("SELECT id FROM users WHERE role = 'company_admin' AND disabled_at IS NULL FOR UPDATE");
+  const { rows } = await c.query("SELECT id FROM users WHERE company_id = app_company_id() AND role = 'company_admin' AND disabled_at IS NULL FOR UPDATE");
   if (!rows.some((r) => r.id !== userId)) throw new ApiError(409, 'CONFLICT', 'The company needs at least one company admin');
 }
 
@@ -132,6 +132,7 @@ export class SessionController {
       if (b.new_password === b.current_password) throw new ApiError(422, 'VALIDATION_FAILED', 'Choose a password different from the current one', { fields: ['new_password'] });
       await c.query('UPDATE users SET password_hash = $2, must_change_password = false, password_expires_at = NULL WHERE id = $1', [u.id, await hashPassword(b.new_password)]);
       await c.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL', [u.id, u.session_id]);
+      await c.query('UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [u.id]); // older reset links die
       return { data: { changed: true } };
     });
   }
@@ -192,9 +193,9 @@ export class SessionController {
       await portalUser(c, req, ADMIN);
       const [users, invitations] = await Promise.all([
         c.query(`SELECT u.id, u.name, u.email, u.role, u.role_id, r.name AS role_name, r.team_only, u.created_at
-                   FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.disabled_at IS NULL ORDER BY u.name`),
+                   FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.company_id = app_company_id() AND u.disabled_at IS NULL ORDER BY u.name`),
         c.query(`SELECT i.id, i.email, i.role, i.role_id, r.name AS role_name, i.created_at, i.expires_at FROM invitations i
-                   LEFT JOIN roles r ON r.id = i.role_id WHERE i.accepted_at IS NULL AND i.revoked_at IS NULL ORDER BY i.created_at`),
+                   LEFT JOIN roles r ON r.id = i.role_id WHERE i.company_id = app_company_id() AND i.accepted_at IS NULL AND i.revoked_at IS NULL ORDER BY i.created_at`),
       ]);
       return { data: { users: users.rows, invitations: invitations.rows } };
     });
@@ -213,7 +214,8 @@ export class SessionController {
          VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(days => $7)) RETURNING id, email, role, role_id, expires_at`,
         [u.company_id, b.email, b.role, roleIdOf(b), sha256(t), u.id, INVITATION_DAYS],
       );
-      await mailInvitation(c, t, b.email, inv.role_id);
+      // A deferred invite is a trial run that is rolled back: only the approved replay emails (maker-checker).
+      if (!c.dryRun) await mailInvitation(c, t, b.email, inv.role_id);
       res.status(201);
       return { data: inv };
     });
@@ -232,7 +234,7 @@ export class SessionController {
          RETURNING id, email, role, role_id, expires_at`,
         [inv.id, sha256(t), INVITATION_DAYS],
       );
-      await mailInvitation(c, t, row.email, row.role_id);
+      if (!c.dryRun) await mailInvitation(c, t, row.email, row.role_id);
       return { data: row };
     });
   }

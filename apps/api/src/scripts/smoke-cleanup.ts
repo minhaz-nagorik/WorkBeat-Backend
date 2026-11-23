@@ -120,8 +120,10 @@ async function main() {
   LIMITS.cleanupBudgetMs = 0;
   const cut = await run();
   assert.equal(cut.more, true); assert.equal(cut.skipped, false);
+  // Old partitions go first: even a run that stops on its budget has dropped them.
+  assert.ok((cut.rows.partitions_dropped ?? 0) >= 4, 'a run cut short still drops old partitions');
   LIMITS.cleanupBudgetMs = budget;
-  ok('budget spent → more: true');
+  ok('budget spent → more: true, old partitions already dropped');
 
   const total = await runAll();
   for (const [t, col] of TABLES) {
@@ -147,7 +149,6 @@ async function main() {
   const ends = parts.map((r) => new Date(/TO \('([^']+)'\)/.exec(r.b)![1]));
   assert.ok(ends.every((e) => e >= ago(90)), 'no partition ending more than 90 days ago is left');
   assert.ok(ends.some((e) => e < ago(60)), 'a partition partly inside 90 days is kept');
-  assert.ok((total.partitions_dropped ?? 0) >= 4, 'old partitions dropped and counted');
   const { rows: [ahead] } = await q(`SELECT to_regclass('app_sessions_' || to_char(now() + interval '2 months', 'YYYYMM')) IS NOT NULL AS ok`);
   assert.ok(ahead.ok, 'partitions exist two months ahead');
   ok('partitions: created ahead, dropped past 90 days, partly-inside month kept');

@@ -30,6 +30,16 @@ const TIGHT = ['/v1/license/validate', '/v1/auth/', '/api/v1/license/validate', 
 
 const AGENT_PACKAGE_MAX_BYTES = 300 * 1024 * 1024;
 
+// 401s to device-key requests per IP in the current minute (rate-limiting). Agents connect directly, so
+// the IP is theirs; portal traffic comes through the web platform's proxy (one IP for everyone), never counted.
+// shortcut: per process; with several API instances each counts its own. Move to a shared store if that matters.
+let failMinute = 0;
+const failsByIp = new Map<string, number>();
+const failsOf = (ip: string) => {
+  if (Date.now() - failMinute >= 60_000) { failMinute = Date.now(); failsByIp.clear(); }
+  return failsByIp.get(ip) ?? 0;
+};
+
 const cfg = config();
 const db = new Db(cfg.DATABASE_URL);
 const storage = new Storage(cfg.STORAGE_DIR, cfg.SECRETS_ENCRYPTION_KEY, {
@@ -103,9 +113,14 @@ async function main() {
   f.addContentTypeParser('text/csv', { parseAs: 'string', bodyLimit: 2 * 1024 * 1024 }, (_req, body, done) => done(null, body)); // employee import
   f.addHook('onRequest', async (req, reply) => {
     reply.header('X-Request-Id', req.id);
+    if (req.headers['x-device-key'] !== undefined && failsOf(req.ip) >= LIMITS.ratePerIpAuthFailures) {
+      reply.header('Retry-After', Math.max(1, Math.ceil((failMinute + 60_000 - Date.now()) / 1000)));
+      return send(reply, req, new ApiError(429, 'RATE_LIMITED', 'Too many requests'));
+    }
   });
   // One structured line per request; never headers, bodies, URLs with signatures or secrets (api-logging).
   f.addHook('onResponse', async (req, reply) => {
+    if (reply.statusCode === 401 && req.headers['x-device-key'] !== undefined) failsByIp.set(req.ip, failsOf(req.ip) + 1);
     const wb = (req as FastifyRequest & { wb?: LogCtx }).wb ?? {};
     console.log(JSON.stringify({
       t: new Date(), request_id: req.id, method: req.method, route: req.routeOptions.url ?? 'unmatched',

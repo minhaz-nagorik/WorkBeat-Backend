@@ -20,7 +20,7 @@ async function companyTz(c: Tx, companyId: string) {
   await c.query("SELECT set_config('timezone', $1, true)", [co.timezone]);
 }
 
-const RAW = (col: string) => `company_id = $1 AND ${col} >= $2::date AND ${col} < $2::date + 1 AND ($3::uuid IS NULL OR employee_id = $3)`;
+const RAW = (col: string) => `company_id = $1 AND ${col} >= $2::date::timestamptz AND ${col} < ($2::date + 1)::timestamptz AND ($3::uuid IS NULL OR employee_id = $3)`;
 
 // Rebuilds one company day, or one employee's part of it. Marks the day built when whole.
 async function buildDay(c: Tx, companyId: string, day: string, employeeId: string | null, rows: Rows) {
@@ -62,17 +62,22 @@ export async function rebuildLateDays(c: Tx, companyId: string, employeeId: stri
   );
   if (!past.length) return;
   await companyTz(c, companyId);
+  // Waits for a build of the same day in progress, but at most 5 s: past that the batch fails (500),
+  // the agent keeps it and sends it again, so a long build never fills the pool with waiting ingests.
+  // Skipping instead would lose the rows: the build cannot see this uncommitted batch.
+  await c.query("SELECT set_config('lock_timeout', '5s', true)");
   for (const { d } of past) {
-    await lockDay(c, companyId, d); // waits for a build of the same day in progress
+    await lockDay(c, companyId, d);
     if ((await c.query('SELECT 1 FROM usage_days WHERE company_id = $1 AND day = $2', [companyId, d])).rowCount)
       await buildDay(c, companyId, d, employeeId, {});
   }
 }
 
-// A timezone change: days and hours move, so the company's summaries go; the job rebuilds them.
+// A timezone change: days and hours move, so the company's days are no longer built; the job rebuilds
+// them. Only usage_days goes (at most 90 rows): reports read the other tables only for days listed
+// there, buildDay deletes a day's old rows before writing it, and retention removes the rest.
 export async function clearSummaries(c: Tx) {
-  for (const t of ['usage_days', 'usage_hours', 'usage_apps', 'usage_domains'])
-    await c.query(`DELETE FROM ${t} WHERE company_id = app_company_id()`);
+  await c.query('DELETE FROM usage_days WHERE company_id = app_company_id()');
 }
 
 // One transaction of a job run, in system scope under the job lock; null when another run holds it.

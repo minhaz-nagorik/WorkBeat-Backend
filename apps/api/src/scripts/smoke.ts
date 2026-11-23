@@ -131,8 +131,10 @@ async function main() {
   assert.equal(put.status, 200);
   const badSig = await fetch(uploadUrl.replace(/(sig|Signature)=[^&]+/, '$1=' + '0'.repeat(64)), { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: jpeg });
   assert.equal(badSig.status, 403);
-  r = await call('POST', `/v1/agents/screenshots/${shotId}/confirm`, dk());
-  assert.equal(r.status, 200); assert.equal(r.json.data.status, 'uploaded');
+  // Two confirms at once (an agent retry racing the first): both answer uploaded.
+  for (const x of await Promise.all([1, 2].map(() => call('POST', `/v1/agents/screenshots/${shotId}/confirm`, dk())))) {
+    assert.equal(x.status, 200); assert.equal(x.json.data.status, 'uploaded');
+  }
   r = await call('POST', '/v1/agents/screenshots', { ...dk(), 'idempotency-key': shotId }, shot);
   assert.equal(r.status, 200); assert.equal(r.json.data.upload_url, null);
   r = await call('POST', `/v1/agents/screenshots/${randomUUID()}/confirm`, dk());

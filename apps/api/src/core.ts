@@ -103,7 +103,11 @@ export type Tx = PoolClient & { tenant(companyId: string): Promise<void>; dryRun
 export class Db {
   pool: Pool;
   constructor(url: string) {
-    this.pool = new Pool({ connectionString: url, max: 20 });
+    // Bounded waits: no request waits forever for a connection or runs one statement forever.
+    // No idle-in-transaction limit: approve keeps its transaction open while the replay runs (changes.controller).
+    // work_mem 32MB: big reports sort in memory instead of on disk (20 connections fit 4–8 GB RAM).
+    this.pool = new Pool({ connectionString: url, max: 20, connectionTimeoutMillis: 10_000, statement_timeout: 60_000,
+      options: '-c work_mem=32MB' });
   }
 
   // One transaction per request (B2). Starts with no scope; credential lookups go through the

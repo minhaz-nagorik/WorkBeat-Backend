@@ -1,5 +1,5 @@
-// POST /cron/cleanup (run-scheduled-jobs `data-retention`, B15): partitions, then each company's
-// activity past its retention, old ingest_batches and resolved tamper events, then partitions past 90 days.
+// POST /cron/cleanup (run-scheduled-jobs `data-retention`, B15): partitions (created ahead, dropped past
+// 90 days), then each company's activity past its retention, old ingest_batches and resolved tamper events.
 // Screenshots are not deleted yet: rows and their R2 files go together in a later change (task 3.2).
 import { LIMITS } from './contract';
 import { add, JobTx, Rows } from './usage';
@@ -16,8 +16,11 @@ export async function cleanupJob(tx: JobTx, rows: Rows): Promise<Result> {
   const late = () => Date.now() - t0 > LIMITS.cleanupBudgetMs;
 
   // Retention is read once, at the run's start; every cut-off is fixed to that moment (task 3.6).
+  // Whole months past the 90-day maximum (B13) go first: no retention is longer, and a run that
+  // ends on its budget must not leave them for ever.
   const first = await tx(async (c) => {
     await c.query('SELECT cron_ensure_month_partitions()');
+    add(rows, 'partitions_dropped', (await c.query('SELECT cron_drop_old_partitions(90) AS n')).rows[0].n);
     const { rows: cos } = await c.query('SELECT id, data_retention_days AS days FROM companies ORDER BY id');
     return cos as { id: string; days: number }[];
   });
@@ -60,10 +63,5 @@ export async function cleanupJob(tx: JobTx, rows: Rows): Promise<Result> {
       if (n.value < LIMITS.cleanupBatchRows) break;
     }
   }
-
-  // Whole months past the 90-day maximum (B13). Per-company deletes above already emptied them.
-  const dropped = await tx(async (c) => (await c.query('SELECT cron_drop_old_partitions(90) AS n')).rows[0].n as number);
-  if (!dropped) return { skipped: false, more: true };
-  add(rows, 'partitions_dropped', dropped.value);
   return { skipped: false, more: false };
 }

@@ -39,7 +39,7 @@ Reports, the calendar, the timesheet, the dashboard and `daily-summaries.csv` SH
 
 ### Requirement: A late batch updates its day at once
 <!-- source: B7 · D13 · ingest-activity `activity-ingestion` -->
-When `POST /v1/agents/activity` stores rows on a summarized day, it SHALL rebuild that employee's summary of the day in the same transaction. The job and ingest MUST take the same lock for a company day, so a batch stored while the day is being built is not lost. The response MUST NOT change.
+When `POST /v1/agents/activity` stores rows on a summarized day, it SHALL rebuild that employee's summary of the day in the same transaction. The job and ingest MUST take the same lock for a company day, so a batch stored while the day is being built is not lost. A batch that waits over 5 s for it MUST get `500 INTERNAL` and store nothing; otherwise the response MUST NOT change.
 
 #### Scenario: A laptop offline for three days
 - **WHEN** a batch with rows from three days ago arrives after that day was summarized
@@ -49,9 +49,13 @@ When `POST /v1/agents/activity` stores rows on a summarized day, it SHALL rebuil
 - **WHEN** a late batch for a day arrives while the job is building that day
 - **THEN** after both commit, the summary includes the batch's rows
 
+#### Scenario: A build holds the day for a minute
+- **WHEN** a late batch waits over 5 s for the day's lock
+- **THEN** the response is `500 INTERNAL`, no row of the batch is stored, and the same batch sent again after the build is accepted
+
 ### Requirement: A timezone change rebuilds the summaries
 <!-- source: B19 -->
-A change of the company `timezone` SHALL delete the company's summaries in the same transaction. Until the job builds them again, reports MUST read raw rows for those days.
+A change of the company `timezone` SHALL delete the company's `usage_days` rows in the same transaction, so no day counts as built. Until the job builds them again, reports MUST read raw rows for those days and MUST NOT read the old summary rows.
 
 #### Scenario: Dhaka to London
 - **WHEN** an admin changes the timezone from `Asia/Dhaka` to `Europe/London`

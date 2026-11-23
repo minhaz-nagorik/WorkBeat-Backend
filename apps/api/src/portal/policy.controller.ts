@@ -38,7 +38,7 @@ export class PolicyController {
     return this.db.tx(async (c) => {
       await portalUser(c, req, 'policy.view');
       return { data: (await c.query(`SELECT r.id, r.type, r.pattern, r.reason, r.created_at, u.name AS created_by_name
-        FROM block_rules r LEFT JOIN users u ON u.id = r.created_by ORDER BY r.created_at, r.id`)).rows };
+        FROM block_rules r LEFT JOIN users u ON u.id = r.created_by WHERE r.company_id = app_company_id() ORDER BY r.created_at, r.id`)).rows };
     });
   }
 
@@ -93,7 +93,7 @@ export class PolicyController {
   async sensitive(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, 'policy.view');
-      return { data: (await c.query('SELECT id, pattern, is_default, created_at FROM sensitive_domains ORDER BY lower(pattern)')).rows };
+      return { data: (await c.query('SELECT id, pattern, is_default, created_at FROM sensitive_domains WHERE company_id = app_company_id() ORDER BY lower(pattern)')).rows };
     });
   }
 
@@ -125,7 +125,7 @@ export class PolicyController {
   async productivity(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, 'policy.view');
-      return { data: (await c.query('SELECT id, match_type, pattern, category FROM productivity_rules ORDER BY match_type, lower(pattern)')).rows };
+      return { data: (await c.query('SELECT id, match_type, pattern, category FROM productivity_rules WHERE company_id = app_company_id() ORDER BY match_type, lower(pattern)')).rows };
     });
   }
 

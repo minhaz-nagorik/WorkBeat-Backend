@@ -41,10 +41,11 @@ const conflict = (field: string, msg: string) => new ApiError(409, 'CONFLICT', m
 const version = z.string().regex(/^\d+\.\d+\.\d+$/);
 const release = { product: z.enum(['agent', 'downloader']), platform: z.enum(['macos', 'windows']), arch: z.enum(['universal', 'x64', 'arm64']), version };
 const RELEASE = 'id, product, platform, arch, version, min_supported, storage_path, sha256, signature, size_bytes, release_notes, published_by, released_at, withdrawn_at';
-const COMPANY = `SELECT c.id, c.name, c.slug, l.plan, l.seat_limit, coalesce(s.seats_used, 0) AS seats_used, l.screenshot_tier, c.status,
+// seatsFor: a company ID parameter, so one company's read counts only its own devices (0016).
+const COMPANY = (seatsFor = 'NULL') => `SELECT c.id, c.name, c.slug, l.plan, l.seat_limit, coalesce(s.seats_used, 0) AS seats_used, l.screenshot_tier, c.status,
     c.suspended_reason, c.custom_domain, c.custom_domain_status, l.trial_ends_at, c.created_at, l.key_last4,
     c.expired_blocking_grace_days, c.custom_domain_checked_at, c.data_retention_days
-  FROM companies c JOIN licenses l ON l.company_id = c.id LEFT JOIN company_seat_counts() s ON s.company_id = c.id`;
+  FROM companies c JOIN licenses l ON l.company_id = c.id LEFT JOIN company_seat_counts(${seatsFor}::uuid) s ON s.company_id = c.id`;
 
 // An estimate for the staff list; invoices stay in Stripe.
 const withMrr = (r: any) => ({ ...r, mrr_estimate: r.status === 'active' ? Math.round(r.seats_used * (1 + TIER_ADDON[r.screenshot_tier]) * 100) / 100 : 0 });
@@ -52,7 +53,7 @@ const archOk = (platform: string, arch: string) => (platform === 'macos' ? arch 
 const notFound = (what: string) => new ApiError(404, 'NOT_FOUND', `${what} not found`);
 
 async function company(c: Tx, id: string) {
-  const { rows: [r] } = await c.query(`${COMPANY} WHERE c.id = $1`, [idOrNone(id)]);
+  const { rows: [r] } = await c.query(`${COMPANY('$1')} WHERE c.id = $1`, [idOrNone(id)]);
   if (!r) throw notFound('Company');
   return withMrr(r);
 }
@@ -112,7 +113,7 @@ export class StaffController {
       const f = parse(z.object({ status: z.enum(['trial', 'active', 'suspended', 'expired']).optional(), q: z.string().max(100).optional() }), q, 422);
       const like = f.q ? '%' + f.q.replace(/[\\%_]/g, '\\$&') + '%' : null; // literal match
       const { rows } = await c.query(
-        `${COMPANY} WHERE ($1::text IS NULL OR c.status = $1)
+        `${COMPANY()} WHERE ($1::text IS NULL OR c.status = $1)
            AND ($2::text IS NULL OR c.name ILIKE $2 OR c.slug ILIKE $2 OR l.key_last4 ILIKE $2)
          ORDER BY c.created_at DESC, c.id`,
         [f.status ?? null, like],
@@ -209,6 +210,7 @@ export class StaffController {
       );
       if (!u) throw notFound('Company admin');
       await c.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [u.id]);
+      await c.query('UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [u.id]); // older reset links die
       return u;
     });
     void sendMail(r.email, 'Your WorkBeat password was reset',

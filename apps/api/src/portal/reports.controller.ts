@@ -6,7 +6,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ALL, can, employeeFor, portalUser, scopeEmployeeIds, User } from '../auth';
 import { ApiError, Db, Tx } from '../core';
 import { textPdf } from '../pdf';
-import { alerts, listDevices } from './devices.controller';
+import { alerts, OFFLINE_MINUTES } from './devices.controller';
 
 const BROWSERS = ['safari', 'google chrome', 'chrome', 'microsoft edge', 'msedge', 'firefox', 'brave browser', 'brave', 'arc', 'opera', 'chromium', 'vivaldi'];
 const EXPORT_ROW_CAP = 100_000;
@@ -15,8 +15,9 @@ export const MAX_RANGE_DAYS = 90;
 export const PDF_MAX_DAYS = 31;
 const CATEGORIES = ['productive', 'neutral', 'unproductive'];
 // Category of an app name or domain from the rules, at read time (never stored, PRD).
-const appCat = (col: string) => `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'app' AND lower(r.pattern) = lower(${col}) LIMIT 1), 'neutral')`;
-const domCat = (col: string) => `coalesce((SELECT r.category FROM productivity_rules r WHERE r.match_type = 'domain'
+// Every query here names company_id itself: the RLS predicate (with its OR) is never an index condition.
+const appCat = (col: string) => `coalesce((SELECT r.category FROM productivity_rules r WHERE r.company_id = app_company_id() AND r.match_type = 'app' AND lower(r.pattern) = lower(${col}) LIMIT 1), 'neutral')`;
+const domCat = (col: string) => `coalesce((SELECT r.category FROM productivity_rules r WHERE r.company_id = app_company_id() AND r.match_type = 'domain'
   AND (lower(${col}) = lower(r.pattern) OR lower(${col}) LIKE '%.' || lower(r.pattern)) ORDER BY length(r.pattern) DESC LIMIT 1), 'neutral')`;
 const APP_CAT = appCat('a.app_name');
 const DOM_CAT = domCat('v.domain');
@@ -32,7 +33,7 @@ const pct = (act: number, tot: number) => (tot > 0 ? Math.round((act / tot) * 10
 
 // Company timezone for the transaction; returns the first retained day.
 export async function localTime(c: Tx) {
-  const { rows: [co] } = await c.query('SELECT timezone, data_retention_days FROM companies');
+  const { rows: [co] } = await c.query('SELECT timezone, data_retention_days FROM companies WHERE id = app_company_id()');
   await c.query("SELECT set_config('timezone', $1, true)", [co.timezone]);
   const { rows: [r] } = await c.query("SELECT to_char(now()::date - $1::int + 1, 'YYYY-MM-DD') AS first, to_char(now()::date, 'YYYY-MM-DD') AS today", [co.data_retention_days]);
   return r as { first: string; today: string };
@@ -52,7 +53,7 @@ async function reportRange(c: Tx, u: User, q: Record<string, string | undefined>
   if (q.employee_id) ids = [(await employeeFor(c, u, q.employee_id)).id];
   else {
     const { rows } = await c.query(
-      `SELECT id FROM employees WHERE (NOT $1 OR manager_user_id = $2) AND archived_at IS NULL -- totals leave out archived
+      `SELECT id FROM employees WHERE company_id = app_company_id() AND (NOT $1 OR manager_user_id = $2) AND archived_at IS NULL -- totals leave out archived
          AND ($3::text IS NULL OR manager_user_id::text = $3) AND ($4::text IS NULL OR department = $4)`,
       [u.team_only, u.id, q.manager_user_id ?? null, q.department ?? null],
     );
@@ -72,8 +73,10 @@ async function split(c: Tx, r: Range): Promise<Split> {
   return { built: [...built], rf: raw[0] ?? addDays(r.to, 1), rt: raw[raw.length - 1] ?? r.to };
 }
 // Raw rows of unsummarized days: $1 ids, $2 rf, $3 rt, $4 built. Summary rows: $1 ids, $4 built.
+// Day bounds are cast to timestamptz: a timestamptz column compared with a date is never an index
+// condition, so the time range would be filtered row by row (same result, the cast is what Postgres does).
 const RAW = (col: string) =>
-  `company_id = app_company_id() AND employee_id = ANY ($1) AND ${col} >= $2::date AND ${col} < $3::date + 1 AND ${col}::date <> ALL ($4::date[])`;
+  `company_id = app_company_id() AND employee_id = ANY ($1) AND ${col} >= $2::date::timestamptz AND ${col} < ($3::date + 1)::timestamptz AND ${col}::date <> ALL ($4::date[])`;
 const SUM = `company_id = app_company_id() AND employee_id = ANY ($1) AND day = ANY ($4::date[])`;
 
 // Per employee and day: tracked time, first/last activity, samples, productivity split.
@@ -96,7 +99,8 @@ async function daily(c: Tx, r: Range) {
                 SELECT employee_id, visited_at::date, 'domain', domain, sum(duration_seconds) FROM url_visits WHERE ${RAW('visited_at')} GROUP BY 1, 2, 4
                 UNION ALL
                 SELECT employee_id, day, 'domain', domain, seconds FROM usage_domains WHERE ${SUM}),
-          cats AS (SELECT n.kind, n.name, CASE WHEN n.kind = 'app' THEN ${appCat('n.name')} ELSE ${domCat('n.name')} END AS cat
+          -- MATERIALIZED: categorise each distinct name once, not once per row (inlined it ran per row).
+          cats AS MATERIALIZED (SELECT n.kind, n.name, CASE WHEN n.kind = 'app' THEN ${appCat('n.name')} ELSE ${domCat('n.name')} END AS cat
                      FROM (SELECT DISTINCT kind, name FROM items) n),
           pr AS (SELECT employee_id, day, sum(sec) FILTER (WHERE cat = 'productive') AS productive,
                         sum(sec) FILTER (WHERE cat = 'neutral') AS neutral, sum(sec) FILTER (WHERE cat = 'unproductive') AS unproductive
@@ -295,7 +299,7 @@ export class ReportsController {
       }
       const raw = await daily(c, { ids: [e.id], from, to });
       const rows = dayRows(raw, days(from, to), await pausedDays(c, e.id, from, to));
-      const { rows: [co] } = await c.query('SELECT name, timezone FROM companies');
+      const { rows: [co] } = await c.query('SELECT name, timezone FROM companies WHERE id = app_company_id()');
       const sum = (k: keyof (typeof rows)[0]) => rows.reduce((a, x) => a + (x[k] as number), 0);
       const act = { a: raw.reduce((s, x) => s + x.act, 0), t: raw.reduce((s, x) => s + x.tot, 0) };
       return {
@@ -341,18 +345,27 @@ export class ReportsController {
       const p = [r.ids, r.from, r.to, EXPORT_ROW_CAP + 1];
       const ts = (col: string) => `to_char(${col}, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS ${col.split('.').pop()}`;
       let header: string[], rows: any[];
+      const tooBig = () => new ApiError(422, 'EXPORT_TOO_LARGE', 'Too many rows; narrow the range', { cap: EXPORT_ROW_CAP });
+      // Raw exports count up to the cap first, unsorted, so a huge range stops early instead of sorting it all.
+      const capped = async (table: string, col: string) => {
+        const { rows: [{ n }] } = await c.query(`SELECT count(*)::int AS n FROM (SELECT 1 FROM ${table} WHERE company_id = app_company_id()
+            AND employee_id = ANY ($1) AND ${col} >= $2::date::timestamptz AND ${col} < ($3::date + 1)::timestamptz LIMIT $4) x`, p);
+        if (n > EXPORT_ROW_CAP) throw tooBig();
+      };
       if (kind === 'app-sessions.csv') {
+        await capped('app_sessions', 'started_at');
         header = ['employee_name', 'employee_email', 'category', 'app_name', 'bundle_id', 'process_name', 'window_title', 'started_at', 'ended_at', 'duration_seconds'];
         rows = (await c.query(`SELECT e.name AS employee_name, e.email AS employee_email, ${APP_CAT} AS category, a.app_name, a.bundle_id, a.process_name,
             a.window_title, ${ts('a.started_at')}, ${ts('a.ended_at')}, a.duration_seconds
           FROM app_sessions a JOIN employees e ON e.id = a.employee_id
-          WHERE a.employee_id = ANY ($1) AND a.started_at >= $2::date AND a.started_at < $3::date + 1 ORDER BY a.started_at LIMIT $4`, p)).rows;
+          WHERE a.company_id = app_company_id() AND a.employee_id = ANY ($1) AND a.started_at >= $2::date::timestamptz AND a.started_at < ($3::date + 1)::timestamptz ORDER BY a.started_at, a.employee_id, a.device_id, a.ended_at, a.app_name, a.window_title LIMIT $4`, p)).rows;
       } else if (kind === 'url-visits.csv') {
+        await capped('url_visits', 'visited_at');
         header = ['employee_name', 'employee_email', 'category', 'browser', 'url', 'domain', 'visited_at', 'duration_seconds'];
         rows = (await c.query(`SELECT e.name AS employee_name, e.email AS employee_email, ${DOM_CAT} AS category, v.browser, v.url, v.domain,
             ${ts('v.visited_at')}, v.duration_seconds
           FROM url_visits v JOIN employees e ON e.id = v.employee_id
-          WHERE v.employee_id = ANY ($1) AND v.visited_at >= $2::date AND v.visited_at < $3::date + 1 ORDER BY v.visited_at LIMIT $4`, p)).rows;
+          WHERE v.company_id = app_company_id() AND v.employee_id = ANY ($1) AND v.visited_at >= $2::date::timestamptz AND v.visited_at < ($3::date + 1)::timestamptz ORDER BY v.visited_at, v.employee_id, v.device_id, v.url LIMIT $4`, p)).rows;
       } else if (kind === 'daily-summaries.csv') {
         header = ['employee_name', 'employee_email', 'date', 'tracked_seconds', 'activity_percent', 'productive_seconds', 'neutral_seconds', 'unproductive_seconds'];
         const { rows: emps } = await c.query('SELECT id, name, email FROM employees WHERE id = ANY ($1)', [r.ids]);
@@ -363,7 +376,7 @@ export class ReportsController {
           neutral_seconds: x.neutral_seconds, unproductive_seconds: x.unproductive_seconds,
         }));
       } else throw new ApiError(404, 'NOT_FOUND', 'Not found');
-      if (rows.length > EXPORT_ROW_CAP) throw new ApiError(422, 'EXPORT_TOO_LARGE', 'Too many rows; narrow the range', { cap: EXPORT_ROW_CAP });
+      if (rows.length > EXPORT_ROW_CAP) throw tooBig();
       return [header.join(','), ...rows.map((row) => header.map((h) => csvCell(row[h])).join(','))].join('\r\n') + '\r\n';
     });
     const name = `workbeat-${kind.replace('.csv', '')}-${q.from}-${q.to}.csv`;
@@ -376,11 +389,18 @@ export class ReportsController {
   async dashboard(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, ALL);
-      const devs = (await listDevices(c, "(NOT $1 OR e.manager_user_id = $2)", [u.team_only, u.id]))
-        .filter((d) => d.status !== 'released' && d.status !== 'deactivated');
-      const count = (s: string) => devs.filter((d) => d.status === s).length;
+      // Counted in SQL; `off` and `tampered` must match deviceStatus() and the open_alert badge in devices.controller.
+      const { rows: [n] } = await c.query(
+        `SELECT count(*) FILTER (WHERE NOT off)::int AS online, count(*) FILTER (WHERE off)::int AS offline, count(*) FILTER (WHERE tampered)::int AS open_alert
+           FROM (SELECT d.offline_since IS NOT NULL OR coalesce(d.last_heartbeat_at, d.enrolled_at) < now() - make_interval(mins => $3) AS off,
+                        EXISTS (SELECT 1 FROM tamper_events t WHERE t.device_id = d.id AND t.resolved_at IS NULL AND t.event_type <> 'offline') AS tampered
+                   FROM devices d JOIN employees e ON e.id = d.employee_id
+                  WHERE d.company_id = app_company_id() AND d.released_at IS NULL AND d.deactivated_at IS NULL
+                    AND (NOT $1 OR e.manager_user_id = $2)) x`,
+        [u.team_only, u.id, OFFLINE_MINUTES],
+      );
       const data: Record<string, unknown> = {
-        devices: { online: count('online'), offline: count('offline'), open_alert: devs.filter((d) => d.badges.includes('open_alert')).length },
+        devices: n,
         alerts: can(u, 'alerts.view') ? (await alerts(c, u, {}, 5)).items : [],
       };
       if (can(u, 'reports')) {
@@ -390,7 +410,8 @@ export class ReportsController {
         data.today = { tracked_seconds: sum('tracked_seconds'), activity_percent: pct(sum('act'), sum('tot')) };
       }
       if (u.role === 'company_admin') {
-        const { rows: [s] } = await c.query('SELECT seat_limit, (SELECT count(*)::int FROM devices WHERE deactivated_at IS NULL AND released_at IS NULL) AS used FROM licenses');
+        const { rows: [s] } = await c.query(`SELECT seat_limit, (SELECT count(*)::int FROM devices WHERE company_id = app_company_id() AND deactivated_at IS NULL AND released_at IS NULL) AS used
+           FROM licenses WHERE company_id = app_company_id()`);
         data.seats = { used: s.used, limit: s.seat_limit };
       }
       return { data };
