@@ -6,7 +6,7 @@ The API runs scheduled work only when the scheduler calls a `/cron/<job>` route 
 | Timer | Schedule (UTC) | Route |
 |---|---|---|
 | `workbeat-cron@usage-summary.timer` | hourly | `/cron/usage-summary` |
-| `workbeat-cron@cleanup.timer` | daily 02:00 | `/cron/cleanup` |
+| `workbeat-cron@cleanup.timer` | daily 02:00 | `/cron/cleanup`, called again while it answers `"more":true` (at most 12 calls) |
 
 `heartbeat-check`, `domain-verify`, `token-expiry` and `alert-digest` answer `404` until they are
 built; add a timer for each when it lands.

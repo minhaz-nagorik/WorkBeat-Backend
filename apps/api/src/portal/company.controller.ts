@@ -24,7 +24,7 @@ const settingsPatch = z.object({
   timezone: z.string().min(1).max(64).optional(), // checked by companies_timezone_check → 422
 });
 const SETTINGS = 'name, slug, data_retention_days, idle_threshold_seconds, alert_email, timezone';
-const SEATS_USED = '(SELECT count(*)::int FROM devices WHERE deactivated_at IS NULL AND released_at IS NULL)';
+const SEATS_USED = '(SELECT count(*)::int FROM devices WHERE company_id = app_company_id() AND deactivated_at IS NULL AND released_at IS NULL)';
 const DOWNLOAD_URL_SECONDS = 15 * 60;
 const CNAME_TARGET = 'proxy.workbeat.io';
 
@@ -119,8 +119,9 @@ export class CompanyController {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN);
       const { rows: [r] } = await c.query(
-        `SELECT setup_completed_steps AS s, EXISTS (SELECT 1 FROM devices) AS installed,
-                EXISTS (SELECT 1 FROM devices WHERE last_heartbeat_at IS NOT NULL) AS seen FROM companies`,
+        `SELECT setup_completed_steps AS s, EXISTS (SELECT 1 FROM devices WHERE company_id = app_company_id()) AS installed,
+                EXISTS (SELECT 1 FROM devices WHERE company_id = app_company_id() AND last_heartbeat_at IS NOT NULL) AS seen
+           FROM companies WHERE id = app_company_id()`,
       );
       return { data: [
         { step: 'download_downloader', done: r.s.includes('download_downloader') },

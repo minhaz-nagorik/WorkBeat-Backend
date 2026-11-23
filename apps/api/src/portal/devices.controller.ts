@@ -6,7 +6,7 @@ import { ApiError, Db, Tx } from '../core';
 import { cmpVersion, newestRelease } from '../device';
 import { HEALTH_FIELDS } from '../contract';
 
-const OFFLINE_MINUTES = 15;
+export const OFFLINE_MINUTES = 15;
 const ALERT_PAGE = 50;
 const DEVICE = `d.id, d.hostname, d.os, d.os_version, d.arch, d.agent_version, d.last_heartbeat_at, d.released_at, d.deactivated_at,
   d.offline_since, d.enrolled_at, d.permissions, d.browser_access, d.helper_status, d.health, d.active_pause_id,
@@ -27,7 +27,7 @@ export function deviceStatus(d: any) {
 }
 
 async function withStatus(c: Tx, rows: any[], detail = false) {
-  const { rows: [co] } = await c.query('SELECT min_agent_version FROM companies');
+  const { rows: [co] } = await c.query('SELECT min_agent_version FROM companies WHERE id = app_company_id()');
   const mins = new Map<string, string | null>();
   for (const d of rows) {
     const k = `${d.os}/${d.arch}`;
@@ -60,7 +60,7 @@ async function withStatus(c: Tx, rows: any[], detail = false) {
 }
 
 export async function listDevices(c: Tx, where = 'true', params: unknown[] = [], detail = false) {
-  const { rows } = await c.query(`SELECT ${DEVICE} FROM devices d JOIN employees e ON e.id = d.employee_id WHERE ${where} ORDER BY d.hostname, d.id`, params);
+  const { rows } = await c.query(`SELECT ${DEVICE} FROM devices d JOIN employees e ON e.id = d.employee_id WHERE d.company_id = app_company_id() AND (${where}) ORDER BY d.hostname, d.id`, params);
   return withStatus(c, rows, detail);
 }
 
@@ -82,7 +82,7 @@ export async function deactivateAsUser(c: Tx, req: FastifyRequest, id: string) {
 
 // alerts-feed: the caller's events, newest first; a team-only role sees devices of own team only.
 const ALERT_FROM = `FROM tamper_events t JOIN devices d ON d.id = t.device_id JOIN employees e ON e.id = d.employee_id
-  WHERE (NOT $1 OR e.manager_user_id = $2)
+  WHERE t.company_id = app_company_id() AND (NOT $1 OR e.manager_user_id = $2)
     AND ($3::text[] IS NULL OR t.event_type = ANY ($3))
     AND ($4::text IS NULL OR ($4 = 'open') = (t.resolved_at IS NULL))
     AND ($5::uuid IS NULL OR t.device_id = $5)

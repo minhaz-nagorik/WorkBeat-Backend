@@ -17,6 +17,11 @@ On the employee, import, monitoring-settings, pause, device release and deactiva
 - **WHEN** an `it_admin` posts a block rule with a scheme
 - **THEN** the response is `422 VALIDATION_FAILED` and no change is stored
 
+#### Scenario: A deferred invitation sends no email
+- **WHEN** a team invitation or its resend becomes a pending change
+- **THEN** no invitation email is sent
+- **AND** when another Company Admin approves it, one email is sent whose link works
+
 ### Requirement: The change object describes the request for people
 <!-- source: product owner 17 Nov 2026 -->
 A change SHALL carry `id`, `status` (pending, approved, rejected, cancelled, failed), `resource`, `action`, `target_id`, a plain-language `summary` with no enum value or ID, `requested_by` `{ id, name }`, `requested_at`, `decided_by`, `decided_at`, `reason` and `error` `{ code, message }` when failed.

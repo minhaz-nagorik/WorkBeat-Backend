@@ -39,7 +39,7 @@ export class ChangesController {
       const u = await portalUser(c, req, ALL);
       const f = parse(z.object({ status: STATUS.optional(), resource: RESOURCE.optional() }), q, 422);
       const { rows } = await c.query(
-        `SELECT ${CHANGE} WHERE ($1::text IS NULL OR ch.status = $1) AND ($2::text IS NULL OR ch.resource = $2)
+        `SELECT ${CHANGE} WHERE ch.company_id = app_company_id() AND ($1::text IS NULL OR ch.status = $1) AND ($2::text IS NULL OR ch.resource = $2)
            AND ($3 = 'company_admin' OR ch.requested_by = $4) ORDER BY ch.requested_at DESC, ch.id LIMIT $5`,
         [f.status ?? null, f.resource ?? null, u.role, u.id, LIST_MAX],
       );

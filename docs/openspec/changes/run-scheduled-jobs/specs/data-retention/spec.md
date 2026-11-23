@@ -108,7 +108,7 @@ Cleanup MUST NOT delete `notice_acknowledgements`, `employees`, `devices`, `user
 
 ### Requirement: Partitions past the maximum are dropped
 <!-- source: B13 · Plan-v3.5 §4.4 "Reports and data lifecycle" -->
-After the per-company deletes, cleanup SHALL call `cron_drop_old_partitions(90)`, dropping every monthly partition that ends more than 90 days ago, and MUST report the number dropped.
+Right after preparing partitions and before the per-company deletes, cleanup SHALL call `cron_drop_old_partitions(90)`, dropping every monthly partition that ends more than 90 days ago, and MUST report the number dropped. A run that ends on its budget MUST still have dropped them.
 
 #### Scenario: A partition ends 120 days ago
 - **WHEN** cleanup runs

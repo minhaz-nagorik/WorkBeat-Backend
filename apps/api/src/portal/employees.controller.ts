@@ -27,7 +27,7 @@ async function withPresence(c: Tx, rows: any[]) {
   );
   const { rows: act } = await c.query(
     `SELECT d.id FROM devices d JOIN companies co ON co.id = d.company_id
-      WHERE d.employee_id = ANY ($1) AND d.released_at IS NULL
+      WHERE d.company_id = app_company_id() AND d.employee_id = ANY ($1) AND d.released_at IS NULL
         AND CASE WHEN d.last_input_at IS NOT NULL
                  THEN d.last_input_at >= d.last_heartbeat_at - make_interval(secs => co.idle_threshold_seconds)
                  ELSE EXISTS (SELECT 1 FROM activity_buckets b WHERE b.company_id = d.company_id AND b.device_id = d.id
@@ -36,12 +36,14 @@ async function withPresence(c: Tx, rows: any[]) {
   );
   const active = new Set(act.map((a) => a.id));
   const devs = await listDevices(c, 'd.employee_id = ANY ($1) AND d.released_at IS NULL', [ids]);
+  const paused = new Map(st.map((x) => [x.id, x.paused]));
+  const byEmployee = new Map<string, typeof devs>();
+  for (const d of devs) (byEmployee.get(d.employee.id) ?? byEmployee.set(d.employee.id, []).get(d.employee.id)!).push(d);
   return rows.map((r) => {
-    const s = st.find((x) => x.id === r.id);
-    const mine = devs.filter((d) => d.employee.id === r.id);
+    const mine = byEmployee.get(r.id) ?? [];
     const live = mine.filter((d) => d.status !== 'deactivated');
     const online = live.filter((d) => d.status === 'online');
-    const presence = s?.paused ? 'paused' : !live.length ? 'no_device' : !online.length ? 'offline' : online.some((d) => active.has(d.id)) ? 'active' : 'idle';
+    const presence = paused.get(r.id) ? 'paused' : !live.length ? 'no_device' : !online.length ? 'offline' : online.some((d) => active.has(d.id)) ? 'active' : 'idle';
     return { ...r, presence, devices: mine.map((d) => ({ id: d.id, hostname: d.hostname, os: d.os, status: d.status, last_heartbeat_at: d.last_heartbeat_at })) };
   });
 }
@@ -108,7 +110,7 @@ export class EmployeesController {
       const u = await portalUser(c, req, 'employees.view');
       const { rows } = await c.query(
         `SELECT ${FULL} FROM employees
-          WHERE ($1 OR archived_at IS NULL) AND (NOT $2 OR manager_user_id = $3)
+          WHERE company_id = app_company_id() AND ($1 OR archived_at IS NULL) AND (NOT $2 OR manager_user_id = $3)
             AND ($4::uuid IS NULL OR manager_user_id = $4) ORDER BY name, id`,
         [archived === 'true', u.team_only, u.id, managerId ? idOrNone(managerId) : null],
       );
@@ -139,12 +141,12 @@ export class EmployeesController {
       let rows = parseCsv(req.body);
       if (rows[0]?.[0]?.trim().toLowerCase() === 'name') rows = rows.slice(1);
       if (rows.length > IMPORT_MAX_ROWS) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', `At most ${IMPORT_MAX_ROWS} rows`);
-      const { rows: managers } = await c.query(`SELECT id, lower(email) AS email FROM users WHERE ${TEAM_LEAD}`);
-      const { rows: existing } = await c.query('SELECT lower(email) AS email FROM employees WHERE archived_at IS NULL AND email IS NOT NULL');
+      const { rows: managers } = await c.query(`SELECT id, lower(email) AS email FROM users WHERE company_id = app_company_id() AND ${TEAM_LEAD}`);
+      const { rows: existing } = await c.query('SELECT lower(email) AS email FROM employees WHERE company_id = app_company_id() AND archived_at IS NULL AND email IS NOT NULL');
       const taken = new Set(existing.map((r) => r.email));
       // A returning employee is restored, not created again (D46): an email only an archived employee holds is refused.
       const { rows: gone } = await c.query(
-        'SELECT DISTINCT ON (lower(email)) id, name, lower(email) AS email FROM employees WHERE archived_at IS NOT NULL AND email IS NOT NULL ORDER BY lower(email), archived_at DESC',
+        'SELECT DISTINCT ON (lower(email)) id, name, lower(email) AS email FROM employees WHERE company_id = app_company_id() AND archived_at IS NOT NULL AND email IS NOT NULL ORDER BY lower(email), archived_at DESC',
       );
       const archivedBy = new Map(gone.map((r) => [r.email, r]));
       const seen = new Set<string>(), bad: number[] = [], create: any[] = [], skipped: string[] = [];
@@ -382,9 +384,9 @@ export class EmployeesController {
       }
       const { first } = await localTime(c); // sets the transaction TimeZone to the company's
       const range = { from: from! < first ? first : from!, to: to! };
-      const { rows: [l] } = await c.query('SELECT screenshot_tier FROM licenses');
+      const { rows: [l] } = await c.query('SELECT screenshot_tier FROM licenses WHERE company_id = app_company_id()');
       if (l.screenshot_tier === 'off') return { data: { screenshots_enabled: false, ...range, total: 0, items: [], next_cursor: null } };
-      const where = `s.employee_id = $1 AND s.status = 'uploaded' AND s.captured_at >= $2::date AND s.captured_at < $3::date + 1
+      const where = `s.company_id = app_company_id() AND s.employee_id = $1 AND s.status = 'uploaded' AND s.captured_at >= $2::date::timestamptz AND s.captured_at < ($3::date + 1)::timestamptz
         AND ($4::time IS NULL OR (s.captured_at::time >= $4::time AND s.captured_at::time < $5::time))`;
       const { rows: [{ total }] } = await c.query(`SELECT count(*)::int AS total FROM screenshots s WHERE ${where}`, [e.id, range.from, range.to, start, end]);
       const { rows } = await c.query(

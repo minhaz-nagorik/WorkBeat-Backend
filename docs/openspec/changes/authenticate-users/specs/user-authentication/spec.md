@@ -49,7 +49,7 @@ Every route outside the agent, Downloader, webhook, cron, sign-in, password-rese
 
 ### Requirement: Sessions end on logout, password change and removal
 <!-- source: B22 · B24 · D41 -->
-A session SHALL last 7 days. `POST /v1/auth/logout` MUST revoke the caller's session and answer `204`. `POST /v1/auth/password` with `current_password` and `new_password` (10–200 characters) MUST revoke the user's other sessions; a wrong current password MUST answer `422 VALIDATION_FAILED`. Removing a user MUST revoke all of their sessions.
+A session SHALL last 7 days. `POST /v1/auth/logout` MUST revoke the caller's session and answer `204`. `POST /v1/auth/password` with `current_password` and `new_password` (10–200 characters) MUST revoke the user's other sessions and use up their open password resets; a wrong current password MUST answer `422 VALIDATION_FAILED`. Removing a user MUST revoke all of their sessions.
 
 #### Scenario: Sign out
 - **WHEN** a user calls `POST /v1/auth/logout` and then `GET /v1/me` with the same token
@@ -58,6 +58,10 @@ A session SHALL last 7 days. `POST /v1/auth/logout` MUST revoke the caller's ses
 #### Scenario: A password change signs out other devices
 - **WHEN** a user changes their password from one browser
 - **THEN** that browser's session keeps working and every other session of theirs answers `401`
+
+#### Scenario: A reset link from before the change
+- **WHEN** a user requested a reset link and then changed their password while signed in
+- **THEN** confirming that link answers `410 PASSWORD_RESET_EXPIRED` and the new password stays
 
 #### Scenario: A removed user calls again
 - **WHEN** a company admin has removed a manager and the manager's unexpired session calls `GET /v1/me`

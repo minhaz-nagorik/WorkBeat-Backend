@@ -34,7 +34,8 @@ export class CronController {
     if (!fn) throw new ApiError(404, 'NOT_FOUND', 'Not found');
     (req as FastifyRequest & { wb?: LogCtx }).wb = { scope: 'system' };
     const tx: JobTx = (work) => this.db.tx(async (c: Tx) => {
-      await c.query("SELECT set_config('app.scope', 'system', true)");
+      // Jobs have their own budgets; one retention DELETE or day build may run past the 60 s request limit.
+      await c.query("SELECT set_config('app.scope', 'system', true), set_config('statement_timeout', '15min', true)");
       const { rows: [l] } = await c.query('SELECT pg_try_advisory_xact_lock(hashtext($1)) AS ok', ['cron:' + job]);
       return l.ok ? { value: await work(c) } : null;
     });

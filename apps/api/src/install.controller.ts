@@ -44,7 +44,7 @@ export class InstallController {
       if (seat.seat_limit !== null && seat.used >= seat.seat_limit) throw new ApiError(403, 'SEAT_LIMIT_EXCEEDED', 'No free seat');
 
       const { rows: employees } = await c.query(
-        'SELECT id, name, email, department FROM employees WHERE archived_at IS NULL ORDER BY name, id',
+        'SELECT id, name, email, department FROM employees WHERE company_id = app_company_id() AND archived_at IS NULL ORDER BY name, id',
       );
       const data: Record<string, unknown> = { company_name: seat.name, employees };
       if (!body.employee_id) return { data };
@@ -100,8 +100,8 @@ export class InstallController {
         // Serialise enrollments of one device ID in one company, so racing installs share one row.
         await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${tok.company_id}/${body.hardware_id}`]);
         const { rows: [live] } = await c.query(
-          'SELECT id, employee_id, last_heartbeat_at FROM devices WHERE hardware_id = $1 AND released_at IS NULL',
-          [body.hardware_id],
+          'SELECT id, employee_id, last_heartbeat_at FROM devices WHERE company_id = $2 AND hardware_id = $1 AND released_at IS NULL',
+          [body.hardware_id, tok.company_id],
         );
         const key = token('wbd_');
         const ident = [body.hostname, body.os, body.os_version, body.arch, body.model ?? null, body.serial_number ?? null, body.agent_version];

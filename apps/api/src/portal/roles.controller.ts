@@ -31,7 +31,7 @@ export class RolesController {
   async list(@Req() req: FastifyRequest) {
     return this.db.tx(async (c) => {
       await portalUser(c, req, ADMIN);
-      return { data: (await c.query(`SELECT ${ROLE} FROM roles r ORDER BY lower(r.name)`)).rows };
+      return { data: (await c.query(`SELECT ${ROLE} FROM roles r WHERE r.company_id = app_company_id() ORDER BY lower(r.name)`)).rows };
     });
   }
 
@@ -55,7 +55,7 @@ export class RolesController {
       const r = await one(c, id, true);
       await c.query('UPDATE roles SET name = $2, permissions = $3, team_only = $4 WHERE id = $1', [r.id, b.name, b.permissions, b.team_only]).catch(taken);
       // No longer team-only: its users stop being anyone's manager.
-      if (!b.team_only) await c.query('UPDATE employees SET manager_user_id = NULL WHERE manager_user_id IN (SELECT id FROM users WHERE role_id = $1)', [r.id]);
+      if (!b.team_only) await c.query('UPDATE employees SET manager_user_id = NULL WHERE company_id = app_company_id() AND manager_user_id IN (SELECT id FROM users WHERE role_id = $1)', [r.id]);
       return { data: await one(c, r.id) };
     });
   }

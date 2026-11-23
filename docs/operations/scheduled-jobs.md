@@ -27,7 +27,7 @@ Runtimes are expectations until the load test measures them (`data-retention` ta
 | Field | Read it as |
 |---|---|
 | `skipped: true` | Another run held the advisory lock. Normal if runs overlap; a problem if every run skips |
-| `more: true` | Cleanup spent its budget. The next night continues. Several nights in a row means the budget or batch size is too small |
+| `more: true` | Cleanup spent its budget. The service calls it again at once, up to 12 calls a night. If the 12th still says `more: true`, the budget or batch size is too small |
 | `500 INTERNAL` | The run failed. The log line has the job name and error class, never row values |
 | `401` | The scheduler's secret does not match the API's `CRON_SECRET` |
 

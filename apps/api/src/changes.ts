@@ -100,7 +100,8 @@ export function deferAsChange(c: Tx, req: FastifyRequest, user: { id: string; co
       const x: Ctx = { c, params: req.params as Record<string, string>, body: req.body, result };
       const body = typeof req.body === 'string' ? req.body : req.body === undefined ? null : JSON.stringify(req.body);
       const { rows: [{ recent }] } = await c.query(
-        'SELECT EXISTS (SELECT 1 FROM changes WHERE notified_at > now() - make_interval(mins => $1)) AS recent', [NOTIFY_MINUTES]);
+        // requested_at bounds it on changes_company (notified_at is set at insert, so equal to requested_at).
+        'SELECT EXISTS (SELECT 1 FROM changes WHERE company_id = app_company_id() AND requested_at > now() - make_interval(mins => $1) AND notified_at > now() - make_interval(mins => $1)) AS recent', [NOTIFY_MINUTES]);
       const { rows: [{ id: changeId }] } = await c.query(
         `INSERT INTO changes (company_id, resource, action, target_id, summary, method, path, content_type, body, requested_by, notified_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $11 THEN NULL ELSE now() END) RETURNING id`,
@@ -108,7 +109,7 @@ export function deferAsChange(c: Tx, req: FastifyRequest, user: { id: string; co
          typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : null, body, user.id, recent],
       );
       const { rows: [change] } = await c.query(`SELECT ${CHANGE} WHERE ch.id = $1`, [changeId]);
-      const admins = recent ? [] : (await c.query("SELECT email FROM users WHERE role = 'company_admin' AND disabled_at IS NULL AND id <> $1", [user.id])).rows;
+      const admins = recent ? [] : (await c.query("SELECT email FROM users WHERE company_id = app_company_id() AND role = 'company_admin' AND disabled_at IS NULL AND id <> $1", [user.id])).rows;
       await c.query('COMMIT');
       for (const a of admins)
         void sendMail(a.email, 'A change is waiting for your approval in WorkBeat',

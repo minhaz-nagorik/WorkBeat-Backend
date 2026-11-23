@@ -219,31 +219,46 @@ export class AgentsController {
   @Post('screenshots/:id/confirm')
   @HttpCode(200)
   async confirm(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Param('id') id: string) {
-    return this.db.tx(async (c) => {
+    const notFound = new ApiError(404, 'NOT_FOUND', 'Screenshot not found');
+    const done = { data: { id, status: 'uploaded' } };
+    // The R2 checks run between two short transactions: a slow R2 must never hold a pooled connection.
+    const s = await this.db.tx(async (c) => {
       const { dev, billing } = await authDevice(c, key, 'upload');
       tag(req, dev);
       if (billing) throw billing;
-      const notFound = new ApiError(404, 'NOT_FOUND', 'Screenshot not found');
       if (!uuid.safeParse(id).success) throw notFound;
-      const { rows: [s] } = await c.query('SELECT storage_path, bytes, thumb_bytes, status FROM screenshots WHERE id = $1 AND device_id = $2 FOR UPDATE', [id, dev.device_id]);
+      const { rows: [s] } = await c.query('SELECT storage_path, bytes, thumb_bytes, status FROM screenshots WHERE id = $1 AND device_id = $2', [id, dev.device_id]);
       if (!s) throw notFound;
-      if (s.status === 'uploaded') return { data: { id, status: 'uploaded' } };
-      const size = await this.storage.size('screenshots', s.storage_path);
-      if (size !== s.bytes) {
-        if (size !== null) await this.storage.remove('screenshots', s.storage_path);
-        throw new ApiError(422, 'VALIDATION_FAILED', 'Uploaded object missing or wrong size', { fields: ['bytes'] });
+      return s;
+    });
+    if (s.status === 'uploaded') return done;
+    const size = await this.storage.size('screenshots', s.storage_path);
+    if (size !== s.bytes) {
+      if (size !== null) await this.storage.remove('screenshots', s.storage_path);
+      throw new ApiError(422, 'VALIDATION_FAILED', 'Uploaded object missing or wrong size', { fields: ['bytes'] });
+    }
+    // Keep the thumbnail only when whole; a missing or partial one never fails the confirmation.
+    let thumb = s.thumb_bytes as number | null;
+    if (thumb !== null) {
+      const t = await this.storage.size('screenshots', thumbPath(s.storage_path));
+      if (t !== thumb) {
+        if (t !== null) await this.storage.remove('screenshots', thumbPath(s.storage_path));
+        thumb = null;
       }
-      // Keep the thumbnail only when whole; a missing or partial one never fails the confirmation.
-      let thumb = s.thumb_bytes as number | null;
-      if (thumb !== null) {
-        const t = await this.storage.size('screenshots', thumbPath(s.storage_path));
-        if (t !== thumb) {
-          if (t !== null) await this.storage.remove('screenshots', thumbPath(s.storage_path));
-          thumb = null;
-        }
-      }
-      await c.query("UPDATE screenshots SET status = 'uploaded', uploaded_at = coalesce(uploaded_at, now()), thumb_bytes = $2 WHERE id = $1", [id, thumb]);
-      return { data: { id, status: 'uploaded' } };
+    }
+    return this.db.tx(async (c) => {
+      const { dev, billing } = await authDevice(c, key, 'upload');
+      if (billing) throw billing;
+      // Only a pending row flips; a retry that changed thumb_bytes meanwhile loses its thumbnail, never the screenshot.
+      const up = await c.query(
+        `UPDATE screenshots SET status = 'uploaded', uploaded_at = coalesce(uploaded_at, now()),
+                thumb_bytes = CASE WHEN thumb_bytes IS NOT DISTINCT FROM $3::int THEN $2::int END
+          WHERE id = $1 AND device_id = $4 AND status = 'pending'`,
+        [id, thumb, s.thumb_bytes, dev.device_id],
+      );
+      // 0 rows: a concurrent confirm won (still answer uploaded), or the row is gone (404).
+      if (!up.rowCount && !(await c.query('SELECT 1 FROM screenshots WHERE id = $1 AND device_id = $2', [id, dev.device_id])).rowCount) throw notFound;
+      return done;
     });
   }
 

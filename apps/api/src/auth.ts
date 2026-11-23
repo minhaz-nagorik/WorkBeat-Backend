@@ -93,7 +93,7 @@ export async function portalUser(c: Tx, req: FastifyRequest, need: Need, opts: {
 export const TEAM_LEAD = "disabled_at IS NULL AND role_id IN (SELECT id FROM roles WHERE team_only)";
 
 export const otherAdmins = async (c: Tx, userId: string) =>
-  (await c.query("SELECT 1 FROM users WHERE role = 'company_admin' AND disabled_at IS NULL AND id <> $1 LIMIT 1", [userId])).rowCount! > 0;
+  (await c.query("SELECT 1 FROM users WHERE company_id = app_company_id() AND role = 'company_admin' AND disabled_at IS NULL AND id <> $1 LIMIT 1", [userId])).rowCount! > 0;
 
 // Staff routes: super_admin only, in staff scope.
 export async function staffUser(c: Tx, req: FastifyRequest): Promise<User> {
@@ -117,6 +117,6 @@ export async function employeeFor(c: Tx, u: User, id: string) {
 
 // Employee IDs the caller's totals cover (a team-only role: own team only); archived employees are left out (usage-reports, dashboard-summary).
 export async function scopeEmployeeIds(c: Tx, u: User): Promise<string[]> {
-  const { rows } = await c.query("SELECT id FROM employees WHERE (NOT $1 OR manager_user_id = $2) AND archived_at IS NULL", [u.team_only, u.id]);
+  const { rows } = await c.query("SELECT id FROM employees WHERE company_id = app_company_id() AND (NOT $1 OR manager_user_id = $2) AND archived_at IS NULL", [u.team_only, u.id]);
   return rows.map((r) => r.id);
 }

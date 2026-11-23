@@ -333,10 +333,17 @@ async function main() {
   assert.equal(expect(await call('POST', `/v1/changes/${own.id}/approve`, admin2.token), 200).change.status, 'approved');
   const itAsk = expect(await call('POST', '/v1/block-rules', it.token, { type: 'domain', pattern: `w-${dom}` }), 202).change;
   assert.equal(expect(await call('POST', `/v1/changes/${itAsk.id}/approve`, admin2.token), 200).change.status, 'approved', 'any admin approves a member alone');
+  // A deferred invitation is a trial run: no email until approved, then one email whose link works; approved once only.
+  const lateEmail = `deferred-${run}@example.test`;
+  const deferredInv = expect(await call('POST', '/v1/team/invitations', admin, { email: lateEmail, role: 'company_admin' }), 202).change;
+  assert.ok(!readdirSync(OUTBOX).some((n) => n.includes(lateEmail)), 'a deferred invitation sends no email');
+  assert.equal(expect(await call('POST', `/v1/changes/${deferredInv.id}/approve`, admin2.token), 200).change.status, 'approved');
+  expect(await call('POST', '/v1/invitations/lookup', undefined, { token: decodeURIComponent(inviteToken(lateEmail)) }), 200);
+  expect(await call('POST', `/v1/changes/${deferredInv.id}/approve`, admin2.token), 409, 'CONFLICT');
   const drop = expect(await call('DELETE', `/v1/team/users/${admin2.id}`, admin), 202).change;
   expect(await call('POST', `/v1/changes/${drop.id}/approve`, admin2.token), 200);
   expect(await call('POST', '/v1/block-rules', admin, { type: 'domain', pattern: `v-${dom}` }), 201); // alone again: no wait
-  ok('maker-checker: a second Company Admin approves, never the maker; a lone admin acts at once');
+  ok('maker-checker: a second Company Admin approves, never the maker; a lone admin acts at once; invite mailed only once approved');
   const fromRegex = expect(await call('POST', '/v1/block-rules', admin, { type: 'regex', pattern: `^(www\\.)?(a-${run}\\.com|b-${run}\\.com)/games.*$` }), 201);
   assert.deepEqual(fromRegex.map((r: any) => r.pattern), [`a-${run}.com/games`, `b-${run}.com/games`]);
   expect(await call('POST', '/v1/block-rules', admin, { type: 'regex', pattern: '.*evil.*' }), 422);
@@ -559,7 +566,13 @@ async function main() {
   expect(await call('POST', '/v1/auth/password-reset/confirm', undefined, { token: resetToken, new_password: 'a new long password' }), 410, 'PASSWORD_RESET_EXPIRED');
   expect(await call('GET', '/v1/me', it.token), 401);
   it.token = expect(await call('POST', '/v1/auth/login', undefined, { email: it.email, password: 'a new long password' }), 200).token;
-  ok('password reset: always 204, single use, ends sessions');
+  // A password change uses up reset links asked for before it.
+  expect(await call('POST', '/v1/auth/password-reset/request', undefined, { email: it.email }), 204);
+  await new Promise((r) => setTimeout(r, 300));
+  const stale = decodeURIComponent(inviteToken(it.email));
+  expect(await call('POST', '/v1/auth/password', it.token, { current_password: 'a new long password', new_password: 'another long password' }), 200);
+  expect(await call('POST', '/v1/auth/password-reset/confirm', undefined, { token: stale, new_password: 'a third long password' }), 410, 'PASSWORD_RESET_EXPIRED');
+  ok('password reset: always 204, single use, ends sessions, dies on a password change');
 
   expect(await call('POST', '/v1/auth/logout', it.token), 204);
   expect(await call('GET', '/v1/me', it.token), 401);

@@ -25,10 +25,13 @@ export const LIMITS = {
   ratePerSession: 600,
   ratePerIpLicense: 20,
   ratePerIp: 120,
+  // 401s to device-key requests per client IP: a fresh random key per request would otherwise get a fresh
+  // per-key limit each time. Room for an office NAT with released devices still polling.
+  ratePerIpAuthFailures: 60,
   // /cron/usage-summary stops starting new company days after this; the scheduler calls hourly (B28).
   usageSummaryBudgetMs: 50_000,
   // /cron/cleanup (data-retention): stops starting batches after the budget and answers more: true;
-  // the next night continues. Rows per batch for ingest_batches and tamper_events.
+  // the scheduler calls again (db/cron). Rows per batch for ingest_batches and tamper_events.
   cleanupBudgetMs: 5 * 60_000,
   cleanupBatchRows: 5_000,
   ingestBatchKeepDays: 14, // D13

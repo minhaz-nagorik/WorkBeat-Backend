@@ -11,6 +11,8 @@ Wants=network-online.target
 Type=oneshot
 EnvironmentFile=/etc/workbeat/cron.env
 # --max-time above the job's budget (cleanup: 5 min); -f makes a 401/500 fail the unit.
-ExecStart=/bin/sh -c 'exec curl -fsS --max-time 900 -X POST "$API_URL/cron/%i" -H "X-Cron-Secret: $CRON_SECRET" -H "Content-Type: application/json" -d "{}"'
+# cleanup calls again while the API answers "more":true (budget spent), at most 12 calls (about an hour);
+# other jobs are called once. $$ is a literal $ for the shell (systemd expands a single $).
+ExecStart=/bin/sh -c 'n=0; while :; do out=$$(curl -fsS --max-time 900 -X POST "$API_URL/cron/%i" -H "X-Cron-Secret: $CRON_SECRET" -H "Content-Type: application/json" -d "{}") || exit 1; echo "$$out"; n=$$((n + 1)); [ "%i" = cleanup ] && [ $$n -lt 12 ] || exit 0; case "$$out" in *\"more\":true*) ;; *) exit 0 ;; esac; done'
 DynamicUser=yes
 NoNewPrivileges=yes
