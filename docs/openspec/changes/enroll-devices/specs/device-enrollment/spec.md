@@ -139,8 +139,8 @@ When the company has a live binding with the request's `hardware_id` whose `empl
 - **THEN** the response is `201` with `outcome` `new_binding` for employee B
 
 ### Requirement: A re-enrollment while the old key is live raises a duplicate alert
-<!-- source: D46 · D2 · D48 · Plan-v3.5 §4.4 "Duplicate device ID alert" -->
-When an enrollment keeps a binding whose replaced key had a heartbeat in the last 15 minutes, the API SHALL still enroll as above and MUST insert one server-made `tamper_events` row with `event_type` `duplicate_device_id` for that device, handed to `alert-emails` like any unresolved event. Only the backend raises this type.
+<!-- source: D46 · D2 · D48 · Plan-v3.5 §4.4 "Duplicate device ID alert" · B34 -->
+When an enrollment keeps a binding whose replaced key had a heartbeat in the last 15 minutes, the API SHALL still enroll as above and MUST insert one server-made `tamper_events` row with `event_type` `duplicate_device_id` for that device, listed in the alerts feed like any unresolved event. Only the backend raises this type.
 
 #### Scenario: Two machines report one device ID
 - **WHEN** a Mac whose current key sent a heartbeat 5 minutes ago re-enrolls for the same employee
