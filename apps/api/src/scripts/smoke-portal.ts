@@ -274,11 +274,20 @@ async function main() {
   const itList = expect(await call('GET', '/v1/employees', it.token), 200);
   assert.ok('presence' in itList[0] && 'manager_user_id' in itList[0], 'it_admin sees the admin fields (round 6)');
   expect(await call('PATCH', `/v1/employees/${bob.id}`, admin, { department: 'Ops' }), 200);
-  const csv = `name,email,department,manager email\nCara ${run},cara-${run}@example.test,Sales,${mgr.email}\nAda again,ada-${run}@example.test,,\n`;
-  const imp = expect(await call('POST', '/v1/employees/import', admin, csv, { 'content-type': 'text/csv' }), 201);
-  assert.deepEqual([imp.created, imp.skipped], [1, 1]);
-  const badImp = await call('POST', '/v1/employees/import', admin, `Dee,not-an-email,,\n,x@y.test,,\n`, { 'content-type': 'text/csv' });
-  expect(badImp, 422); assert.deepEqual(badImp.json.lines, [1, 2]);
+  const csv = `\uFEFFname,email,department,manager email\r\nCara ${run},cara-${run}@example.test,Sales,${mgr.email}\r\nAda again,ada-${run}@example.test,,\r\n`;
+  const chk = expect(await call('POST', '/v1/employees/import/check', it.token, csv, { 'content-type': 'text/csv' }), 200); // read-only: no approval
+  assert.deepEqual([chk.rows, chk.invalid], [2, [{ line: 2, reasons: ['email_exists'] }]]);
+  const dupImp = await call('POST', '/v1/employees/import', admin, csv, { 'content-type': 'text/csv' });
+  expect(dupImp, 422); assert.deepEqual(dupImp.json.lines, [2]);
+  const imp = expect(await call('POST', '/v1/employees/import', admin, csv.replace(/Ada again.*\r\n/, ''), { 'content-type': 'text/csv' }), 201);
+  assert.equal(imp.created, 1);
+  const badImp = await call('POST', '/v1/employees/import', admin, `Dee,not-an-email,,\n,x@y.test,,\nEve,x@y.test,,nobody@example.test\n`, { 'content-type': 'text/csv' });
+  expect(badImp, 422); assert.deepEqual(badImp.json.lines, [1, 2, 3]);
+  assert.deepEqual(badImp.json.invalid[2].reasons, ['email_repeated', 'manager_unknown']);
+  const big = Array.from({ length: 501 }, (_, i) => `P${i},p${i}-${run}@example.test,,`).join('\n');
+  expect(await call('POST', '/v1/employees/import/check', admin, big, { 'content-type': 'text/csv' }), 413, 'PAYLOAD_TOO_LARGE');
+  expect(await call('POST', '/v1/employees/import/check', admin, 'name,email\n', { 'content-type': 'text/csv' }), 422);
+  expect(await call('POST', '/v1/employees/import/check', mgr.token, csv, { 'content-type': 'text/csv' }), 403);
   ok('employees: create, team scoping, it_admin fields, CSV import');
 
   // monitoring settings + pauses

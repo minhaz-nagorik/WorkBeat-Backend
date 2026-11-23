@@ -47,7 +47,7 @@ async function withPresence(c: Tx, rows: any[]) {
 }
 
 const FULL = 'id, name, email, department, manager_user_id, archived_at';
-const IMPORT_MAX_ROWS = 5000;
+const IMPORT_MAX_ROWS = 500;
 const SCREENSHOT_VIEW_SECONDS = 5 * 60;
 // Tiles load the thumbnail when the agent sent one, else the full JPEG, so pages stay small.
 const SCREENSHOT_PAGE = 24, SCREENSHOT_PAGE_MAX = 60;
@@ -79,6 +79,7 @@ function assertActive(e: { archived_at: Date | null }) {
 
 // Minimal RFC 4180 reader: quoted fields, "" escapes, CRLF or LF.
 export function parseCsv(text: string): string[][] {
+  text = text.replace(/^\uFEFF/, ''); // Excel's UTF-8 BOM
   const rows: string[][] = [];
   let row: string[] = [], cell = '', q = false;
   for (let i = 0; i < text.length; i++) {
@@ -96,6 +97,45 @@ export function parseCsv(text: string): string[][] {
   }
   if (cell || row.length) { row.push(cell); rows.push(row); }
   return rows.filter((r) => r.some((v) => v.trim()));
+}
+
+export type ImportReason = 'name_required' | 'email_invalid' | 'email_repeated' | 'email_exists' | 'email_archived' | 'manager_unknown';
+
+// Validates every row of an import CSV; lines are 1-based data rows (header not counted).
+async function checkImport(c: Tx, body: unknown) {
+  if (typeof body !== 'string') throw new ApiError(400, 'VALIDATION_FAILED', 'Send the CSV as text/csv', { fields: ['content-type'] });
+  let csv = parseCsv(body);
+  if (csv[0]?.[0]?.trim().toLowerCase() === 'name') csv = csv.slice(1);
+  if (!csv.length) throw new ApiError(422, 'VALIDATION_FAILED', 'The file has no employees');
+  if (csv.length > IMPORT_MAX_ROWS) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', `At most ${IMPORT_MAX_ROWS} rows`);
+  const { rows: managers } = await c.query(`SELECT id, lower(email) AS email FROM users WHERE ${TEAM_LEAD}`);
+  const { rows: existing } = await c.query('SELECT lower(email) AS email FROM employees WHERE archived_at IS NULL AND email IS NOT NULL');
+  const taken = new Set(existing.map((r) => r.email));
+  // A returning employee is restored, not created again (D46): an email only an archived employee holds is refused.
+  const { rows: gone } = await c.query(
+    'SELECT DISTINCT ON (lower(email)) id, name, lower(email) AS email FROM employees WHERE archived_at IS NOT NULL AND email IS NOT NULL ORDER BY lower(email), archived_at DESC',
+  );
+  const archivedBy = new Map(gone.map((r) => [r.email, r]));
+  const count = new Map<string, number>();
+  csv.forEach((r) => { const e = (r[1] ?? '').trim().toLowerCase(); count.set(e, (count.get(e) ?? 0) + 1); });
+  const rows: { name: string; email: string; department: string | null; manager_user_id: string | null }[] = [];
+  const invalid: { line: number; reasons: ImportReason[] }[] = [];
+  const archived: { line: number; employee_id: string; name: string }[] = [];
+  csv.forEach((r, i) => {
+    const [name = '', mail = '', dept = '', mgr = ''] = r.map((v) => v.trim());
+    const email = mail.toLowerCase(), line = i + 1, reasons: ImportReason[] = [];
+    const manager = mgr ? managers.find((m) => m.email === mgr.toLowerCase()) : null;
+    const old = taken.has(email) ? undefined : archivedBy.get(email);
+    if (!name) reasons.push('name_required');
+    if (!employeeBody.shape.email.safeParse(email).success) reasons.push('email_invalid');
+    else if (count.get(email)! > 1) reasons.push('email_repeated');
+    if (taken.has(email)) reasons.push('email_exists');
+    if (old) { reasons.push('email_archived'); archived.push({ line, employee_id: old.id, name: old.name }); }
+    if (mgr && !manager) reasons.push('manager_unknown');
+    if (reasons.length) invalid.push({ line, reasons });
+    rows.push({ name, email, department: dept || null, manager_user_id: manager?.id ?? null });
+  });
+  return { rows, invalid, archived };
 }
 
 @Controller('v1/employees')
@@ -131,45 +171,29 @@ export class EmployeesController {
     });
   }
 
+  @Post('import/check')
+  async importCheck(@Req() req: FastifyRequest) {
+    return this.db.tx(async (c) => {
+      await portalUser(c, req, 'employees.edit');
+      const { rows, invalid, archived } = await checkImport(c, req.body);
+      return { data: { rows: rows.length, invalid, archived } };
+    });
+  }
+
   @Post('import')
   async import(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
     return this.db.tx(async (c) => {
       const u = await portalUser(c, req, 'employees.edit');
-      if (typeof req.body !== 'string') throw new ApiError(400, 'VALIDATION_FAILED', 'Send the CSV as text/csv', { fields: ['content-type'] });
-      let rows = parseCsv(req.body);
-      if (rows[0]?.[0]?.trim().toLowerCase() === 'name') rows = rows.slice(1);
-      if (rows.length > IMPORT_MAX_ROWS) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', `At most ${IMPORT_MAX_ROWS} rows`);
-      const { rows: managers } = await c.query(`SELECT id, lower(email) AS email FROM users WHERE ${TEAM_LEAD}`);
-      const { rows: existing } = await c.query('SELECT lower(email) AS email FROM employees WHERE archived_at IS NULL AND email IS NOT NULL');
-      const taken = new Set(existing.map((r) => r.email));
-      // A returning employee is restored, not created again (D46): an email only an archived employee holds is refused.
-      const { rows: gone } = await c.query(
-        'SELECT DISTINCT ON (lower(email)) id, name, lower(email) AS email FROM employees WHERE archived_at IS NOT NULL AND email IS NOT NULL ORDER BY lower(email), archived_at DESC',
+      const { rows, invalid, archived } = await checkImport(c, req.body);
+      if (invalid.length) throw new ApiError(422, 'VALIDATION_FAILED', 'Invalid rows', { lines: invalid.map((x) => x.line), invalid, ...(archived.length ? { archived } : {}) });
+      await c.query( // employees_email unique: a concurrent import of the same email → 409, nothing written
+        `INSERT INTO employees (company_id, name, email, department, manager_user_id)
+         SELECT $1, x.name, x.email, x.department, x.manager_user_id
+           FROM jsonb_to_recordset($2) AS x(name text, email text, department text, manager_user_id uuid)`,
+        [u.company_id, JSON.stringify(rows)],
       );
-      const archivedBy = new Map(gone.map((r) => [r.email, r]));
-      const seen = new Set<string>(), bad: number[] = [], create: any[] = [], skipped: string[] = [];
-      const archived: { line: number; employee_id: string; name: string }[] = [];
-      rows.forEach((r, i) => {
-        const [name = '', mail = '', dept = '', mgr = ''] = r.map((v) => v.trim());
-        const email = mail.toLowerCase();
-        const manager = mgr ? managers.find((m) => m.email === mgr.toLowerCase()) : null;
-        const old = taken.has(email) ? undefined : archivedBy.get(email);
-        if (old) archived.push({ line: i + 1, employee_id: old.id, name: old.name });
-        if (!name || !z.string().email().safeParse(email).success || (mgr && !manager) || (email && seen.has(email)) || old) bad.push(i + 1);
-        seen.add(email);
-        if (taken.has(email)) skipped.push(email);
-        else create.push({ name, email, department: dept || null, manager_user_id: manager?.id ?? null });
-      });
-      if (bad.length) throw new ApiError(422, 'VALIDATION_FAILED', 'Invalid rows', archived.length ? { lines: bad, archived } : { lines: bad });
-      if (create.length)
-        await c.query(
-          `INSERT INTO employees (company_id, name, email, department, manager_user_id)
-           SELECT $1, x.name, x.email, x.department, x.manager_user_id
-             FROM jsonb_to_recordset($2) AS x(name text, email text, department text, manager_user_id uuid)`,
-          [u.company_id, JSON.stringify(create)],
-        );
       res.status(201);
-      return { data: { created: create.length, skipped: skipped.length, skipped_emails: skipped } };
+      return { data: { created: rows.length } };
     });
   }
 

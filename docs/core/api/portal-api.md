@@ -548,27 +548,29 @@ Errors:
 
 Notes: takes no seat and creates no binding; the employee's computer enrolls again through WorkBeat Setup, which makes a new binding. Their past activity counts again in totals without `employee_id`. To offer "restore instead" when adding someone, look for the email in `GET /v1/employees?archived=true`.
 
-### `POST /v1/employees/import`
-Roles: company_admin · Spec: [`employee-directory`][employee-directory]
-Import employees from CSV.
-Request: a CSV with columns `name, email, department, manager email`, header row optional. Transport: the raw file as the body with `Content-Type: text/csv`, UTF-8, at most 2 MiB and 5,000 rows.
-Response `201`:
+### `POST /v1/employees/import/check`
+Roles: employees.edit · Spec: [`employee-directory`][employee-directory]
+Validate an import CSV without writing anything. Never waits for approval.
+Request: as `POST /v1/employees/import`.
+Response `200`: `rows` int, `invalid` array<{ `line` int, `reasons` array<string> }>, `archived` array<{ `line` int, `employee_id` uuid, `name` string }>.
+Errors: as `POST /v1/employees/import`.
 
-| field | type | notes |
-|---|---|---|
-| created | int | |
-| skipped | int | rows whose email matches a non-archived employee |
-| skipped_emails | array<string> | on `422` the body carries `lines`: array<int> of the invalid 1-based data rows |
+### `POST /v1/employees/import`
+Roles: employees.edit (a member's import waits for approval) · Spec: [`employee-directory`][employee-directory]
+Import employees from CSV.
+Request: a CSV with columns `name, email, department, manager email`, header row optional, UTF-8 BOM allowed. Transport: the raw file as the body with `Content-Type: text/csv`, UTF-8, at most 2 MiB and 500 rows.
+Response `201`: `created` int.
 
 Errors:
 
 | status | code | when |
 |---|---|---|
-| 403 | `FORBIDDEN` | not company_admin |
-| 413 | `PAYLOAD_TOO_LARGE` | file over the import limit |
-| 422 | `VALIDATION_FAILED` | any row with no `name`, a missing or malformed email, `manager email` not a manager of the company, an email twice in the file, or an email held only by an archived employee; names each line number |
+| 403 | `FORBIDDEN` | no `employees.edit` |
+| 409 | `CONFLICT` | a concurrent write took one of the emails |
+| 413 | `PAYLOAD_TOO_LARGE` | over 500 rows or 2 MiB |
+| 422 | `VALIDATION_FAILED` | no data rows, or any invalid row; carries `lines` array<int> and `invalid` array<{ `line`, `reasons` }> |
 
-Notes: all or nothing — any invalid row creates no employee. A `422` caused by archived employees also carries `archived`: array<{ `line` int, `employee_id` uuid, `name` string }>, so the console can offer `POST /v1/employees/:id/restore`.
+Notes: all or nothing. Lines are 1-based data rows, header not counted. Reasons: `name_required`, `email_invalid`, `email_repeated`, `email_exists`, `email_archived`, `manager_unknown`. A `422` with `email_archived` also carries `archived`: array<{ `line` int, `employee_id` uuid, `name` string }>, so the console can offer `POST /v1/employees/:id/restore`.
 
 ### `GET /v1/employees/:id/notice-acknowledgements`
 Roles: company_admin · Spec: [`notice-acknowledgement`][notice-acknowledgement]

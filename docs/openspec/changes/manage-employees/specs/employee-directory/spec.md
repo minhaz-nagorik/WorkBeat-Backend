@@ -64,12 +64,15 @@ why an employee who still has a device cannot be removed.
 
 ### Requirement: Employees are imported from CSV
 <!-- source: PRD "Permission matrix" · Plan-v3.5 §4.4 "Employees and devices" -->
-`POST /v1/employees/import` SHALL accept from a `company_admin` a CSV with the columns `name, email, department, manager email`, with or without a header row. A row whose email matches a non-archived employee of the company MUST be skipped. The response MUST give `created`, `skipped` and the skipped emails.
+`POST /v1/employees/import` SHALL accept from a user with `employees.edit` a CSV with the columns `name, email, department, manager email`, with or without a header row, of at most 500 data rows. A valid file MUST create one employee per row and return `201 { created }`.
 
-#### Scenario: A file with a header row and an existing employee
-- **WHEN** an admin imports a file with a header row and three rows, one with an existing employee's email
-- **THEN** two employees are created and one row is skipped
-- **AND** the response is `{ "data": { "created": 2, "skipped": 1, … } }`
+#### Scenario: A file with a header row
+- **WHEN** an admin imports a valid file with a header row and three rows
+- **THEN** three employees are created and the response is `{ "data": { "created": 3 } }`
+
+#### Scenario: An existing employee's email
+- **WHEN** a row's email matches a non-archived employee of the company
+- **THEN** the response is `422 VALIDATION_FAILED` naming that line with the reason `email_exists`, and no employee is created
 
 #### Scenario: A manager email that is not a manager
 - **WHEN** a row's `manager email` belongs to no `manager` of the company
@@ -85,11 +88,11 @@ why an employee who still has a device cannot be removed.
 
 #### Scenario: The same file imported twice at once
 - **WHEN** two imports of one file are handled concurrently
-- **THEN** each email exists once among non-archived employees and the second import reports the rows the first created as skipped, or fails with nothing written
+- **THEN** each email exists once among non-archived employees and the second import fails with nothing written
 
 ### Requirement: An invalid import writes nothing
 <!-- source: B9 · PRD "Permission matrix" -->
-An import with any invalid row (no `name`, a missing or malformed email, a `manager email` that is not an enabled `manager` of the company, the same email twice in the file, or an email held only by an archived employee) SHALL return `422 VALIDATION_FAILED` naming each invalid line number, and MUST create no employee. A file over the import limit MUST return `413 PAYLOAD_TOO_LARGE`.
+An import with any invalid row SHALL return `422 VALIDATION_FAILED` with `lines` and `invalid: [{ line, reasons }]`, and MUST create no employee. Reasons: `name_required`, `email_invalid`, `email_repeated` (twice in the file), `email_exists`, `email_archived` (held only by an archived employee), `manager_unknown`. Over 500 rows MUST return `413 PAYLOAD_TOO_LARGE`.
 
 #### Scenario: An email of an archived employee
 - **WHEN** line 7's email matches an archived employee and no non-archived one
@@ -114,9 +117,18 @@ An import with any invalid row (no `name`, a missing or malformed email, a `mana
 - **THEN** the response is `422` with `code` `VALIDATION_FAILED`
 
 #### Scenario: Exactly at and one over the row cap
-- **WHEN** a valid file has exactly the row limit in `packages/shared`
+- **WHEN** a valid file has exactly 500 rows
 - **THEN** it is imported
 - **AND** a file with one more row gets `413` with `code` `PAYLOAD_TOO_LARGE`
+
+### Requirement: An import is checked without writing
+<!-- source: product owner 23 Nov 2026 -->
+`POST /v1/employees/import/check` SHALL take the same body and limits as the import and return `200 { rows, invalid, archived }` with the reasons the import would give. It MUST write nothing and MUST NOT wait for approval.
+
+#### Scenario: An IT Admin checks a file
+- **WHEN** an `it_admin` checks a file whose line 2 has a malformed email
+- **THEN** the response is `200` with `invalid` `[{ "line": 2, "reasons": ["email_invalid"] }]`
+- **AND** no employee and no pending change is created
 
 ### Requirement: Removing an employee archives them
 <!-- source: D44 · D46 · D48 · Plan-v3.5 §4.4 "Employees and devices" · Plan-v3.5 §4.4 "Employee directory" -->

@@ -39,7 +39,7 @@ None.
 ## Impact
 
 - Routes: `GET/POST /v1/employees`, `GET/PATCH/DELETE /v1/employees/:id`,
-  `POST /v1/employees/:id/restore`,  `POST /v1/employees/import`, `GET/PUT /v1/employees/:id/monitoring-settings`,
+  `POST /v1/employees/:id/restore`,  `POST /v1/employees/import`, `POST /v1/employees/import/check`, `GET/PUT /v1/employees/:id/monitoring-settings`,
   `GET/POST /v1/employees/:id/pauses`, `PATCH /v1/employees/:id/pauses/:pause_id`,
   `POST /v1/employees/:id/pauses/:pause_id/cancel`.
 - Consumed by `enroll-devices` (the employee list and `EMPLOYEE_NOT_FOUND`), `serve-agent-policy`
