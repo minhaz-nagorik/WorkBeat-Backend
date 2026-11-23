@@ -7,12 +7,14 @@ import { timingSafeEqual } from 'node:crypto';
 import { ApiError, config, Db, sha256, Tx } from './core';
 import type { LogCtx } from './http';
 import { cleanupJob } from './cleanup';
+import { tokenExpiryJob } from './token-expiry';
 import { JobTx, Rows, usageSummaryJob } from './usage';
 
 type Job = (tx: JobTx, rows: Rows) => Promise<{ skipped: boolean; more: boolean }>;
 const JOBS: Record<string, Job> = {
   'usage-summary': usageSummaryJob,
   cleanup: cleanupJob,
+  'token-expiry': tokenExpiryJob,
 };
 
 // Hashing first gives equal lengths, so a prefix or longer value is refused without throwing.

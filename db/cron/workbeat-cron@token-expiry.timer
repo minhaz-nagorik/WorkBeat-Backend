@@ -1,0 +1,10 @@
+# /cron/token-expiry hourly (run-scheduled-jobs `cron-routes`, D43).
+[Unit]
+Description=WorkBeat expired enrollment tokens, hourly
+
+[Timer]
+OnCalendar=*-*-* *:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -10,6 +10,7 @@
     "smoke": "tsc -p . && node --env-file-if-exists=.env dist/scripts/smoke.js",
     "smoke:portal": "tsc -p . && node --env-file-if-exists=.env dist/scripts/smoke-portal.js",
     "smoke:cleanup": "tsc -p . && node --env-file-if-exists=.env dist/scripts/smoke-cleanup.js",
+    "smoke:token-expiry": "tsc -p . && node --env-file-if-exists=.env dist/scripts/smoke-token-expiry.js",
     "test": "tsc -p . && node --test 'dist/**/*.test.js'"
   },
   "dependencies": {
