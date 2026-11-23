@@ -3,6 +3,9 @@
 **Status:** Accepted
 **Date:** 2026-11-15
 
+> **Amended by B35 (23 Nov 2026):** there is no deactivate any more. Only a release frees a seat;
+> an uninstall frees nothing. `deactivated_at` stays in the count and the trigger but is always NULL.
+
 ## Context
 
 A company pays per seat. Seats belong to the company, not to the licence key: releasing or

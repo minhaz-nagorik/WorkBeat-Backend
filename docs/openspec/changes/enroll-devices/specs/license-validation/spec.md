@@ -45,7 +45,7 @@ When the key's company has `status` `suspended` the API SHALL return `402 LICENS
 
 ### Requirement: A free seat is checked and nothing is reserved
 <!-- source: D43 · D47 · B4 · Plan-v3.5 §5.3 -->
-At both steps the API SHALL return `403 SEAT_LIMIT_EXCEEDED` when the devices with `deactivated_at` and `released_at` NULL number at least `licenses.seat_limit` (never for a NULL limit). Validation MUST NOT reserve or count a seat.
+At both steps the API SHALL return `403 SEAT_LIMIT_EXCEEDED` when the devices with `released_at` NULL number at least `licenses.seat_limit` (never for a NULL limit). Validation MUST NOT reserve or count a seat.
 
 #### Scenario: The last seat
 - **WHEN** a company at 49 of 50 seats validates the key twice from two Macs
@@ -56,8 +56,8 @@ At both steps the API SHALL return `403 SEAT_LIMIT_EXCEEDED` when the devices wi
 - **WHEN** a company at 50 of 50 seats validates the key
 - **THEN** the response is `403` with `code` `SEAT_LIMIT_EXCEEDED`
 
-#### Scenario: Released and deactivated devices free their seats
-- **WHEN** a company with a `seat_limit` of 50 has 50 devices, one released and one deactivated
+#### Scenario: Released devices free their seats
+- **WHEN** a company with a `seat_limit` of 50 has 50 devices, two of them released
 - **THEN** validation succeeds because 48 seats are used
 
 #### Scenario: An unlimited Enterprise licence

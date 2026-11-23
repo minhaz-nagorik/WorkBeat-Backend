@@ -55,14 +55,14 @@ Each company SHALL have one `licenses` row whose key has the form `WB-XXXX-XXXX-
 
 ### Requirement: Seats are counted from devices, never stored
 <!-- source: D43 · B4 · Plan-v3.5 §5.3 "Re-enrollment and seats" -->
-`seats_used` SHALL be the number of the company's `devices` with `deactivated_at` and `released_at` both NULL, counted on read. Seats MUST belong to the company, not the key, and no column MUST hold a seat count.
+`seats_used` SHALL be the number of the company's `devices` with `released_at` NULL, counted on read. Seats MUST belong to the company, not the key, and no column MUST hold a seat count.
 
 #### Scenario: A released device frees its seat
 - **WHEN** a company has 10 devices and one is released
 - **THEN** `seats_used` is 9
 
-#### Scenario: A deactivated device and the last free seat
-- **WHEN** a Starter company has 10 devices of which one is deactivated
+#### Scenario: A released device and the last free seat
+- **WHEN** a Starter company has 10 devices of which one is released
 - **THEN** `seats_used` is 9 and one more device can enroll
 
 #### Scenario: More seats used than the limit

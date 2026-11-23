@@ -40,7 +40,6 @@ const APPROVAL: Record<string, Spec> = {
   'POST /v1/employees/:id/pauses/:pause_id/cancel': { resource: 'pause', action: 'cancel', target: (x) => x.params.pause_id,
     summary: async (x) => `End the monitoring pause of ${await emp(x)} now` },
   'POST /v1/devices/:id/release': { resource: 'device', action: 'release', target: id, summary: async (x) => `Release computer ${await host(x)}` },
-  'POST /v1/devices/:id/deactivate': { resource: 'device', action: 'deactivate', target: id, summary: async (x) => `Deactivate computer ${await host(x)}` },
   'POST /v1/alerts/:id/resolve': { resource: 'alert', action: 'resolve', target: id,
     summary: async (x) => `Mark an alert on ${(await one(x.c, 'SELECT hostname FROM tamper_events WHERE id = $1', x.params.id)).hostname ?? 'a computer'} as resolved` },
   'POST /v1/block-rules': { resource: 'block_rule', action: 'create', summary: async (x) => `Block ${x.body?.type === 'domain' ? 'website ' : ''}${x.body?.pattern}` },

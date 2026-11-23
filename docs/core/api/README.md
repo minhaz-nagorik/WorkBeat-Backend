@@ -9,7 +9,7 @@ them. A field marked **(derived)** is named by no spec and was read from the sch
 
 | Page | Covers |
 |---|---|
-| [agent-contract.md](agent-contract.md) | Mac and Windows agents, the Downloader and the uninstaller: `/v1/license/validate`, `/v1/devices/enroll`, `/v1/agents/*`, device-key `POST /v1/devices/:id/deactivate` |
+| [agent-contract.md](agent-contract.md) | Mac and Windows agents, the Downloader and the uninstaller: `/v1/license/validate`, `/v1/devices/enroll`, `/v1/agents/*` |
 | [portal-api.md](portal-api.md) | Company routes for `company_admin`, `manager` and `it_admin` (WorkBeat Admin) |
 | [staff-api.md](staff-api.md) | `/v1/staff/*` for `super_admin`, and `GET /v1/me` for staff |
 | [webhooks-and-cron.md](webhooks-and-cron.md) | `POST /v1/webhooks/stripe`, every `/cron/*` job, `GET /health` |
@@ -105,14 +105,14 @@ One catalog for all clients, owned by this repository (B9, `packages/shared`).
 | 400 | `VALIDATION_FAILED` | all | Malformed body, query or path |
 | 400 | `WEBHOOK_SIGNATURE_INVALID` | Stripe | `Stripe-Signature` missing or wrong |
 | 401 | `UNAUTHENTICATED` | portal, staff, cron | Missing, malformed, expired or forged JWT; disabled or mismatched user; wrong `X-Cron-Secret` |
-| 401 | `DEVICE_REVOKED` | agent | Unknown, replaced or deactivated device key |
+| 401 | `DEVICE_REVOKED` | agent | Unknown or replaced device key |
 | 401 | `DEVICE_RELEASED` | agent | Device released by its company; body carries `released_at` and `upload_until`. The upload routes still accept the key for 7 days (D45) |
 | 402 | `COMPANY_SUSPENDED` | agent | Company suspended (device-key routes) |
 | 402 | `LICENSE_SUSPENDED` | Downloader, agent | Company suspended (validate, enroll) |
 | 402 | `LICENSE_EXPIRED` | Downloader, agent | Company expired; body carries `blocking_ends_at` |
 | 202 | — (`{ data: { change } }`) | portal | An `it_admin` write on an approval route: stored as a pending change, not applied ([portal-api.md](portal-api.md#approvals)) |
 | 403 | `PASSWORD_CHANGE_REQUIRED` | portal | Signed in with a temporary password; only `GET /v1/me`, `POST /v1/auth/password` and logout work until it is replaced |
-| 403 | `FORBIDDEN` | portal, staff, uninstaller | Role not allowed on the route; device key deactivating another device |
+| 403 | `FORBIDDEN` | portal, staff, uninstaller | Role not allowed on the route |
 | 404 | `PASSWORD_RESET_INVALID` | anyone | unknown reset token |
 | 410 | `PASSWORD_RESET_EXPIRED` | anyone | reset token used or past 30 minutes |
 | 403 | `SEAT_LIMIT_EXCEEDED` | Downloader, agent | No free seat |
@@ -125,7 +125,7 @@ One catalog for all clients, owned by this repository (B9, `packages/shared`).
 | 404 | `INVITATION_INVALID` | portal | Invitation token matches nothing |
 | 409 | `CONFLICT` | portal, staff | Duplicate or state conflict (see each route) |
 | 409 | `DEVICE_ASSIGNED` | agent | Enroll: the device ID has a live binding for another employee; release it first (D48) |
-| 409 | `EMPLOYEE_HAS_DEVICES` | portal | Employee still has a binding that is not released (deactivated ones count) |
+| 409 | `EMPLOYEE_HAS_DEVICES` | portal | Employee still has a binding that is not released |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | agent | Same idempotency key or ID, different content |
 | 410 | `INVITATION_EXPIRED` | portal | Invitation accepted, revoked or past `expires_at` |
 | 413 | `PAYLOAD_TOO_LARGE` | all | Body over the route's limit; CSV import over its limit |

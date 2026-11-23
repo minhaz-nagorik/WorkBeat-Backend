@@ -14,7 +14,7 @@ derives every status from these fields (Plan-v3.5 §2.4, §5.9).
   `monitoring_pause`. A heartbeat answered with `402` is still recorded.
 - **Notice acknowledgements** are written once per device and notice version, append-only, and
   listed per employee for the company admin (D25).
-- **Device status is derived, never stored**: released, deactivated, offline (last heartbeat over 15 minutes old), online, with
+- **Device status is derived, never stored**: released, offline (last heartbeat over 15 minutes old), online, with
   badges outdated, permission pending, browser access pending and paused. No unassigned status
   (D47). `GET /v1/devices`, `GET /v1/devices/:id` and `GET /v1/rollout` serve it.
 

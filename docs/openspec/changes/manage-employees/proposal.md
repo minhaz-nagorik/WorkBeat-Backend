@@ -10,8 +10,8 @@ pauses for leave (D31–D34). Removing an employee must not orphan a device (D47
 ## What Changes
 
 - **Employee directory**: add, edit, list, CSV import and remove (archive) employees; removal is
-  refused with `409 EMPLOYEE_HAS_DEVICES` while any binding of the employee is not released,
-  deactivated ones included (D44, D46, D48). A returning employee is restored, not created
+  refused with `409 EMPLOYEE_HAS_DEVICES` while any binding of the employee is not released
+  (D44, D46, D48). A returning employee is restored, not created
   again: `POST /v1/employees/:id/restore`, and an import row holding only an archived employee's
   email is refused (D46).
 - **Manager teams**: one manager per employee (B12); a manager reads only their own team and

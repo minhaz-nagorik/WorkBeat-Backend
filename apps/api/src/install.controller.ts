@@ -1,12 +1,11 @@
-// /health, the Downloader's /license/validate, and the agent's enroll and deactivate.
-import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common';
+// /health, the Downloader's /license/validate, and the agent's enroll. No deactivate route (B35).
+import { Body, Controller, Get, Headers, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { enrollBody, licenseValidateBody, LIMITS, normaliseLicenceKey, uuid } from './contract';
+import { enrollBody, licenseValidateBody, LIMITS, normaliseLicenceKey } from './contract';
 import { ApiError, Db, fromDbError, parse, sha256, token } from './core';
-import { authDevice, billingError, newestRelease } from './device';
+import { billingError, newestRelease } from './device';
 import { Storage } from './storage';
 import { baseUrl, tag } from './http';
-import { deactivateAsUser } from './portal/devices.controller';
 
 @Controller()
 export class InstallController {
@@ -140,22 +139,5 @@ export class InstallController {
     } catch (e) {
       throw fromDbError(e) ?? e;
     }
-  }
-
-  // The uninstaller (X-Device-Key) frees its seat (D19), never answered 402 (B17); a portal user
-  // (Bearer session) deactivates any device of the company and gets the device back.
-  @Post('v1/devices/:id/deactivate')
-  async deactivate(@Req() req: FastifyRequest, @Param('id') id: string, @Headers('x-device-key') key: string | undefined, @Res({ passthrough: true }) res: FastifyReply) {
-    if (!key && req.headers.authorization) {
-      res.status(200);
-      return { data: await this.db.tx((c) => deactivateAsUser(c, req, id)) };
-    }
-    await this.db.tx(async (c) => {
-      const { dev } = await authDevice(c, key, 'deactivate');
-      tag(req, dev);
-      if (!uuid.safeParse(id).success || id !== dev.device_id) throw new ApiError(403, 'FORBIDDEN', 'Not this device');
-      await c.query('UPDATE devices SET deactivated_at = coalesce(deactivated_at, now()), key_hash = NULL WHERE id = $1', [dev.device_id]);
-    });
-    res.status(204);
   }
 }

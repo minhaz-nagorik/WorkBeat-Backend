@@ -48,7 +48,7 @@ context: |
   THE FIVE RULES MOST OFTEN GOT WRONG
   1. company_id comes from the credential or the host, never from a request body (Plan §6.1).
   2. WorkBeat staff never read employee, device, activity, URL or screenshot data (D41).
-  3. Seats are counted from devices that are neither deactivated nor released; a key reissue
+  3. Seats are counted from devices that are not released (there is no deactivate, B35); a key reissue
      changes only the key (D43).
   4. Agent writes are idempotent on their ID; a repeat returns the first result (D13).
   5. No secret, token, key, JWT or signed URL is ever logged.

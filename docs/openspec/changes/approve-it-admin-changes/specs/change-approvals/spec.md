@@ -7,7 +7,7 @@ Company Admin approves, rejects or sees it fail; the IT Admin may cancel it whil
 
 ### Requirement: An IT Admin's write becomes a pending change
 <!-- source: product owner 17 Nov 2026 · Plan-v3.5 §4.5 -->
-On the employee, import, monitoring-settings, pause, device release and deactivate, alert resolve, block-rule, sensitive-domain and productivity-rule write routes, an `it_admin` request SHALL be validated exactly as a `company_admin`'s, including `404` and `409`, then rolled back and stored in `changes`. It MUST answer `202 { change }` with `status` `pending` and MUST NOT apply anything.
+On the employee, import, monitoring-settings, pause, device release, alert resolve, block-rule, sensitive-domain and productivity-rule write routes, an `it_admin` request SHALL be validated exactly as a `company_admin`'s, including `404` and `409`, then rolled back and stored in `changes`. It MUST answer `202 { change }` with `status` `pending` and MUST NOT apply anything.
 
 #### Scenario: An IT Admin blocks a website
 - **WHEN** an `it_admin` posts a valid domain block rule

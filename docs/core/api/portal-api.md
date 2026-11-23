@@ -245,12 +245,12 @@ Errors: `403 FORBIDDEN`.
 ## Approvals
 
 Since 17 Nov 2026 (product owner) an `it_admin` may call the employee, import, monitoring-settings,
-pause, device release/deactivate, alert resolve, block-rule, sensitive-domain and productivity-rule
+pause, device release, alert resolve, block-rule, sensitive-domain and productivity-rule
 **write** routes, but nothing is applied: the request is validated as for a `company_admin` (so
 `400`/`404`/`409`/`422` come back at once), then stored and answered **`202 { change }`**. A
 `company_admin`'s writes still apply at once. Spec: [`change-approvals`][change-approvals].
 
-Change: `{ id, status: pending|approved|rejected|cancelled|failed, resource: employee|employee_import|monitoring_settings|pause|device|alert|block_rule|sensitive_domain|productivity_rule, action: create|update|delete|release|deactivate|resolve|cancel|import, target_id, summary, requested_by: { id, name }, requested_at, decided_by: { id, name } | null, decided_at, reason, error: { code, message } | null }`.
+Change: `{ id, status: pending|approved|rejected|cancelled|failed, resource: employee|employee_import|monitoring_settings|pause|device|alert|block_rule|sensitive_domain|productivity_rule, action: create|update|delete|release|resolve|cancel|import, target_id, summary, requested_by: { id, name }, requested_at, decided_by: { id, name } | null, decided_at, reason, error: { code, message } | null }`.
 
 | Route | Roles | Answer |
 |---|---|---|
@@ -391,7 +391,7 @@ Response `200`:
 | key_masked | string | `WB-••••-••••-••••-` + `key_last4` |
 | plan | enum(starter\|growth\|enterprise) | |
 | seat_limit | int \| null | null = unlimited |
-| seats_used | int | devices neither deactivated nor released |
+| seats_used | int | devices not released |
 | key_reset_at | ISO-8601 datetime \| null | last staff reissue |
 | min_agent_version | string \| null | `x.y.z` set by `PUT /v1/deployment/min-agent-version` (admin round 4) |
 
@@ -521,7 +521,7 @@ Errors:
 |---|---|---|
 | 403 | `FORBIDDEN` | not company_admin |
 | 404 | `NOT_FOUND` | unknown or other company |
-| 409 | `EMPLOYEE_HAS_DEVICES` | a binding (device row) of the employee has `released_at` NULL, deactivated or not (0003) |
+| 409 | `EMPLOYEE_HAS_DEVICES` | a binding (device row) of the employee has `released_at` NULL (0003) |
 
 Notes: sets `archived_at`; rows and history kept. Archived employees leave `/license/validate` and cannot be picked in WorkBeat Setup; their email is free again.
 
@@ -692,7 +692,7 @@ Response `200`: array<object>:
 | arch | enum(x64\|arm64) | |
 | agent_version | string | |
 | employee | object | `{ id, name }`; key name (derived) |
-| status | enum(released\|deactivated\|offline\|online) | first that applies, in this order; never stored |
+| status | enum(released\|offline\|online) | first that applies, in this order; never stored |
 | badges | array<enum(outdated\|permission_pending\|browser_access_pending\|paused\|open_alert)> | Windows is never `permission_pending`; `open_alert` while an unresolved tamper event other than `offline` exists (B31) |
 | last_heartbeat_at | ISO-8601 datetime \| null | |
 
@@ -709,23 +709,8 @@ Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`.
 Roles: company_admin, it_admin · Spec: [`device-status`][device-status]
 Device counts for the rollout dashboard.
 Request: none.
-Response `200`: count per `status`, count per badge, and `healthy` (online with no badge). Shape: `{ status: { online, offline, deactivated, released }, badges: { outdated, permission_pending, browser_access_pending, paused, open_alert }, healthy }`, all int.
+Response `200`: count per `status`, count per badge, and `healthy` (online with no badge). Shape: `{ status: { online, offline, released }, badges: { outdated, permission_pending, browser_access_pending, paused, open_alert }, healthy }`, all int.
 Errors: `403 FORBIDDEN` (manager).
-
-### `POST /v1/devices/:id/deactivate`
-Roles: company_admin, it_admin (user token) · Spec: [`device-lifecycle`][device-lifecycle]
-Deactivate a device and free its seat. (The uninstaller's device-key call is in [agent-contract.md](agent-contract.md).)
-Request: none.
-Response `200`: the device as `GET /v1/devices/:id`.
-Errors:
-
-| status | code | when |
-|---|---|---|
-| 403 | `FORBIDDEN` | manager |
-| 404 | `NOT_FOUND` | unknown or other company |
-| 409 | `CONFLICT` | device is released |
-
-Notes: sets `deactivated_at`, clears `key_hash`; the device's next call gets `401 DEVICE_REVOKED`. Repeating returns the device unchanged.
 
 ### `POST /v1/devices/:id/release`
 Roles: company_admin, it_admin · Spec: [`device-lifecycle`][device-lifecycle]
@@ -733,7 +718,7 @@ Release a device from monitoring.
 Request: none.
 Response `200`: the device as `GET /v1/devices/:id`, `status` `released`.
 Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`; `409 CONFLICT` (already released).
-Notes: sets `released_at`, keeps `key_hash`, frees the seat and ends the binding. The device then gets `401 DEVICE_RELEASED` with `released_at` and `upload_until` (+24 h); its key is still accepted on the upload routes for 7 days ([agent-contract.md](agent-contract.md), D45). It raises no offline alert and stays listed as `released`. Allowed on a deactivated device. There is no reassign route: a binding's employee never changes. To give the device to someone else, release it, then run WorkBeat Setup for the new employee, which makes a new binding and takes a seat (D48).
+Notes: sets `released_at`, keeps `key_hash`, frees the seat and ends the binding. The device then gets `401 DEVICE_RELEASED` with `released_at` and `upload_until` (+24 h); its key is still accepted on the upload routes for 7 days ([agent-contract.md](agent-contract.md), D45). It stays listed as `released`. There is no reassign route: a binding's employee never changes. To give the device to someone else, release it, then run WorkBeat Setup for the new employee, which makes a new binding and takes a seat (D48).
 
 ---
 
@@ -1103,7 +1088,7 @@ Response `200`:
 
 | field | type | notes |
 |---|---|---|
-| devices | object | `{ online: int, offline: int, open_alert: int }`, released and deactivated excluded; `open_alert` counts devices with that badge, which are also online or offline. Manager: own team's devices only |
+| devices | object | `{ online: int, offline: int, open_alert: int }`, released excluded; `open_alert` counts devices with that badge, which are also online or offline. Manager: own team's devices only |
 | today | object | company_admin, manager only: `{ tracked_seconds: int, activity_percent: number\|null }` since local midnight |
 | alerts | array<object> | newest five the caller would see in `GET /v1/alerts`, same fields and scoping |
 | seats | object | company_admin only: `{ used: int, limit: int\|null }` |

@@ -34,17 +34,16 @@ are [backend decisions](../decisions/backend-decisions.md). The schema is
 
 | Term | Meaning | Avoid |
 |---|---|---|
-| **Seat** | Held by every device with `deactivated_at` and `released_at` both NULL. Counted, never stored (D43, B4) | "licence" for a seat |
+| **Seat** | Held by every device with `released_at` NULL. Counted, never stored (D43, B4) | "licence" for a seat |
 | **Seats used** | `count(devices)` of the company that hold a seat, on every read | A stored counter |
 | **Seat limit** | `licenses.seat_limit`; NULL is unlimited. Enforced by trigger `devices_seat` | — |
 | **Validate** | `POST /v1/license/validate`. Step 1: company and employees. Step 2: also the token. Reserves nothing (B8) | "activate" |
 | **Enroll** | `POST /v1/devices/enroll`: token → device key. Makes a new binding (seat taken) or re-keys the same one; another employee's live binding answers `409 DEVICE_ASSIGNED` (D2, D48) | — |
 | **Hardware ID** | The device ID the agent produces (format open, Q10). A live binding with the same ID and employee is reused (D2) | "serial" |
-| **Deactivate** | Sets `deactivated_at`, clears `key_hash`, frees the seat. Next call: `401 DEVICE_REVOKED` (D6) | "release" |
 | **Release** | Sets `released_at`, keeps `key_hash`, frees the seat. Ends the binding. Next call: `401 DEVICE_RELEASED`; the agent uploads with the released key for up to 24 h (accepted 7 days), then wipes and goes dormant. The row is final (D38, D45) | "deactivate", "unenroll" |
 | **Binding** | One `devices` row: device ID + company licence + employee. Its employee never changes; a device goes to someone else by release and a new WorkBeat Setup (D48, B20) | "assignment" (there is no reassign), "unassign" |
 | **Reissue** | Staff replace the licence key on the same row; unused tokens deleted; seats unchanged (D43) | "reset seats" |
-| **Archive** | "Remove" an employee: `archived_at` set. Refused while any binding of the employee is not released, deactivated or not (D46, 0003) | "delete employee" |
+| **Archive** | "Remove" an employee: `archived_at` set. Refused while any binding of the employee is not released (D46, 0003) | "delete employee" |
 
 ## Policy
 
@@ -80,7 +79,7 @@ are [backend decisions](../decisions/backend-decisions.md). The schema is
 | **Heartbeat** | `POST /v1/agents/heartbeat` every 5 min. Latest values only, no history | "ping" |
 | **Offline** | No heartbeat for 15 min, worked out when the status is read (B34) | An event or an alert |
 | **Tamper event** | One of five agent types, or backend `offline`. Also the alerts feed | "incident" |
-| **Device status** | Derived on read: `released`, `deactivated`, `tamper`, `offline`, `online` | A stored column |
+| **Device status** | Derived on read: `released`, `offline`, `online` | A stored column |
 | **Badge** | `outdated`, `permission_pending`, `browser_access_pending`, `paused` | "status" |
 | **Batch** | One sealed activity upload, `batch_id` = `Idempotency-Key` (D13) | "sync" |
 | **Time window** | Records outside [now − 8 days, now + 1 day] are dropped and counted (B7) | — |

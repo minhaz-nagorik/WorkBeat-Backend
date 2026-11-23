@@ -40,11 +40,10 @@ Computed on every read, never stored. The first row that applies wins.
 | Order | Status | Condition |
 |---|---|---|
 | 1 | `released` | `released_at` set |
-| 2 | `deactivated` | `deactivated_at` set |
-| 3 | `offline` | `last_heartbeat_at` (or `enrolled_at` if none) more than 15 min before the read (`packages/shared`) |
-| 4 | `online` | Otherwise |
+| 2 | `offline` | `last_heartbeat_at` (or `enrolled_at` if none) more than 15 min before the read (`packages/shared`) |
+| 3 | `online` | Otherwise |
 
-There is no `unassigned` status (D47) and no `tamper` status (B31).
+There is no `unassigned` status (D47), no `tamper` status (B31) and no `deactivated` status (B35).
 
 | Badge | When |
 |---|---|

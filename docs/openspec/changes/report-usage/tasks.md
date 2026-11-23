@@ -37,5 +37,5 @@
 ## 5. dashboard-summary
 
 - [ ] 5.1 `GET /v1/dashboard` composing device counts (`device-status`), today's activity, newest five from `alerts-feed`, seats
-- [ ] 5.2 Tests: section presence per role; manager counts only team devices; released and deactivated devices not counted; super_admin → 403; tenant isolation
+- [ ] 5.2 Tests: section presence per role; manager counts only team devices; released devices not counted; super_admin → 403; tenant isolation
 - [ ] 5.3 Tests (edge cases): offline + tampered device counted once; no devices → zeros; `today` just after local midnight; seats used above the limit shown as is

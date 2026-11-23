@@ -4,7 +4,7 @@ import { LIMITS } from './contract';
 import { ApiError, sha256, Tx } from './core';
 
 export type DeviceAuth = { device_id: string; company_id: string; employee_id: string; released: boolean };
-export type RouteKind = 'normal' | 'upload' | 'deactivate';
+export type RouteKind = 'normal' | 'upload';
 
 // Throws 401s. Returns the 402 the route must answer (heartbeat still writes before answering it).
 export async function authDevice(c: Tx, key: string | undefined, kind: RouteKind): Promise<{ dev: DeviceAuth; billing: ApiError | null }> {
@@ -29,8 +29,8 @@ export async function authDeviceHash(c: Tx, keyHash: string, kind: RouteKind): P
   }
   await c.tenant(d.company_id);
   const dev = { device_id: d.device_id, company_id: d.company_id, employee_id: d.employee_id, released: d.released };
-  // A release outranks billing (D45); the uninstaller is never refused for billing (B17).
-  if (d.released || kind === 'deactivate') return { dev, billing: null };
+  // A release outranks billing (D45).
+  if (d.released) return { dev, billing: null };
   return { dev, billing: await billingError(c, d.company_id, 'agent') };
 }
 

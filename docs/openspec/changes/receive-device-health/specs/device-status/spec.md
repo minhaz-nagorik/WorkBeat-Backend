@@ -6,8 +6,8 @@ and the device list and rollout counts that serve them to admins and IT.
 ## ADDED Requirements
 
 ### Requirement: Status is derived in a fixed order and never stored
-<!-- source: Plan-v3.5 §2.4, §5.9 · D38 · D47 · B34 -->
-A device's `status` SHALL be computed at read time as the first that applies: `released` (`released_at` set), `deactivated` (`deactivated_at` set), `offline` (`last_heartbeat_at`, or `enrolled_at` when null, more than 15 minutes before the read; threshold in `packages/shared`), else `online`. No column MUST store it, and there MUST be no `unassigned` or `tamper` status.
+<!-- source: Plan-v3.5 §2.4, §5.9 · D38 · D47 · B34 · B35 -->
+A device's `status` SHALL be computed at read time as the first that applies: `released` (`released_at` set), `offline` (`last_heartbeat_at`, or `enrolled_at` when null, more than 15 minutes before the read; threshold in `packages/shared`), else `online`. No column MUST store it, and there MUST be no `unassigned`, `tamper` or `deactivated` status (B35).
 
 #### Scenario: A tampered device goes offline
 - **WHEN** a device has an unresolved `hosts_modified` event and last heartbeated 16 minutes ago
@@ -17,9 +17,9 @@ A device's `status` SHALL be computed at read time as the first that applies: `r
 - **WHEN** a released device has unresolved tamper events
 - **THEN** its status is `released`
 
-#### Scenario: A deactivated device was offline
-- **WHEN** a device has `deactivated_at` set and last heartbeated a day ago
-- **THEN** its status is `deactivated`
+#### Scenario: An uninstalled computer not yet released
+- **WHEN** WorkBeat was uninstalled from a device a day ago and nobody released it
+- **THEN** its status is `offline`
 
 #### Scenario: Exactly 15 minutes
 - **WHEN** a device last heartbeated exactly 15 minutes before the read
@@ -83,7 +83,7 @@ A device SHALL carry the badge `open_alert` while it has an unresolved tamper ev
 - **THEN** only the company's offline devices are returned
 
 #### Scenario: An archived employee's devices
-- **WHEN** an employee was archived after their devices were released or deactivated
+- **WHEN** an employee was archived after their devices were released
 - **THEN** those devices are still listed with that employee's `id` and `name`
 
 #### Scenario: A filter by another company's employee
@@ -130,9 +130,9 @@ A device SHALL carry the badge `open_alert` while it has an unresolved tamper ev
 - **WHEN** the latest heartbeat sent `dropped_records` as `{ "app_sessions": 2 }`
 - **THEN** `health.dropped_records` is that object
 
-### Requirement: List rows carry release and deactivation times
-<!-- source: D38 · D6 -->
-Every `GET /v1/devices` row SHALL carry `released_at` and `deactivated_at`, `null` when not set.
+### Requirement: List rows carry the release time
+<!-- source: D38 · B35 -->
+Every `GET /v1/devices` row SHALL carry `released_at`, `null` when not set, and MUST NOT carry `deactivated_at`.
 
 #### Scenario: A released laptop in the list
 - **WHEN** IT lists devices including one released yesterday

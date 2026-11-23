@@ -24,7 +24,7 @@ expired-licence grace period.
 
 ### Requirement: Seats used come from a count-only function
 <!-- source: D41 · B2 · B4 -->
-`seats_used` on staff routes SHALL come from `company_seat_counts()`, which returns only `company_id` and the count of devices with `deactivated_at` and `released_at` NULL. Staff routes MUST NOT read `devices` directly.
+`seats_used` on staff routes SHALL come from `company_seat_counts()`, which returns only `company_id` and the count of devices with `released_at` NULL. Staff routes MUST NOT read `devices` directly.
 
 #### Scenario: A company with released devices
 - **WHEN** a company has 12 devices of which 2 are released

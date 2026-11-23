@@ -40,13 +40,13 @@ fields the Downloader sends today (`hostname`, `os_version`, `hardware_id`) are 
 and a failed install takes no seat". Two devices may therefore both pass validation for the last
 seat; the second enrollment gets `403 SEAT_LIMIT_EXCEEDED`, which the agent already retries.
 
-### 4. Deactivation is exempt from the 402 answers (B17)
+### 4. There is no deactivate (B35)
 
-`POST /v1/devices/:id/deactivate` is authenticated like `/agents/*`, but a suspended or expired
-company's uninstaller still deactivates the device and frees its seat.
+No route ends a binding except `POST /v1/devices/:id/release` from a portal user. The uninstaller
+calls nothing; an uninstalled computer keeps its seat, shows `offline`, and an admin releases it.
 
-**Why:** an uninstall must never leave a seat held. Every other device-key route keeps the 402
-answers (D5, D36).
+**Why:** product owner, 23 Nov 2026. One way to end a binding; deactivate's "keep blocking but stop
+collecting" state was confusing next to a monitoring pause.
 
 ## Risks
 

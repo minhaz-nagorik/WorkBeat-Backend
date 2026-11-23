@@ -98,8 +98,8 @@ When `device-authentication` answers a heartbeat with `402` (`COMPANY_SUSPENDED`
 - **WHEN** a released device's heartbeat gets `401 DEVICE_RELEASED`
 - **THEN** its row is not updated
 
-#### Scenario: A deactivated device calls once more
-- **WHEN** a deactivated device's heartbeat gets `401 DEVICE_REVOKED`
+#### Scenario: A replaced key calls once more
+- **WHEN** the old key of a re-enrolled device heartbeats and gets `401 DEVICE_REVOKED`
 - **THEN** no row is updated
 
 #### Scenario: An ended company's hourly heartbeat

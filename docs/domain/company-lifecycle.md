@@ -64,9 +64,7 @@ A repeat answers `200` and runs nothing.
 | Agent routes (`/v1/agents/*`) | Served | `402 COMPANY_SUSPENDED` | `402 LICENSE_EXPIRED` + `blocking_ends_at` | Same `402` |
 | Heartbeat still recorded | Yes | Yes, under the `402` | Yes, under the `402` | Yes (agent sends hourly) |
 | Agent behaviour (their spec) | Collect, block | Stop collecting, keep blocking, heartbeat only (D5) | As suspended | Blocking lifted, tamper off, heartbeat hourly |
-| Offline alerts | Yes | Yes (heartbeats keep it online) | Yes | Never |
 | `/license/validate`, enroll | Served, seats permitting | `402 LICENSE_SUSPENDED` | `402 LICENSE_EXPIRED` | `402 LICENSE_EXPIRED` |
-| Uninstaller deactivate | `204` | `204`, never `402` (B17) | `204` | `204` |
 | Staff suspend / restore | Suspend | Suspend (re-reason), restore | `409` | `409` |
 | MRR estimate | `trial` 0; `active` seats × price | 0 | 0 | 0 |
 

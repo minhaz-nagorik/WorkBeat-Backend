@@ -26,7 +26,7 @@ request path has a bypass-RLS connection at all.
 | Licence key | SHA-256 + AES-256-GCM ciphertext + last 4 (B6) | Staff reissue (`staff-license-reissue`): new key at once, old key `404`, unused enrollment tokens deleted, seats and devices unchanged, new key emailed to company admins |
 | Uninstall token | SHA-256 + AES-256-GCM ciphertext (B6); hash in every policy | **Open**: no route rotates it. If leaked, an operator migration or script would set a new hash and ciphertext and bump `policy_version`; not yet specified |
 | Enrollment token | SHA-256, single use, 24 h | Expires; `/cron/token-expiry` deletes unused ones |
-| Device key | SHA-256 only | Re-enrolling the device replaces it; deactivating clears it |
+| Device key | SHA-256 only | Re-enrolling the device replaces it |
 | Invitation token | SHA-256 only | Expires; resend issues a new one |
 | `SECRETS_ENCRYPTION_KEY` | Environment only | **Open**: rows carry no key version. A rotation would need a migration adding one, a re-encrypt job in `system` scope, then removal of the old key. Not yet specified |
 | `CRON_SECRET` | Environment + Vault / Cloud Scheduler | Set the new value in the scheduler and the API in one deploy window; a mismatch only causes `401` and skipped runs, never extra work |

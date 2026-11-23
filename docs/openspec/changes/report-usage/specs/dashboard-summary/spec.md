@@ -15,7 +15,7 @@ alerts and seats, each shown only to the roles allowed to see it.
 
 ### Requirement: Device counts follow device status
 <!-- source: Plan-v3.5 §4.5 "Dashboard" · Plan-v3.5 §5.9 · B12 -->
-The response SHALL carry `devices` with `online` and `offline` counts as `device-status` (receive-device-health) derives them and `open_alert`, the devices with that badge, excluding released and deactivated devices. `company_admin` and `it_admin` MUST count all the company's devices; `manager` MUST count only devices of employees whose `manager_user_id` is the caller.
+The response SHALL carry `devices` with `online` and `offline` counts as `device-status` (receive-device-health) derives them and `open_alert`, the devices with that badge, excluding released devices. `company_admin` and `it_admin` MUST count all the company's devices; `manager` MUST count only devices of employees whose `manager_user_id` is the caller.
 
 #### Scenario: A manager's dashboard
 - **WHEN** a manager with three team devices, one offline, opens the dashboard
@@ -55,7 +55,7 @@ The response SHALL carry `alerts`: the newest five entries the caller would see 
 
 ### Requirement: Seats are shown to the company admin
 <!-- source: D43 · B4 · prototype "Seats used" -->
-For `company_admin` the response SHALL carry `seats` with `used` (devices neither deactivated nor released) and `limit` (`licenses.seat_limit`, `null` when unlimited). Other roles MUST NOT receive `seats`.
+For `company_admin` the response SHALL carry `seats` with `used` (devices not released) and `limit` (`licenses.seat_limit`, `null` when unlimited). Other roles MUST NOT receive `seats`.
 
 #### Scenario: 49 of 50 seats
 - **WHEN** a company has 49 active devices and a seat limit of 50

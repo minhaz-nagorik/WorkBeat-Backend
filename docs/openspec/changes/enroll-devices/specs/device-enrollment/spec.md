@@ -104,21 +104,16 @@ When the company has no device with the request's `hardware_id` and `released_at
 #### Scenario: A reinstall produced a new device ID
 - **WHEN** an employee's Mac is reinstalled and the agent enrolls with a `hardware_id` that has no live binding
 - **THEN** the response is `201` with `outcome` `new_binding` and a second seat is taken
-- **AND** the old binding keeps its seat until it is released or deactivated
+- **AND** the old binding keeps its seat until it is released
 
 ### Requirement: An enrollment for the live binding's employee keeps the binding
 <!-- source: D2 · D43 · D46 · D48 · Plan-v3.5 §5.3 "Re-enrollment and seats" -->
-When the company has a live binding with the request's `hardware_id` and the token's `employee_id`, the API SHALL update that row: new `key_hash` and `key_issued_at` (the old key stops working), identity fields from the request, `deactivated_at` cleared, and return `201` with the same `device_id`, `outcome` `same_binding` and `notice_required` false. A row that held a seat MUST keep it without counting twice; a deactivated row MUST take a seat again.
+When the company has a live binding with the request's `hardware_id` and the token's `employee_id`, the API SHALL update that row: new `key_hash` and `key_issued_at` (the old key stops working), identity fields from the request, and return `201` with the same `device_id`, `outcome` `same_binding` and `notice_required` false. The row MUST keep its seat without counting twice.
 
 #### Scenario: A reinstall
 - **WHEN** an enrolled Mac is reinstalled and enrolls for the same employee with a new token
 - **THEN** the response carries the same `device_id`, a new `device_key`, `outcome` `same_binding` and `notice_required` false
 - **AND** the seat count is unchanged and the old key gets `401 DEVICE_REVOKED`
-
-#### Scenario: A deactivated Mac at a full company
-- **WHEN** a deactivated Mac re-enrolls for the same employee while every seat is used
-- **THEN** the response is `403` with `code` `SEAT_LIMIT_EXCEEDED`
-- **AND** the row stays deactivated and the token keeps `used_at` NULL
 
 #### Scenario: The same hardware enrolls twice at once
 - **WHEN** two enroll requests with different valid tokens for the same employee and the same `hardware_id` run concurrently and no row exists yet

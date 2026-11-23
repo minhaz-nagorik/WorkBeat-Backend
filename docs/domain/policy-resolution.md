@@ -10,7 +10,7 @@ Requirements: [`agent-policy`](../openspec/changes/serve-agent-policy/specs/agen
 [`collection-notice`](../openspec/changes/serve-agent-policy/specs/collection-notice/spec.md).
 
 The device key gives `device_id`, `company_id` and `employee_id`. Nothing in the request can
-change them. A released or deactivated device gets `401` and no policy; a suspended or expired
+change them. A released device or a replaced key gets `401` and no policy; a suspended or expired
 company gets `402`.
 
 ## Where each field comes from

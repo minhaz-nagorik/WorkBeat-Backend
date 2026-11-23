@@ -79,7 +79,7 @@ For a `suspended` company, agent routes SHALL answer `402 COMPANY_SUSPENDED`, an
 
 ### Requirement: Portal writes are not refused for billing
 <!-- source: D5 · D29 · D38 -->
-No portal route SHALL answer `402` or refuse a write because the company is `suspended` or `expired`, so admins can still release or deactivate devices, edit employees and rules, and fix billing.
+No portal route SHALL answer `402` or refuse a write because the company is `suspended` or `expired`, so admins can still release devices, edit employees and rules, and fix billing.
 
 #### Scenario: Releasing a laptop while suspended
 - **WHEN** an IT admin of a suspended company releases a device

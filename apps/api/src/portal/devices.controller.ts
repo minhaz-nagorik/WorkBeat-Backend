@@ -1,4 +1,4 @@
-// Devices with derived status and badges, rollout counts, release, portal deactivate, alerts feed.
+// Devices with derived status and badges, rollout counts, release, alerts feed (no deactivate, B35).
 import { Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { idOrNone, portalUser, User } from '../auth';
@@ -8,7 +8,7 @@ import { HEALTH_FIELDS } from '../contract';
 
 export const OFFLINE_MINUTES = 15;
 const ALERT_PAGE = 50;
-const DEVICE = `d.id, d.hostname, d.os, d.os_version, d.arch, d.agent_version, d.last_heartbeat_at, d.released_at, d.deactivated_at,
+const DEVICE = `d.id, d.hostname, d.os, d.os_version, d.arch, d.agent_version, d.last_heartbeat_at, d.released_at,
   d.offline_since, d.enrolled_at, d.permissions, d.browser_access, d.helper_status, d.health, d.active_pause_id,
   d.notice_ack_version, d.reported_policy_version,
   json_build_object('id', e.id, 'name', e.name) AS employee,
@@ -20,7 +20,6 @@ const DEVICE = `d.id, d.hostname, d.os, d.os_version, d.arch, d.agent_version, d
 // shortcut: "offline" also derived from a heartbeat older than 15 min, until /cron/offline sets offline_since.
 export function deviceStatus(d: any) {
   if (d.released_at) return 'released';
-  if (d.deactivated_at) return 'deactivated';
   const seen = (d.last_heartbeat_at ?? d.enrolled_at).getTime();
   if (d.offline_since || Date.now() - seen > OFFLINE_MINUTES * 60_000) return 'offline';
   return 'online';
@@ -51,7 +50,7 @@ async function withStatus(c: Tx, rows: any[], detail = false) {
     ];
     const base = { id: d.id, hostname: d.hostname, os: d.os, os_version: d.os_version, arch: d.arch, agent_version: d.agent_version,
       employee: d.employee, status: deviceStatus(d), badges, last_heartbeat_at: d.last_heartbeat_at,
-      released_at: d.released_at, deactivated_at: d.deactivated_at };
+      released_at: d.released_at };
     // health: the latest heartbeat's counters, every key present (null before the first heartbeat).
     const health = { ...Object.fromEntries(HEALTH_FIELDS.map((f) => [f, null])), ...(d.health ?? {}),
       outdated: badges.includes('outdated'), notice_ack_version: d.notice_ack_version, reported_policy_version: d.reported_policy_version };
@@ -69,15 +68,6 @@ export async function deviceOne(c: Tx, id: string, lock = false): Promise<any> {
   const [d] = await listDevices(c, 'd.id = $1', [idOrNone(id)], true);
   if (!d) throw new ApiError(404, 'NOT_FOUND', 'Device not found');
   return d;
-}
-
-// Portal side of POST /v1/devices/:id/deactivate (device-lifecycle): idempotent, 409 when released.
-export async function deactivateAsUser(c: Tx, req: FastifyRequest, id: string) {
-  await portalUser(c, req, 'devices.edit');
-  const d = await deviceOne(c, id, true);
-  if (d.released_at) throw new ApiError(409, 'CONFLICT', 'Device is released');
-  await c.query('UPDATE devices SET deactivated_at = coalesce(deactivated_at, now()), key_hash = NULL WHERE id = $1', [d.id]);
-  return deviceOne(c, id);
 }
 
 // alerts-feed: the caller's events, newest first; a team-only role sees devices of own team only.
@@ -146,7 +136,7 @@ export class DevicesController {
     return this.db.tx(async (c) => {
       await portalUser(c, req, 'deployment');
       const rows = await listDevices(c);
-      const status: Record<string, number> = { online: 0, offline: 0, deactivated: 0, released: 0 };
+      const status: Record<string, number> = { online: 0, offline: 0, released: 0 };
       const badges: Record<string, number> = { outdated: 0, permission_pending: 0, browser_access_pending: 0, paused: 0, open_alert: 0 };
       for (const d of rows) {
         status[d.status]++;

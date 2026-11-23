@@ -13,7 +13,7 @@ version of this page is [mac-agent-api.md](mac-agent-api.md); only the
 [Enroll](#2-post-v1devicesenroll) · [Heartbeat](#3-post-v1agentsheartbeat) ·
 [Policy](#4-get-v1agentspolicy) · [Activity](#5-post-v1agentsactivity) ·
 [Screenshots](#6-screenshots) · [Tamper](#7-post-v1agentstamper) ·
-[Deactivate](#8-post-v1devicesiddeactivate) · [Status and code reactions](#status-and-code-reactions) ·
+[Uninstall](#8-uninstall-no-route) · [Status and code reactions](#status-and-code-reactions) ·
 [Windows specifics](#windows-specifics) · [Not available yet](#not-available-yet)
 
 ---
@@ -55,7 +55,7 @@ Agent:       POST /v1/devices/enroll              (token → device_id + device_
              POST /v1/agents/activity             (one sealed batch every 10 min)
              POST /v1/agents/screenshots → PUT upload_url → POST …/confirm   (per capture)
              POST /v1/agents/tamper               (as soon as detected)
-Uninstaller: POST /v1/devices/:id/deactivate      (frees the seat)
+Uninstaller: no call (an admin releases the device)
 ```
 
 ---
@@ -346,18 +346,11 @@ another `event_type` or from another device → `409 IDEMPOTENCY_KEY_REUSED`. An
 `422`. Use a new `id` for a new occurrence. A released device's key gets `401 DEVICE_RELEASED` here: leave
 queued tamper events out of the release drain (they cannot be sent).
 
-## 8. `POST /v1/devices/:id/deactivate`
+## 8. Uninstall: no route
 
-Uninstaller, before removing the agent. Header `X-Device-Key`; `:id` = own `device_id`. No body.
-
-| answer | meaning |
-|---|---|
-| `204` | Seat freed, key cleared |
-| `403 FORBIDDEN` | `:id` is not this key's device; keep the sealed deactivation record |
-| `401 DEVICE_REVOKED` | Already deactivated (e.g. retry after a lost `204`) — treat as done |
-| `401 DEVICE_RELEASED` | Released in the portal; nothing to free |
-
-Never answered `402`: a suspended company can still uninstall.
+The uninstaller calls nothing: it only removes WorkBeat from the computer (B35). The device keeps
+its seat and shows Offline until an admin releases it in the portal. There is no
+`POST /v1/devices/:id/deactivate`; it answers `404`.
 
 ---
 
@@ -370,7 +363,7 @@ Applies to every `X-Device-Key` route.
 | 200 / 201 / 204 | — | success, including a repeated idempotency key with the same body | clear / apply |
 | 304 | — | policy unchanged | keep cached policy |
 | 400 / 422 | `VALIDATION_FAILED` | bad body (`fields` lists paths) | quarantine, never retry that body |
-| 401 | `DEVICE_REVOKED` | missing, unknown, replaced or deactivated key | stop collecting, keep store and blocks, re-enroll if it can |
+| 401 | `DEVICE_REVOKED` | missing, unknown or replaced key | stop collecting, keep store and blocks, re-enroll if it can |
 | 401 | `DEVICE_RELEASED` + `released_at`, `upload_until` | released by the company | stop collecting, lift blocking, upload what it holds until `upload_until` (released_at + 24 h), then wipe and go dormant. Activity and screenshot uploads stay accepted for 7 days after `released_at`; every other route answers this |
 | 402 | `COMPANY_SUSPENDED` | company suspended | stop collecting, keep blocking, heartbeat only |
 | 402 | `LICENSE_EXPIRED` + `blocking_ends_at` | licence expired | as suspended; lift blocking after `blocking_ends_at` (compare to `Date`) |

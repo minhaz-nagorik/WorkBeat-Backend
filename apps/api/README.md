@@ -2,7 +2,7 @@
 
 NestJS (Fastify) on plain PostgreSQL. Implements the agent contract
 ([docs/core/api/agent-contract.md](../../docs/core/api/agent-contract.md)): `/health`,
-`/v1/license/validate`, `/v1/devices/enroll`, `/v1/devices/:id/deactivate`, `/v1/agents/heartbeat`,
+`/v1/license/validate`, `/v1/devices/enroll`, `/v1/agents/heartbeat`,
 `/v1/agents/policy`, `/v1/agents/events`, `/v1/agents/activity`, `/v1/agents/screenshots` (+ `/:id/confirm`),
 `/v1/agents/tamper`. Screenshots and agent packages are stored on local disk (`STORAGE_DIR`) behind
 signed URLs served by the API (`/v1/storage/...`) until a bucket provider is chosen.
@@ -46,7 +46,7 @@ pnpm db:migrate
 pnpm seed -- --name "Acme" --slug acme --seats 10 --employees "Ada Lovelace,Alan Turing" --admin-email you@acme.com
                                 # prints the licence key and the admin password once
 pnpm dev                        # http://localhost:3000
-LICENSE_KEY=WB-... pnpm smoke   # end-to-end agent flow; enrolls and deactivates one test device
+LICENSE_KEY=WB-... pnpm smoke   # end-to-end agent flow; enrolls one test device (release it afterwards)
 ADMIN_EMAIL=you@acme.com ADMIN_PASSWORD=... pnpm smoke:portal   # portal flow; adds test users and data
 ```
 

@@ -1,6 +1,6 @@
 // End-to-end check of the agent contract against a running API (local or tunnel).
 // Usage: LICENSE_KEY=WB-... [BASE_URL=http://localhost:3000] pnpm smoke
-// Enrolls one throwaway device (takes a seat, deactivated at the end).
+// Enrolls one throwaway device. It keeps its seat: release it in the portal afterwards (B35).
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
@@ -179,13 +179,11 @@ async function main() {
   assert.equal(r.json.code, 'DEVICE_REVOKED');
   step('re-enroll → same_binding, old key revoked');
 
-  r = await call('POST', `/v1/devices/${randomUUID()}/deactivate`, dk());
-  assert.equal(r.json.code, 'FORBIDDEN');
   r = await call('POST', `/v1/devices/${deviceId}/deactivate`, dk());
-  assert.equal(r.status, 204);
+  assert.equal(r.status, 404); // B35: no deactivate route
   r = await call('POST', '/v1/agents/heartbeat', dk(), { agent_version: '1.0.0' });
-  assert.equal(r.json.code, 'DEVICE_REVOKED');
-  step('deactivate → 204, then 401');
+  assert.equal(r.status, 200);
+  step('deactivate → 404, the key still works');
   console.log('\nall agent-contract checks passed against', BASE);
 }
 main().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

@@ -35,7 +35,7 @@
 
 - [ ] 4.1 Key generator (`WB-XXXX-XXXX-XXXX-XXXX`), SHA-256 of the normalised key, AES-256-GCM with the environment key (B6)
 - [ ] 4.2 `GET /v1/license` and `POST /v1/license/reveal` with `Cache-Control: no-store`
-- [ ] 4.3 Seats-used query on `devices` (`deactivated_at` and `released_at` NULL)
-- [ ] 4.4 Tests: manager → 403; revealed key equals the emailed key; lower-case key with spaces hashes to the same `key_hash`; released and deactivated devices are not counted; the key never appears in a log; tenant isolation: company A cannot reveal company B's key
+- [ ] 4.3 Seats-used query on `devices` (`released_at` NULL)
+- [ ] 4.4 Tests: manager → 403; revealed key equals the emailed key; lower-case key with spaces hashes to the same `key_hash`; released devices are not counted; the key never appears in a log; tenant isolation: company A cannot reveal company B's key
 - [ ] 4.5 Tests (edge cases): key-hash collision regenerates; reveal after reissue returns the new key; seats used above the limit reported as is; unlimited seats → `null`; manager → 403 on reveal and uninstall token; license read works while suspended
 - [x] 4.6 B29: `GET /v1/billing` refused to every company role; the not-yet-built tier and portal routes must do the same

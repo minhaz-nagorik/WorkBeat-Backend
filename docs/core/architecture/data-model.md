@@ -147,9 +147,9 @@ One per company (prototype: "One license per company"). Holds the key and the su
 The licence key is the only install credential (D43).
 
 **Seats belong to the company, not the key.**
-- Seats used = `count(devices) WHERE company_id = ? AND deactivated_at IS NULL AND released_at IS NULL`.
+- Seats used = `count(devices) WHERE company_id = ? AND released_at IS NULL` (the SQL also tests the unused `deactivated_at`, B35).
   Never stored, so it cannot drift.
-- Releasing or deactivating a device frees its seat at once; the same key can install another
+- Releasing a device frees its seat at once; the same key can install another
   device straight away (50/50 → release one → 49/50 → next install allowed).
 - Reissuing the key updates only `key_hash`, `key_ciphertext`, `key_last4`, `key_reset_at` on the
   same row and deletes the licence's unused enrollment tokens. Devices and seats are untouched:
@@ -261,7 +261,7 @@ released and the next enrollment makes a new row.
 | company_id | uuid FK NOT NULL | |
 | employee_id | uuid FK NOT NULL | the binding's employee, from the enrollment token; fixed for the row's life (D47, D48, 0003) |
 | enrollment_token_id | uuid FK NULL | token of the latest enrollment; NULL if that token was later deleted |
-| key_hash | text NULL UNIQUE | NULL after deactivate; replaced on re-enroll (D2) |
+| key_hash | text NULL UNIQUE | replaced on re-enroll (D2) |
 | key_issued_at | timestamptz NULL | |
 | hostname, os_version, model, serial_number | text | |
 | os | text NOT NULL | `macos` \| `windows` |
@@ -279,7 +279,7 @@ released and the next enrollment makes a new row.
 | health | jsonb NULL | store_bytes, oldest_unsent_at, dropped, skips, restarts, upload failures, update_failure, uptime |
 | active_pause_id | uuid NULL | as reported |
 | notice_ack_version | int NULL | |
-| deactivated_at | timestamptz NULL | seat freed, key cleared → 401 |
+| deactivated_at | timestamptz NULL | unused since B35 (no deactivate); always NULL |
 | released_at | timestamptz NULL | seat freed, key kept → 401 `DEVICE_RELEASED` (D38) |
 | created_at, updated_at | timestamptz NOT NULL | |
 
@@ -288,7 +288,7 @@ released and the next enrollment makes a new row.
   `409 DEVICE_ASSIGNED` (D48); a released device's next enrollment is a new row (D38).
 - A released device comes back only through a new Downloader install, which always brings a
   fresh single-use token (D38, D43).
-- Status is derived: released → deactivated → tamper (open tamper event) → offline → online;
+- Status is derived: released → offline → online (no `deactivated` since B35, no `tamper` since B31);
   plus outdated, permission pending, browser access pending, paused (Plan §5.9).
 
 ### notice_acknowledgements

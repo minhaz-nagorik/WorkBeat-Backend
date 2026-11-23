@@ -68,14 +68,14 @@ In `GET /v1/agents/policy` (route owned by `agent-policy`), `update_package_url`
 
 ### Requirement: A released device gets no update
 <!-- source: D38 · Plan-v3.5 §5.7 -->
-A released or deactivated device SHALL receive no policy and no update URL, because `device-authentication` answers it with `401`.
+A released device or a replaced key SHALL receive no policy and no update URL, because `device-authentication` answers it with `401`.
 
 #### Scenario: A released Mac
 - **WHEN** a released device calls `GET /v1/agents/policy`
 - **THEN** it gets `401 DEVICE_RELEASED` and no `update_package_url`
 
-#### Scenario: A deactivated PC
-- **WHEN** a deactivated device calls `GET /v1/agents/policy`
+#### Scenario: A replaced key
+- **WHEN** the old key of a re-enrolled PC calls `GET /v1/agents/policy`
 - **THEN** it gets `401 DEVICE_REVOKED` and no `update_package_url`
 
 ### Requirement: Admins and IT list the live agent versions

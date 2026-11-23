@@ -127,7 +127,7 @@ When allowed, `GET /v1/billing` SHALL return `plan`, `seat_limit`, `seats_used`,
 
 ### Requirement: A lower seat limit never removes devices
 <!-- source: D43 · B4 · PRD "Pricing" -->
-When a subscription event sets a `seat_limit` below the company's seats used, the API SHALL store the new limit and MUST NOT deactivate, release or refuse any already enrolled device. Further enrollments MUST answer `403 SEAT_LIMIT_EXCEEDED` until seats used falls below the limit (`enroll-devices`).
+When a subscription event sets a `seat_limit` below the company's seats used, the API SHALL store the new limit and MUST NOT release or refuse any already enrolled device. Further enrollments MUST answer `403 SEAT_LIMIT_EXCEEDED` until seats used falls below the limit (`enroll-devices`).
 
 #### Scenario: Growth down to Starter with 30 devices
 - **WHEN** a Growth company with 30 enrolled devices changes to the Starter price

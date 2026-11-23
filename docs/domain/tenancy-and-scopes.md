@@ -68,7 +68,7 @@ R = read, W = write, T = own team only, — = `403`.
 |---|---|---|---|---|
 | Onboarding checklist | RW | — | RW | — |
 | Licence key, uninstall token, min version | RW | — | RW | — |
-| Devices, rollout, deactivate / release | RW | — | RW | — |
+| Devices, rollout, release | RW | — | RW | — |
 | Block list | RW | R | RW | — |
 | Employee directory | RW | R (T) | R (`id`, `name`, `email`, `department`, B18) | — |
 | Monitoring settings, pauses | RW | R (T) | — | — |

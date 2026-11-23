@@ -7,11 +7,7 @@ agents branch on, and how an accepted request is bound to its device's company.
 
 ### Requirement: Agent routes authenticate with the device key
 <!-- source: B3 · D6 · Mac enroll-device "device-credentials" -->
-Every `/v1/agents/*` route and `POST /v1/devices/:id/deactivate` called without a user token SHALL resolve the SHA-256 of `X-Device-Key` through `auth_device`. A missing, unknown, replaced or deactivated key MUST return `401 DEVICE_REVOKED`. These routes MUST NOT answer `404` for an unknown key.
-
-#### Scenario: The portal deactivated the device
-- **WHEN** a deactivated device sends a heartbeat with its old key
-- **THEN** the response is `401` with `code` `DEVICE_REVOKED`
+Every `/v1/agents/*` route SHALL resolve the SHA-256 of `X-Device-Key` through `auth_device`. A missing, unknown or replaced key MUST return `401 DEVICE_REVOKED`. These routes MUST NOT answer `404` for an unknown key.
 
 #### Scenario: A key replaced by re-enrollment
 - **WHEN** the previous key of a re-enrolled device calls `GET /v1/agents/policy`
@@ -34,10 +30,6 @@ A key whose device has `released_at` set SHALL get `401 DEVICE_RELEASED`, with `
 #### Scenario: Released while the company is suspended
 - **WHEN** a released device of a suspended company calls `GET /v1/agents/policy`
 - **THEN** the response is `401` with `code` `DEVICE_RELEASED`, not `402`
-
-#### Scenario: A released Mac is uninstalled
-- **WHEN** the uninstaller of a released device calls `POST /v1/devices/:id/deactivate` with its key
-- **THEN** the response is `401` with `code` `DEVICE_RELEASED` and `deactivated_at` stays NULL
 
 #### Scenario: A released Mac reports tamper
 - **WHEN** a released device calls `POST /v1/agents/tamper` an hour after its release
@@ -106,16 +98,3 @@ After the checks above, the request SHALL run in tenant scope of the key's `comp
 - **WHEN** an authenticated agent calls `GET /v1/agents/policy?company_id=` with another company's ID
 - **THEN** the policy returned is the key's company's
 - **AND** no row of the other company is read
-
-### Requirement: Deactivation is never refused for billing
-<!-- source: B17 · D19 · D40 -->
-`POST /v1/devices/:id/deactivate` called with a device key SHALL be exempt from the `402` answers: while the company is suspended or expired it MUST still deactivate the device and free its seat, so an uninstall never leaves a seat held.
-
-#### Scenario: IT uninstalls a Mac while the company is suspended
-- **WHEN** the uninstaller calls `POST /v1/devices/:id/deactivate` with the device key during a suspension
-- **THEN** the response is `204`
-- **AND** the device has `deactivated_at` set and no longer holds a seat
-
-#### Scenario: The licence expired and the grace has passed
-- **WHEN** the uninstaller of a device of an `expired` company past `blocking_ends_at` calls deactivate with its key
-- **THEN** the response is `204` and the seat is freed

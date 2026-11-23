@@ -21,7 +21,6 @@ Clients branch on HTTP status and `code`, never on `error`. Every response carri
 | Agent service | `POST /agents/activity` | `X-Device-Key`, `Idempotency-Key` | One sealed batch: `app_sessions[]`, `url_visits[]`, `activity_buckets[]`, `idle_intervals[]`; any may be empty (D13, D37) |
 | Agent service | `POST /agents/screenshots` | `X-Device-Key`, `Idempotency-Key` | Request a signed upload URL for screenshot `id`; then `PUT` the JPEG; then `POST /agents/screenshots/:id/confirm`. Optional `thumb_bytes` (≤ 256 KB) also returns `thumb_upload_url` for a small JPEG used on timeline tiles; a missing or wrong thumbnail never fails the screenshot (19 Nov 2026) |
 | Agent service | `POST /agents/tamper` | `X-Device-Key` | One tamper event, sent as soon as detected; `id` is its idempotency key (D24) |
-| Uninstaller | `POST /devices/:id/deactivate` | `X-Device-Key` | Free the seat before removal (D19) |
 | Agent service | `GET` the signed `update_package_url` from policy | signed URL | Self-update (D40) |
 
 ## Payload fields
@@ -38,7 +37,7 @@ Clients branch on HTTP status and `code`, never on `error`. Every response carri
 - **Enrollment outcomes.** The live binding is the company's `devices` row with this `hardware_id`
   and `released_at` NULL. None: a new binding for the token's employee, which takes a seat. Live for
   the token's employee: the same binding (D2), with a new key, the old key revoked, and the seat
-  kept or taken again if it was deactivated. Live for another employee: `409 DEVICE_ASSIGNED` and
+  kept. Live for another employee: `409 DEVICE_ASSIGNED` and
   nothing is written; the device has to be released first (D48). A same-binding re-enroll while the
   previous key heartbeated in the last 15 minutes also raises a `duplicate_device_id` tamper event
   (D46).
@@ -90,7 +89,7 @@ closes it. Anything else may close it at any time; the agent reopens with backof
 | 200 / 201 / 204 | — | Success, including a repeated idempotency key with the same body | Clear the batch / apply |
 | 304 | — | Policy ETag matches | Keep cached policy |
 | 400 | `VALIDATION_FAILED` | Malformed body | Quarantine, never retry |
-| 401 | `DEVICE_REVOKED` | Unknown, replaced or deactivated device key | Stop collecting, keep store and blocks, re-enroll if it can (D6) |
+| 401 | `DEVICE_REVOKED` | Unknown or replaced device key | Stop collecting, keep store and blocks, re-enroll if it can (D6) |
 | 401 | `DEVICE_RELEASED` + `released_at`, `upload_until` | The device's company released it; `upload_until` = `released_at` + 24 h | Stop collecting, lift blocking, upload what it holds until `upload_until`, then wipe and go dormant (D38, D45) |
 | 402 | `COMPANY_SUSPENDED` | Company suspended, including a failed renewal (D29) | Stop collecting, keep blocking, heartbeat only (D5) |
 | 402 | `LICENSE_EXPIRED` + `blocking_ends_at` | Licence expired; `blocking_ends_at` = expiry + grace days (D30, D36) | As suspended, then `ended` after `blocking_ends_at` |
@@ -101,7 +100,6 @@ closes it. Anything else may close it at any time; the agent reopens with backof
 | 404 | `LICENSE_NOT_FOUND` | Unknown licence key (including the key before a reissue) | Downloader shows "wrong key" |
 | 404 | `ENROLLMENT_TOKEN_INVALID` | Unknown token (including unused tokens deleted by a key reissue) | Show "wrong key" |
 | 404 | `EMPLOYEE_NOT_FOUND` | `employee_id` not an active employee of the company (D47) | Downloader shows it |
-| 403 | `FORBIDDEN` | The uninstaller's `POST /v1/devices/:id/deactivate` names another device's `id` | Uninstaller keeps its sealed deactivation record |
 | 404 | `NOT_FOUND` | `POST /v1/agents/screenshots/:id/confirm` for an unknown screenshot `id` | Re-request the upload URL next sync |
 | 409 | `DEVICE_ASSIGNED` | Enroll: the device ID has a live binding for another employee; nothing written (D48) | Setup rolls back and tells IT to release the device first |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | Same key, different body | Quarantine |
@@ -111,7 +109,7 @@ closes it. Anything else may close it at any time; the agent reopens with backof
 | 5xx | `INTERNAL` | Server error | Back off, keep |
 | 503 | `SERVICE_UNAVAILABLE` | `GET /health` only, when the database is unreachable | — |
 
-`POST /v1/devices/:id/deactivate` is the one agent route never answered with `402` (B17).
+The uninstaller calls no route: an uninstall frees no seat, and an admin releases the device (B35). `POST /v1/devices/:id/deactivate` does not exist and answers `404`.
 
 A released key is still accepted on `POST /v1/agents/activity`, `POST /v1/agents/screenshots` and
 `POST /v1/agents/screenshots/:id/confirm` for 7 days after `released_at`; the records are stored

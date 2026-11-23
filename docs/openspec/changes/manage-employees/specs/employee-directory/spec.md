@@ -132,7 +132,7 @@ An import with any invalid row SHALL return `422 VALIDATION_FAILED` with `lines`
 
 ### Requirement: Removing an employee archives them
 <!-- source: D44 · D46 · D48 · Plan-v3.5 §4.4 "Employees and devices" · Plan-v3.5 §4.4 "Employee directory" -->
-`DELETE /v1/employees/:id` from a `company_admin` SHALL set `archived_at` and keep the employee's rows and history. While the employee has any binding (`devices` row) with `released_at` NULL, deactivated or not, it MUST return `409 EMPLOYEE_HAS_DEVICES` and change nothing. An archived employee MUST NOT appear in `/license/validate` or get a new binding.
+`DELETE /v1/employees/:id` from a `company_admin` SHALL set `archived_at` and keep the employee's rows and history. While the employee has any binding (`devices` row) with `released_at` NULL it MUST return `409 EMPLOYEE_HAS_DEVICES` and change nothing. An archived employee MUST NOT appear in `/license/validate` or get a new binding.
 
 #### Scenario: The employee still has a laptop
 - **WHEN** an admin removes an employee whose device is enrolled and not released
@@ -144,8 +144,8 @@ An import with any invalid row SHALL return `422 VALIDATION_FAILED` with `lines`
 - **THEN** `archived_at` is set and the employee's past activity is still in a report with that employee's `employee_id`
 - **AND** the employee's email can be used for a new employee
 
-#### Scenario: A deactivated binding still blocks
-- **WHEN** an admin removes an employee whose only binding is deactivated and not released
+#### Scenario: An uninstalled computer still blocks
+- **WHEN** an admin removes an employee whose only computer had WorkBeat uninstalled but was not released
 - **THEN** the response is `409` with `code` `EMPLOYEE_HAS_DEVICES` and `archived_at` stays NULL
 
 #### Scenario: Removing an already archived employee
@@ -203,7 +203,7 @@ An import with any invalid row SHALL return `422 VALIDATION_FAILED` with `lines`
 
 ### Requirement: Employees carry a derived presence
 <!-- source: Plan-v3.5 §4.5 "Employees" · B12 · B18 -->
-`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` and `deactivated_at` NULL), `offline` (none of them is `online`), `active` (an `online` one is active, see below), else `idle`. An open tamper alert MUST NOT change it. It MUST never be stored.
+`GET /v1/employees` and `GET /v1/employees/:id` SHALL add, for a `company_admin` and a `manager`, `presence`: the first that applies of `paused` (a pause in force), `no_device` (no device with `released_at` NULL), `offline` (none of them is `online`), `active` (an `online` one is active, see below), else `idle`. An open tamper alert MUST NOT change it. It MUST never be stored.
 
 #### Scenario: A paused employee with a tampered laptop
 - **WHEN** an employee has a pause in force and a device with an open tamper event
