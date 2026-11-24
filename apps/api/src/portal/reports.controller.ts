@@ -6,6 +6,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ALL, can, employeeFor, portalUser, scopeEmployeeIds, User } from '../auth';
 import { ApiError, Db, Tx } from '../core';
 import { textPdf } from '../pdf';
+import { sessionHours } from '../usage';
 import { alerts, OFFLINE_MINUTES } from './devices.controller';
 
 const BROWSERS = ['safari', 'google chrome', 'chrome', 'microsoft edge', 'msedge', 'firefox', 'brave browser', 'brave', 'arc', 'opera', 'chromium', 'vivaldi'];
@@ -91,7 +92,7 @@ async function daily(c: Tx, r: Range) {
                 SELECT employee_id, day, sum(active_samples), sum(total_samples) FROM usage_hours WHERE ${SUM} AND buckets > 0 GROUP BY 1, 2),
           t AS (SELECT employee_id, day, sum(duration_seconds) AS tracked, min(started_at) AS first_at, max(ended_at) AS last_at FROM s GROUP BY 1, 2
                 UNION ALL
-                SELECT employee_id, day, sum(tracked_seconds), min(first_at), max(last_at) FROM usage_hours WHERE ${SUM} AND sessions > 0 GROUP BY 1, 2),
+                SELECT employee_id, day, sum(tracked_seconds), min(first_at), max(last_at) FROM usage_hours WHERE ${SUM} AND (sessions > 0 OR tracked_seconds > 0) GROUP BY 1, 2),
           items AS (SELECT employee_id, day, 'app' AS kind, app_name AS name, sum(duration_seconds) AS sec FROM s WHERE NOT lower(app_name) = ANY ($5) GROUP BY 1, 2, 4
                 UNION ALL
                 SELECT employee_id, day, 'app', app_name, seconds FROM usage_apps WHERE ${SUM} AND NOT lower(app_name) = ANY ($5)
@@ -227,11 +228,11 @@ export class ReportsController {
                  + (SELECT coalesce(sum(total_samples), 0) FROM usage_hours WHERE ${SUM}))::int AS tot`,
         p,
       );
-      // Average per day that had a session starting in that hour.
+      // Average per day that had session time in that hour; a session is split across the hours it covers.
       const { rows: th } = await c.query(
         `SELECT h, (sum(sec)::float / count(DISTINCT day))::int AS avg
-           FROM (SELECT extract(hour FROM started_at)::int AS h, started_at::date AS day, sum(duration_seconds) AS sec FROM app_sessions WHERE ${RAW('started_at')} GROUP BY 1, 2
-                 UNION ALL SELECT hour, day, sum(tracked_seconds) FROM usage_hours WHERE ${SUM} AND sessions > 0 GROUP BY 1, 2) x GROUP BY 1`, p);
+           FROM (SELECT hour AS h, started_at::date AS day, sum(sec) AS sec FROM (${sessionHours(RAW('started_at'))}) s GROUP BY 1, 2
+                 UNION ALL SELECT hour, day, sum(tracked_seconds) FROM usage_hours WHERE ${SUM} AND (sessions > 0 OR tracked_seconds > 0) GROUP BY 1, 2) x GROUP BY 1`, p);
       const { rows: bh } = await c.query(
         `SELECT h, sum(act)::int AS act, sum(tot)::int AS tot
            FROM (SELECT extract(hour FROM bucket_start)::int AS h, active_samples AS act, total_samples AS tot FROM activity_buckets WHERE ${RAW('bucket_start')}

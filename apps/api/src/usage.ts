@@ -20,6 +20,19 @@ async function companyTz(c: Tx, companyId: string) {
   await c.query("SELECT set_config('timezone', $1, true)", [co.timezone]);
 }
 
+// One row per clock hour an app session covers, so a 12:09–17:01 session is not all counted at 12:00.
+// Seconds are split by overlap with cumulative rounding, so a session's pieces always sum to duration_seconds.
+// `first` marks the hour it started in. Callers set the transaction's TimeZone.
+export const sessionHours = (where: string) =>
+  `SELECT s.employee_id, s.started_at, s.ended_at, extract(hour FROM h)::int AS hour, h = date_trunc('hour', s.started_at) AS first,
+          CASE WHEN s.ended_at > s.started_at
+               THEN round(s.duration_seconds * extract(epoch FROM least(s.ended_at, h + interval '1 hour') - s.started_at) / extract(epoch FROM s.ended_at - s.started_at))
+                  - round(s.duration_seconds * extract(epoch FROM greatest(s.started_at, h) - s.started_at) / extract(epoch FROM s.ended_at - s.started_at))
+               ELSE s.duration_seconds END AS sec
+     FROM app_sessions s, generate_series(date_trunc('hour', s.started_at),
+            date_trunc('hour', greatest(s.started_at, s.ended_at - interval '1 microsecond')), interval '1 hour') h
+    WHERE ${where}`;
+
 const RAW = (col: string) => `company_id = $1 AND ${col} >= $2::date::timestamptz AND ${col} < ($2::date + 1)::timestamptz AND ($3::uuid IS NULL OR employee_id = $3)`;
 
 // Rebuilds one company day, or one employee's part of it. Marks the day built when whole.
@@ -30,9 +43,9 @@ async function buildDay(c: Tx, companyId: string, day: string, employeeId: strin
   add(rows, 'usage_hours', (await c.query(
     `INSERT INTO usage_hours (company_id, employee_id, day, hour, tracked_seconds, sessions, buckets, active_samples, total_samples, idle_seconds, first_at, last_at)
      SELECT $1, employee_id, $2::date, hour, sum(tracked), sum(sessions), sum(buckets), sum(act), sum(tot), sum(idle), min(first_at), max(last_at)
-       FROM (SELECT employee_id, extract(hour FROM started_at)::int AS hour, duration_seconds::bigint AS tracked, 1 AS sessions, 0 AS buckets,
+       FROM (SELECT employee_id, hour, sec AS tracked, first::int AS sessions, 0 AS buckets,
                     0::bigint AS act, 0::bigint AS tot, 0::numeric AS idle, started_at AS first_at, ended_at AS last_at
-               FROM app_sessions WHERE ${RAW('started_at')}
+               FROM (${sessionHours(RAW('started_at'))}) s
              UNION ALL
              SELECT employee_id, extract(hour FROM bucket_start)::int, 0, 0, 1, active_samples, total_samples, 0, NULL, NULL
                FROM activity_buckets WHERE ${RAW('bucket_start')}
