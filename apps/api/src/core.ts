@@ -18,7 +18,7 @@ const env = z
     PUBLIC_BASE_URL: z.string().url().optional(), // else taken from the request host (tunnel)
     PORT: z.coerce.number().int().default(3000),
     RESEND_API_KEY: z.string().optional(), // unset: emails go to STORAGE_DIR/outbox (local only)
-    EMAIL_FROM: z.string().default('WorkBeat <no-reply@workbeat.io>'),
+    EMAIL_FROM: z.string().default('WorkBeat <noreply@tryworkbeat.com>'),
     PORTAL_URL: z.string().url().default('http://localhost:3001'), // links in emails
     CRON_SECRET: z.string().min(32).optional(), // X-Cron-Secret for /cron/*; unset: every cron call is 401
   })

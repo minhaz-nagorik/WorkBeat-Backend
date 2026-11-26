@@ -28,7 +28,7 @@ const settingsPatch = z.object({
 const SETTINGS = 'name, slug, data_retention_days, idle_threshold_seconds, alert_email, timezone, slack_webhook_ciphertext IS NOT NULL AS slack_webhook_set';
 const SEATS_USED = '(SELECT count(*)::int FROM devices WHERE company_id = app_company_id() AND deactivated_at IS NULL AND released_at IS NULL)';
 const DOWNLOAD_URL_SECONDS = 15 * 60;
-const CNAME_TARGET = 'proxy.workbeat.io';
+const CNAME_TARGET = 'proxy.tryworkbeat.com';
 
 // The custom domain of company `id` with the DNS records to create; the caller's company when `id` is null.
 export async function customDomain(c: Tx, id: string | null = null) {
@@ -46,7 +46,7 @@ export async function customDomain(c: Tx, id: string | null = null) {
 export async function setCustomDomain(c: Tx, id: string, raw: unknown) {
   const b = parse(z.object({ domain: z.string().max(253) }), raw, 422);
   const domain = b.domain.trim().toLowerCase().replace(/\.$/, '');
-  if (!isBareHost(domain) || !domain.includes('.') || domain === 'workbeat.io' || domain.endsWith('.workbeat.io'))
+  if (!isBareHost(domain) || !domain.includes('.') || domain === 'tryworkbeat.com' || domain.endsWith('.tryworkbeat.com'))
     throw new ApiError(422, 'VALIDATION_FAILED', 'Not a host name you can use', { fields: ['domain'] });
   await c.query(
     `UPDATE companies SET custom_domain = $2, custom_domain_status = 'pending', custom_domain_token = $3,

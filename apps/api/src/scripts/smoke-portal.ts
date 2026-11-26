@@ -229,8 +229,8 @@ async function round4(admin: string, companyId: string) {
   expect(await call('DELETE', '/v1/company/custom-domain', admin), 204);
   assert.equal((await call('GET', '/v1/company/custom-domain', admin)).json.data, null);
   const slug = expect(await call('GET', '/v1/company/settings', admin), 200).slug;
-  assert.equal(expect(await call('GET', `/v1/hosts/resolve?host=${slug.toUpperCase()}.workbeat.io`), 200).slug, slug);
-  expect(await call('GET', `/v1/hosts/resolve?host=x.${slug}.workbeat.io`), 404, 'NOT_FOUND');
+  assert.equal(expect(await call('GET', `/v1/hosts/resolve?host=${slug.toUpperCase()}.tryworkbeat.com`), 200).slug, slug);
+  expect(await call('GET', `/v1/hosts/resolve?host=x.${slug}.tryworkbeat.com`), 404, 'NOT_FOUND');
   ok('custom domain: admin sets, staff approve, only active resolves');
 
   assert.deepEqual((await call('PATCH', '/v1/company/settings', admin, { alert_email: { roles: [], types: [], delivery: 'instant' } })).json.fields, ['alert_email.roles']);
