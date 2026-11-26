@@ -4,6 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { enrollBody, licenseValidateBody, LIMITS, normaliseLicenceKey } from './contract';
 import { ApiError, Db, fromDbError, parse, sha256, token } from './core';
 import { billingError, newestRelease } from './device';
+import { tamperAlert } from './mail';
 import { Storage } from './storage';
 import { baseUrl, tag } from './http';
 
@@ -74,8 +75,9 @@ export class InstallController {
   @Post('v1/devices/enroll')
   async enroll(@Req() req: FastifyRequest, @Headers('authorization') auth: string | undefined, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     const presented = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+    let mail = () => {};
     try {
-      return await this.db.tx(async (c) => {
+      const out = await this.db.tx(async (c) => {
         const tok = presented ? (await c.query('SELECT * FROM auth_enrollment_token($1)', [sha256(presented)])).rows[0] : null;
         if (!tok) throw new ApiError(404, 'ENROLLMENT_TOKEN_INVALID', 'Enrollment token not found');
         if (tok.used) throw new ApiError(403, 'ENROLLMENT_TOKEN_EXHAUSTED', 'Enrollment token already used');
@@ -111,11 +113,12 @@ export class InstallController {
         if (live) {
           const dupMs = LIMITS.duplicateHeartbeatMinutes * 60_000;
           if (live.last_heartbeat_at && Date.now() - live.last_heartbeat_at.getTime() < dupMs) {
-            await c.query(
+            const { rows: [t] } = await c.query(
               `INSERT INTO tamper_events (id, company_id, device_id, hostname, event_type, detail, occurred_at)
-               SELECT gen_random_uuid(), company_id, id, hostname, 'duplicate_device_id', '{}', now() FROM devices WHERE id = $1`,
+               SELECT gen_random_uuid(), company_id, id, hostname, 'duplicate_device_id', '{}', now() FROM devices WHERE id = $1 RETURNING id`,
               [live.id],
             );
+            if (t) mail = await tamperAlert(c, t.id);
           }
           await c.query(
             `UPDATE devices SET key_hash = $2, key_issued_at = now(), deactivated_at = NULL, enrollment_token_id = $3,
@@ -136,6 +139,8 @@ export class InstallController {
         tag(req, { device_id: dev.id });
         return { data: { device_id: dev.id, device_key: key, outcome: 'new_binding', notice_required: true } };
       });
+      mail(); // after commit
+      return out;
     } catch (e) {
       throw fromDbError(e) ?? e;
     }

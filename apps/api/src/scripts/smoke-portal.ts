@@ -234,6 +234,12 @@ async function round4(admin: string, companyId: string) {
   ok('custom domain: admin sets, staff approve, only active resolves');
 
   assert.deepEqual((await call('PATCH', '/v1/company/settings', admin, { alert_email: { roles: [], types: [], delivery: 'instant' } })).json.fields, ['alert_email.roles']);
+  const hook = 'https://hooks.slack.com/services/T0/B0/smoke';
+  const withHook = await call('PATCH', '/v1/company/settings', admin, { slack_webhook_url: hook });
+  assert.equal(expect(withHook, 200).slack_webhook_set, true); assert.ok(!JSON.stringify(withHook.json).includes('hooks.slack'), 'webhook never returned');
+  assert.deepEqual((await call('PATCH', '/v1/company/settings', admin, { slack_webhook_url: 'https://example.com/hook' })).json.fields, ['slack_webhook_url']);
+  assert.equal(expect(await call('PATCH', '/v1/company/settings', admin, { slack_webhook_url: null }), 200).slack_webhook_set, false);
+  ok('slack webhook: set, refused off Slack, removed');
   assert.ok('min_agent_version' in expect(await call('GET', '/v1/license', admin), 200));
   const emps = expect(await call('GET', '/v1/employees', admin), 200);
   const e = (emps.items ?? emps)[0];
@@ -423,6 +429,10 @@ async function main() {
     idle_intervals: [{ session_user: 'ada', started_at: now - 600_000, ended_at: now - 300_000 }],
   }, { ...dk, 'idempotency-key': batch }), 200);
   expect(await call('POST', '/v1/agents/tamper', undefined, { id: randomUUID(), event_type: 'hosts_modified', detail: {}, occurred_at: now }, dk), 201);
+  const alertMail = () => readdirSync(OUTBOX).filter((n) => n.includes(process.env.ADMIN_EMAIL!)).map((n) => JSON.parse(readFileSync(join(OUTBOX, n), 'utf8')))
+    .find((m) => m.subject === 'WorkBeat alert: Tamper detected' && m.text.includes('Event: Website blocking changed') && m.text.includes('Employee: '));
+  for (let i = 0; i < 20 && !alertMail(); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(alertMail(), 'tamper alert emailed to the company admin');
 
   const devices = expect(await call('GET', '/v1/devices', it.token), 200);
   const d = devices.find((x: any) => x.id === dev.device_id);

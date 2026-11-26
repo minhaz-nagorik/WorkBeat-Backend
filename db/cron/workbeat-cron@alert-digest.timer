@@ -1,0 +1,10 @@
+# /cron/alert-digest hourly: hourly and daily alert emails (alert_email.delivery).
+[Unit]
+Description=WorkBeat alert digest emails, hourly
+
+[Timer]
+OnCalendar=*-*-* *:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -7,6 +7,7 @@ import { authDevice, pauseInForce, policyVersion } from './device';
 import { buildPolicy } from './policy';
 import { PolicyEvents } from './policy-events';
 import { baseUrl, tag } from './http';
+import { tamperAlert } from './mail';
 import { Storage, thumbPath } from './storage';
 import { rebuildLateDays } from './usage';
 
@@ -283,7 +284,8 @@ export class AgentsController {
   // process-tamper-alerts/tamper-ingestion. Stored once on its ID, any age (D24).
   @Post('tamper')
   async tamper(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined, @Body() raw: unknown, @Res({ passthrough: true }) res: FastifyReply) {
-    return this.db.tx(async (c) => {
+    let mail = () => {};
+    const out = await this.db.tx(async (c) => {
       const { dev, billing } = await authDevice(c, key, 'normal');
       tag(req, dev);
       if (billing) throw billing;
@@ -296,6 +298,7 @@ export class AgentsController {
       );
       if (ins.rowCount) {
         res.status(201);
+        mail = await tamperAlert(c, b.id);
         return { data: ins.rows[0] };
       }
       const { rows: [t] } = await c.query('SELECT id, received_at, device_id, event_type FROM tamper_events WHERE id = $1', [b.id]);
@@ -304,5 +307,7 @@ export class AgentsController {
       res.status(200);
       return { data: { id: t.id, received_at: t.received_at } };
     });
+    mail(); // after commit: a rolled-back event sends nothing
+    return out;
   }
 }

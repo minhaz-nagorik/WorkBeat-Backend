@@ -79,10 +79,16 @@ Scheduler; the API runs no in-process timer ([`cron-routes`][cron-routes], B10).
 |---|---|---|
 | `POST /cron/token-expiry` | hourly | run-scheduled-jobs |
 | `POST /cron/usage-summary` | hourly | summarize-usage |
+| `POST /cron/alert-digest` | hourly | alert emails |
 | `POST /cron/cleanup` | daily 02:00 UTC | run-scheduled-jobs |
 
-There is no `/cron/heartbeat-check` or `/cron/alert-digest` (B34): a device's `offline` status is
-worked out from `last_heartbeat_at` when it is read, and there are no alert emails.
+There is no `/cron/heartbeat-check` (B34): a device's `offline` status is worked out from
+`last_heartbeat_at` when it is read.
+
+### `POST /cron/alert-digest`
+Roles: scheduler
+Email hourly and daily alert digests.
+Notes: for each company whose `alert_email.delivery` is `hourly` or `daily` and whose last digest (`companies.alert_digest_sent_at`) is at least that long ago (5 min slack), lists the tamper events of `alert_email.types` received since then, at most one interval back, up to 200 lines, and emails the `alert_email.roles` users after commit. No new events: no email, the window still moves. Instant delivery is sent by `POST /v1/agents/tamper` and enrollment (duplicate device ID).
 
 ### `POST /cron/token-expiry`
 Roles: scheduler · Spec: [`cron-routes`][cron-routes]

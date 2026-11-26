@@ -9,13 +9,14 @@ three times (rule 8). The mechanism is specified in `run-scheduled-jobs` (`cron-
 | Route | Schedule (UTC) | Does | Owning change | Expected runtime |
 |---|---|---|---|---|
 | `/cron/token-expiry` | `0 * * * *` | Deletes unused enrollment tokens past `expires_at`; used tokens stay | `run-scheduled-jobs` (`cron-routes`) | Under a second |
+| `/cron/alert-digest` | `0 * * * *` | Emails each company with hourly or daily alert delivery one list of the tamper events since its last digest (24 h apart for daily); instant delivery is sent when the event arrives | alert emails | Under a second |
 | `/cron/usage-summary` | `0 * * * *` | Deletes each company's summaries past retention, then builds the summary of every finished company day not built yet, newest first | `summarize-usage` (`usage-summaries`) | Seconds once caught up; after deploy or a timezone change it backfills up to 90 days per company and returns `more: true` until done |
 | `/cron/cleanup` | `0 2 * * *` | Ensures monthly partitions, deletes each company's activity and screenshots past retention in batches, deletes old `ingest_batches` and resolved old tamper events, drops partitions past 90 days (screenshots not yet, task 3.2) | `run-scheduled-jobs` (`data-retention`) | Up to the time budget in `packages/shared`; may return `more: true` |
 
 Runtimes are expectations until the load test measures them (`data-retention` task 3.5).
 
-There is no `/cron/heartbeat-check` and no `/cron/alert-digest` (B34). A device shows as `offline`
-when its last heartbeat is over 15 minutes old, worked out at read time; there are no alert emails.
+There is no `/cron/heartbeat-check` (B34). A device shows as `offline` when its last heartbeat is
+over 15 minutes old, worked out at read time. Alert emails follow `alert_email` in company settings.
 If many devices show offline at once, it is usually the API, not the devices: check API errors and
 heartbeat `5xx` first.
 
@@ -36,7 +37,7 @@ heartbeat `5xx` first.
 
 Every job is safe to repeat and safe to call by hand with the secret.
 
-All three are built: `/cron/usage-summary` (summarize-usage), `/cron/token-expiry` (cron-routes) and `/cron/cleanup` (data-retention, screenshots and their R2 files included). Any other job name answers `404`.
+All four are built: `/cron/alert-digest`, `/cron/usage-summary` (summarize-usage), `/cron/token-expiry` (cron-routes) and `/cron/cleanup` (data-retention, screenshots and their R2 files included). Any other job name answers `404`.
 
 ## When a job fails
 

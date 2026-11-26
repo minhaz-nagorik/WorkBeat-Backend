@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ADMIN, ALL, NO_COMPANY_ROLE, portalUser } from '../auth';
-import { ApiError, config, Db, decrypt, parse, Tx } from '../core';
+import { ApiError, config, Db, decrypt, encrypt, parse, Tx } from '../core';
 import { baseUrl } from '../http';
 import { cmpVersion } from '../device';
 import { Storage } from '../storage';
@@ -22,8 +22,10 @@ const settingsPatch = z.object({
     delivery: z.enum(['instant', 'hourly', 'daily']),
   }).optional(),
   timezone: z.string().min(1).max(64).optional(), // checked by companies_timezone_check → 422
+  // Only Slack's own host, so the API never posts to an address an admin picks (slack-alerts). null removes it.
+  slack_webhook_url: z.string().max(500).regex(/^https:\/\/hooks\.slack\.com\/services\/[\w/-]+$/).nullable().optional(),
 });
-const SETTINGS = 'name, slug, data_retention_days, idle_threshold_seconds, alert_email, timezone';
+const SETTINGS = 'name, slug, data_retention_days, idle_threshold_seconds, alert_email, timezone, slack_webhook_ciphertext IS NOT NULL AS slack_webhook_set';
 const SEATS_USED = '(SELECT count(*)::int FROM devices WHERE company_id = app_company_id() AND deactivated_at IS NULL AND released_at IS NULL)';
 const DOWNLOAD_URL_SECONDS = 15 * 60;
 const CNAME_TARGET = 'proxy.workbeat.io';
@@ -105,9 +107,11 @@ export class CompanyController {
       const { rows: [old] } = await c.query('SELECT timezone FROM companies WHERE id = app_company_id()');
       const { rows: [r] } = await c.query(
         `UPDATE companies SET idle_threshold_seconds = coalesce($1, idle_threshold_seconds), alert_email = coalesce($2, alert_email),
-                timezone = coalesce($3, timezone)
+                timezone = coalesce($3, timezone),
+                slack_webhook_ciphertext = CASE WHEN $4 THEN $5::bytea ELSE slack_webhook_ciphertext END
           WHERE id = app_company_id() RETURNING ${SETTINGS}`,
-        [b.idle_threshold_seconds ?? null, b.alert_email ? JSON.stringify(b.alert_email) : null, b.timezone ?? null],
+        [b.idle_threshold_seconds ?? null, b.alert_email ? JSON.stringify(b.alert_email) : null, b.timezone ?? null,
+         b.slack_webhook_url !== undefined, b.slack_webhook_url ? encrypt(b.slack_webhook_url, config().SECRETS_ENCRYPTION_KEY) : null],
       );
       if (r.timezone !== old.timezone) await clearSummaries(c); // days moved: rebuilt by /cron/usage-summary (B28)
       return { data: r };

@@ -6,6 +6,7 @@ import type { FastifyRequest } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { ApiError, config, Db, sha256, Tx } from './core';
 import type { LogCtx } from './http';
+import { alertDigestJob } from './alert-digest';
 import { cleanupJob } from './cleanup';
 import { Storage } from './storage';
 import { tokenExpiryJob } from './token-expiry';
@@ -16,6 +17,7 @@ const JOBS: Record<string, Job> = {
   'usage-summary': usageSummaryJob,
   cleanup: (tx, rows, storage) => cleanupJob(tx, rows, (path) => storage.remove('screenshots', path)),
   'token-expiry': tokenExpiryJob,
+  'alert-digest': alertDigestJob,
 };
 
 // Hashing first gives equal lengths, so a prefix or longer value is refused without throwing.
