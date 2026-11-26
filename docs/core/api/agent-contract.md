@@ -21,6 +21,7 @@ Clients branch on HTTP status and `code`, never on `error`. Every response carri
 | Agent service | `POST /agents/activity` | `X-Device-Key`, `Idempotency-Key` | One sealed batch: `app_sessions[]`, `url_visits[]`, `activity_buckets[]`, `idle_intervals[]`; any may be empty (D13, D37) |
 | Agent service | `POST /agents/screenshots` | `X-Device-Key`, `Idempotency-Key` | Request a signed upload URL for screenshot `id`; then `PUT` the JPEG; then `POST /agents/screenshots/:id/confirm`. Optional `thumb_bytes` (≤ 256 KB) also returns `thumb_upload_url` for a small JPEG used on timeline tiles; a missing or wrong thumbnail never fails the screenshot (19 Nov 2026) |
 | Agent service | `POST /agents/tamper` | `X-Device-Key` | One tamper event, sent as soon as detected; `id` is its idempotency key (D24) |
+| Uninstaller | `POST /agents/uninstall` | `X-Device-Key` | After the uninstall token passes: frees the seat, marks the device `uninstalled`, clears the key; `204`. Accepts a released key at any time; never `402` (B36) |
 | Agent service | `GET` the signed `update_package_url` from policy | signed URL | Self-update (D40) |
 
 ## Payload fields
@@ -109,7 +110,7 @@ closes it. Anything else may close it at any time; the agent reopens with backof
 | 5xx | `INTERNAL` | Server error | Back off, keep |
 | 503 | `SERVICE_UNAVAILABLE` | `GET /health` only, when the database is unreachable | — |
 
-The uninstaller calls no route: an uninstall frees no seat, and an admin releases the device (B35). `POST /v1/devices/:id/deactivate` does not exist and answers `404`.
+The uninstaller calls `POST /v1/agents/uninstall` (B36): it frees the seat and the device shows `uninstalled`; a repeat answers `401 DEVICE_REVOKED`, which means done. A computer removed without it keeps its seat until an admin releases it. `POST /v1/devices/:id/deactivate` does not exist and answers `404` (B35).
 
 A released key is still accepted on `POST /v1/agents/activity`, `POST /v1/agents/screenshots` and
 `POST /v1/agents/screenshots/:id/confirm` for 7 days after `released_at`; the records are stored

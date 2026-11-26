@@ -1,4 +1,5 @@
-// Devices with derived status and badges, rollout counts, release, alerts feed (no deactivate, B35).
+// Devices with derived status and badges, rollout counts, release, alerts feed (no deactivate, B35;
+// the uninstaller's POST /v1/agents/uninstall marks a device uninstalled, B36).
 import { Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { idOrNone, portalUser, User } from '../auth';
@@ -8,7 +9,7 @@ import { HEALTH_FIELDS } from '../contract';
 
 export const OFFLINE_MINUTES = 15;
 const ALERT_PAGE = 50;
-const DEVICE = `d.id, d.hostname, d.os, d.os_version, d.arch, d.agent_version, d.last_heartbeat_at, d.released_at,
+const DEVICE = `d.id, d.hostname, d.os, d.os_version, d.arch, d.agent_version, d.last_heartbeat_at, d.released_at, d.uninstalled_at,
   d.offline_since, d.enrolled_at, d.permissions, d.browser_access, d.helper_status, d.health, d.active_pause_id,
   d.notice_ack_version, d.reported_policy_version,
   json_build_object('id', e.id, 'name', e.name) AS employee,
@@ -19,7 +20,8 @@ const DEVICE = `d.id, d.hostname, d.os, d.os_version, d.arch, d.agent_version, d
 // device-status: first that applies, never stored.
 // shortcut: "offline" also derived from a heartbeat older than 15 min, until /cron/offline sets offline_since.
 export function deviceStatus(d: any) {
-  if (d.released_at) return 'released';
+  if (d.uninstalled_at) return 'uninstalled'; // removed by the uninstaller; also released (B36)
+  if (d.released_at) return 'released'; // still on the computer, dormant
   const seen = (d.last_heartbeat_at ?? d.enrolled_at).getTime();
   if (d.offline_since || Date.now() - seen > OFFLINE_MINUTES * 60_000) return 'offline';
   return 'online';
@@ -50,7 +52,7 @@ async function withStatus(c: Tx, rows: any[], detail = false) {
     ];
     const base = { id: d.id, hostname: d.hostname, os: d.os, os_version: d.os_version, arch: d.arch, agent_version: d.agent_version,
       employee: d.employee, status: deviceStatus(d), badges, last_heartbeat_at: d.last_heartbeat_at,
-      released_at: d.released_at };
+      released_at: d.released_at, uninstalled_at: d.uninstalled_at };
     // health: the latest heartbeat's counters, every key present (null before the first heartbeat).
     const health = { ...Object.fromEntries(HEALTH_FIELDS.map((f) => [f, null])), ...(d.health ?? {}),
       outdated: badges.includes('outdated'), notice_ack_version: d.notice_ack_version, reported_policy_version: d.reported_policy_version };
@@ -136,7 +138,7 @@ export class DevicesController {
     return this.db.tx(async (c) => {
       await portalUser(c, req, 'deployment');
       const rows = await listDevices(c);
-      const status: Record<string, number> = { online: 0, offline: 0, released: 0 };
+      const status: Record<string, number> = { online: 0, offline: 0, released: 0, uninstalled: 0 };
       const badges: Record<string, number> = { outdated: 0, permission_pending: 0, browser_access_pending: 0, paused: 0, open_alert: 0 };
       for (const d of rows) {
         status[d.status]++;

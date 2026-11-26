@@ -1,7 +1,8 @@
 ## Purpose
 
 How a binding ends: release from monitoring is the only way, what it does to the key and the seat,
-what an uninstall does, and why a binding's employee never changes. There is no deactivate (B35).
+what an uninstall does, and why a binding's employee never changes. There is no deactivate (B35);
+the uninstaller ends the binding and records the uninstall (B36).
 
 ## ADDED Requirements
 
@@ -13,17 +14,33 @@ what an uninstall does, and why a binding's employee never changes. There is no 
 - **WHEN** a portal user or an old uninstaller calls `POST /v1/devices/:id/deactivate`
 - **THEN** the response is `404` with `code` `NOT_FOUND` and the device is unchanged
 
-### Requirement: Only a release frees a seat
-<!-- source: B35 · D19 -->
-The API SHALL have no route a device calls to end its own binding: a device MUST keep its seat and its employee until a `company_admin` or `it_admin` releases it, including after WorkBeat is uninstalled from it, and shows `offline` once its heartbeats stop.
+### Requirement: The uninstaller ends the binding
+<!-- source: B36 · B35 · D19 -->
+`POST /v1/agents/uninstall` with a device key SHALL set `released_at` when it is not set, set `uninstalled_at`, clear `key_hash` and answer `204`, freeing the seat and the employee as a release does. The key MUST then answer `401 DEVICE_REVOKED` on every route, including this one. The database MUST refuse `uninstalled_at` without `released_at`.
 
 #### Scenario: IT uninstalls a laptop
-- **WHEN** IT runs the uninstaller on an enrolled laptop and nobody releases it
+- **WHEN** IT runs the uninstaller with the right token on an enrolled laptop that is online
+- **THEN** the seat count drops by one, the device shows `uninstalled`, and its next heartbeat gets `401 DEVICE_REVOKED`
+
+#### Scenario: The uninstaller calls twice
+- **WHEN** the first call succeeded and the uninstaller calls again with the same key
+- **THEN** the response is `401` with `code` `DEVICE_REVOKED` and the device is unchanged
+
+#### Scenario: Removed without the uninstaller
+- **WHEN** WorkBeat is deleted from a laptop without the uninstaller and nobody releases it
 - **THEN** the seat count is unchanged and the device shows `offline` 15 minutes after its last heartbeat
 
-#### Scenario: Released after the uninstall
-- **WHEN** an admin releases that device later
-- **THEN** its seat and employee are freed
+### Requirement: An uninstall needs no approval and works in any company state
+<!-- source: B36 · D19 · D38 -->
+The uninstall token checked on the computer SHALL be the approval: the route MUST NOT go through the maker-checker step and MUST NOT answer `402`. A released key MUST be accepted at any time after its release.
+
+#### Scenario: Uninstalled after a release
+- **WHEN** a device released three weeks ago is then uninstalled with the uninstaller
+- **THEN** the response is `204`, `released_at` keeps its first value and the device shows `uninstalled`
+
+#### Scenario: Uninstalled while the company is suspended
+- **WHEN** the company is suspended and the uninstaller calls the route
+- **THEN** the response is `204` and the seat is freed
 
 ### Requirement: The portal releases a device from monitoring
 <!-- source: D38 · D45 · D48 · Plan-v3.5 §5.8 · Plan-v3.5 §4.4 "Device release" -->
@@ -56,7 +73,7 @@ No route SHALL change a `devices` row's `employee_id` after it is inserted, and 
 
 ### Requirement: Lifecycle routes stay inside the company
 <!-- source: B2 · Plan-v3.5 §6.1 · PRD "Permission matrix" -->
-A `manager` SHALL get `403 FORBIDDEN` on release. A device ID of another company MUST return `404 NOT_FOUND` to a portal user.
+A `manager` SHALL get `403 FORBIDDEN` on release. A device key MUST only ever uninstall its own device. A device ID of another company MUST return `404 NOT_FOUND` to a portal user.
 
 #### Scenario: Another company's device
 - **WHEN** an `it_admin` releases a device ID that belongs to another company

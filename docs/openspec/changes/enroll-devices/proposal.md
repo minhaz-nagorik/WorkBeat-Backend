@@ -24,7 +24,7 @@ key still uploads for 7 days (Plan-v3.5 §5.8, D38, D45).
   DEVICE_REVOKED` / `DEVICE_RELEASED` (with `released_at`, `upload_until`; the released key still
   accepted on the upload routes for 7 days, D45), `402 COMPANY_SUSPENDED` / `LICENSE_EXPIRED` with
   `blocking_ends_at`, then tenant scope.
-- **Device lifecycle**: release only; an uninstall calls nothing and frees no seat (B35). A binding's employee never
+- **Device lifecycle**: release only; the uninstaller calls `POST /v1/agents/uninstall`, which frees the seat and marks the device `uninstalled` (B36; amends B35). A binding's employee never
   changes; no route moves a device to another employee (D48).
 - Amends the agent repositories where D43/D47 are newer; see [design.md](design.md).
 
@@ -35,7 +35,7 @@ key still uploads for 7 days (Plan-v3.5 §5.8, D38, D45).
 - `license-validation`: `POST /v1/license/validate`, both steps and every refusal.
 - `device-enrollment`: `POST /v1/devices/enroll`, new binding, same binding, `409 DEVICE_ASSIGNED`, seat and token use.
 - `device-authentication`: the device-key guard and the company-state answers on agent routes.
-- `device-lifecycle`: release, no deactivate, and the fixed employee of a binding.
+- `device-lifecycle`: release, uninstall, no deactivate, and the fixed employee of a binding.
 
 ### Modified Capabilities
 

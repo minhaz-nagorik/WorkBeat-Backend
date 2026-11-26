@@ -1,4 +1,4 @@
-// /v1/agents/*: heartbeat, policy, activity, screenshots, tamper.
+// /v1/agents/*: heartbeat, policy, activity, screenshots, tamper, uninstall.
 import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { activityBody, HEALTH_FIELDS, heartbeatBody, LIMITS, screenshotBody, tamperBody, uuid } from './contract';
@@ -259,6 +259,24 @@ export class AgentsController {
       // 0 rows: a concurrent confirm won (still answer uploaded), or the row is gone (404).
       if (!up.rowCount && !(await c.query('SELECT 1 FROM screenshots WHERE id = $1 AND device_id = $2', [id, dev.device_id])).rowCount) throw notFound;
       return done;
+    });
+  }
+
+  // B36: the uninstaller, after the company uninstall token passed on the Mac. The token is the
+  // approval, so no maker-checker step; never 402. Frees the seat (released_at), records the uninstall
+  // and clears the key, so a repeat answers 401 DEVICE_REVOKED, which the agent treats as done.
+  @Post('uninstall')
+  @HttpCode(204)
+  async uninstall(@Req() req: FastifyRequest, @Headers('x-device-key') key: string | undefined) {
+    await this.db.tx(async (c) => {
+      const { dev } = await authDevice(c, key, 'uninstall');
+      tag(req, dev);
+      await c.query(
+        `UPDATE devices SET released_at = coalesce(released_at, now()), uninstalled_at = coalesce(uninstalled_at, now()),
+                key_hash = NULL
+          WHERE id = $1`,
+        [dev.device_id],
+      );
     });
   }
 

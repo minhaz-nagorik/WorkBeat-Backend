@@ -36,4 +36,6 @@
 - [x] 4.2 No deactivate route (B35): `POST /v1/devices/:id/deactivate` → 404 for a user token and a device key
 - [ ] 4.3 No route writes `devices.employee_id` after insert; the `devices_employee_fixed` trigger (0003) refuses it
 - [ ] 4.4 Tests: role matrix (company_admin, it_admin allowed; manager 403); seat freed by release; release keeps the key and answers `DEVICE_RELEASED`; `UPDATE devices SET employee_id` refused by the database; release then Setup for another employee → new row, released row's records keep their `employee_id`; tenant isolation — another company's device → 404
+- [x] 4.6 `POST /v1/agents/uninstall` (B36): released_at if unset, uninstalled_at, key cleared, 204; released key accepted at any age; no 402; migration 0019 (`devices_uninstalled_is_released`); status `uninstalled`, `?status=uninstalled`, rollout count
+- [ ] 4.7 Tests: uninstall → 204, seat freed, heartbeat and repeat → 401 `DEVICE_REVOKED`; uninstall after release keeps `released_at`; suspended company → 204; another device's key never changes this device
 - [ ] 4.5 Edge tests: release a released device → 409; manager → 403; lifecycle routes delete no activity, screenshot, tamper or acknowledgement row

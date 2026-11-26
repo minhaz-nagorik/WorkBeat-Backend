@@ -692,9 +692,11 @@ Response `200`: array<object>:
 | arch | enum(x64\|arm64) | |
 | agent_version | string | |
 | employee | object | `{ id, name }`; key name (derived) |
-| status | enum(released\|offline\|online) | first that applies, in this order; never stored |
+| status | enum(uninstalled\|released\|offline\|online) | first that applies, in this order; never stored. `uninstalled`: removed by the uninstaller; `released`: still on the computer, dormant (B36) |
 | badges | array<enum(outdated\|permission_pending\|browser_access_pending\|paused\|open_alert)> | Windows is never `permission_pending`; `open_alert` while an unresolved tamper event other than `offline` exists (B31) |
 | last_heartbeat_at | ISO-8601 datetime \| null | |
+| released_at | ISO-8601 datetime \| null | seat freed (release or uninstall) |
+| uninstalled_at | ISO-8601 datetime \| null | removed with the uninstaller (B36) |
 
 Errors: `403 FORBIDDEN` (manager).
 
@@ -709,7 +711,7 @@ Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`.
 Roles: company_admin, it_admin · Spec: [`device-status`][device-status]
 Device counts for the rollout dashboard.
 Request: none.
-Response `200`: count per `status`, count per badge, and `healthy` (online with no badge). Shape: `{ status: { online, offline, released }, badges: { outdated, permission_pending, browser_access_pending, paused, open_alert }, healthy }`, all int.
+Response `200`: count per `status`, count per badge, and `healthy` (online with no badge). Shape: `{ status: { online, offline, released, uninstalled }, badges: { outdated, permission_pending, browser_access_pending, paused, open_alert }, healthy }`, all int.
 Errors: `403 FORBIDDEN` (manager).
 
 ### `POST /v1/devices/:id/release`
@@ -717,7 +719,7 @@ Roles: company_admin, it_admin · Spec: [`device-lifecycle`][device-lifecycle]
 Release a device from monitoring.
 Request: none.
 Response `200`: the device as `GET /v1/devices/:id`, `status` `released`.
-Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`; `409 CONFLICT` (already released).
+Errors: `403 FORBIDDEN` (manager); `404 NOT_FOUND`; `409 CONFLICT` (already released or uninstalled).
 Notes: sets `released_at`, keeps `key_hash`, frees the seat and ends the binding. The device then gets `401 DEVICE_RELEASED` with `released_at` and `upload_until` (+24 h); its key is still accepted on the upload routes for 7 days ([agent-contract.md](agent-contract.md), D45). It stays listed as `released`. There is no reassign route: a binding's employee never changes. To give the device to someone else, release it, then run WorkBeat Setup for the new employee, which makes a new binding and takes a seat (D48).
 
 ---

@@ -32,7 +32,8 @@ stateDiagram-v2
 | Enroll, new binding | `POST /v1/devices/enroll`, `Bearer <token>`; no live binding for the `hardware_id` | New `devices` row for the token's employee, `key_hash`, token `used_at`. `201` with `device_id`, `device_key`, `outcome: new_binding`, `notice_required: true` | Taken by trigger `devices_seat` |
 | Re-enroll, same binding (D2) | Same route; live binding for the token's employee | Same row: new `key_hash`, identity refreshed. `outcome: same_binding`, `notice_required: false`. A previous key that heartbeated in the last 15 min also raises `duplicate_device_id` (D46) | Kept |
 | Enroll, other employee | Same route; live binding for another employee | Nothing; token stays unused. `409 DEVICE_ASSIGNED` (D48) | Unchanged |
-| Uninstall | The uninstaller calls no route (B35) | Nothing; the device shows `offline` once its heartbeats stop | Kept until a release |
+| Uninstall | `POST /v1/agents/uninstall`, device key, after the uninstall token passes on the computer (B36) | `released_at` (if unset), `uninstalled_at`; `key_hash` cleared. Status `uninstalled` | Freed |
+| Removed without the uninstaller | No route | Nothing; the device shows `offline` once its heartbeats stop | Kept until a release |
 | Release | `POST /v1/devices/:id/release`, `company_admin` / `it_admin` | `released_at`; `key_hash` kept so the agent can be told, and accepted on the upload routes for 7 days (D38, D45) | Freed |
 | After release | WorkBeat Setup for any employee, fresh token | New row (new binding), new `device_id`; the released row is left as it was | Taken |
 
@@ -50,7 +51,7 @@ whose key uploaded it.
   `SEAT_LIMIT_EXCEEDED`. A NULL limit is unlimited.
 - **Validation reserves nothing.** Two Macs may both pass validation for the last seat; the second
   enrollment gets `403 SEAT_LIMIT_EXCEEDED` and its token stays unused.
-- **Freed only by release** at once (there is no deactivate, B35; an uninstall frees nothing); the same key can install another device next.
+- **Freed by release or by the uninstaller** at once (there is no deactivate, B35; an uninstall through the uninstaller is a release, B36); the same key can install another device next.
 - **Belong to the company, not the key.** A reissue changes only the key.
 - **Employee required (D47).** Every token, and so every binding, names a non-archived employee.
   There is no unassigned queue. An employee with a binding that is not released cannot be archived (`409 EMPLOYEE_HAS_DEVICES`, 0003).

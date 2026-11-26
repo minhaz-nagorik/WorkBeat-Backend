@@ -45,6 +45,13 @@ seat; the second enrollment gets `403 SEAT_LIMIT_EXCEEDED`, which the agent alre
 No route ends a binding except `POST /v1/devices/:id/release` from a portal user. The uninstaller
 calls nothing; an uninstalled computer keeps its seat, shows `offline`, and an admin releases it.
 
+**Amended by B36 (26 Nov 2026):** the uninstaller calls `POST /v1/agents/uninstall` once the company
+uninstall token has passed on the computer. An uninstall is a release plus `uninstalled_at`: it reuses
+`released_at`, so seat counting, the seat trigger, re-enrollment and retention need no change, and it
+clears the key. `deactivated_at` stays unused: its CHECK forces a NULL key and same-binding re-enroll
+clears it, so it cannot mark a finished binding. A computer removed without the uninstaller still
+keeps its seat and shows `offline`.
+
 **Why:** product owner, 23 Nov 2026. One way to end a binding; deactivate's "keep blocking but stop
 collecting" state was confusing next to a monitoring pause.
 

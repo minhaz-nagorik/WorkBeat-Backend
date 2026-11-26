@@ -13,7 +13,7 @@ version of this page is [windows-agent-api.md](windows-agent-api.md); only the
 [Enroll](#2-post-v1devicesenroll) · [Heartbeat](#3-post-v1agentsheartbeat) ·
 [Policy](#4-get-v1agentspolicy) · [Activity](#5-post-v1agentsactivity) ·
 [Screenshots](#6-screenshots) · [Tamper](#7-post-v1agentstamper) ·
-[Uninstall](#8-uninstall-no-route) · [Status and code reactions](#status-and-code-reactions) ·
+[Uninstall](#8-uninstall) · [Status and code reactions](#status-and-code-reactions) ·
 [macOS specifics](#macos-specifics) · [Not available yet](#not-available-yet)
 
 ---
@@ -56,7 +56,7 @@ Agent:       POST /v1/devices/enroll              (token → device_id + device_
              POST /v1/agents/activity             (one sealed batch every 10 min)
              POST /v1/agents/screenshots → PUT upload_url → POST …/confirm   (per capture)
              POST /v1/agents/tamper               (as soon as detected)
-Uninstaller: no call (an admin releases the device)
+Uninstaller: POST /v1/agents/uninstall          (after the uninstall token passes; frees the seat)
 ```
 
 ---
@@ -355,11 +355,20 @@ another `event_type` or from another device → `409 IDEMPOTENCY_KEY_REUSED`. An
 `422`. Use a new `id` for a new occurrence. A released device's key gets `401 DEVICE_RELEASED` here: leave
 queued tamper events out of the release drain (they cannot be sent).
 
-## 8. Uninstall: no route
+## 8. Uninstall
 
-The uninstaller calls nothing: it only removes WorkBeat from the computer (B35). The device keeps
-its seat and shows Offline until an admin releases it in the portal. There is no
-`POST /v1/devices/:id/deactivate`; it answers `404`.
+Once the company uninstall token has passed (or the computer is released, D38), the uninstaller
+calls `POST /v1/agents/uninstall` with `X-Device-Key` and no body, before it removes any file (B36).
+
+| Answer | Meaning | Uninstaller |
+|---|---|---|
+| `204` | Seat freed; the device shows Uninstalled; the key is cleared | Remove WorkBeat |
+| `401 DEVICE_REVOKED` | Already done, or the key was replaced | Remove WorkBeat; treat as freed |
+| Network failure or `5xx` | Not recorded | Remove WorkBeat anyway; tell IT to release the device in the portal |
+
+The route accepts a released key at any time and never answers `402`. There is no
+`POST /v1/devices/:id/deactivate`; it answers `404`. A computer from which WorkBeat is deleted
+without the uninstaller keeps its seat and shows Offline until an admin releases it.
 
 ---
 

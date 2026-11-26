@@ -40,7 +40,8 @@ are [backend decisions](../decisions/backend-decisions.md). The schema is
 | **Validate** | `POST /v1/license/validate`. Step 1: company and employees. Step 2: also the token. Reserves nothing (B8) | "activate" |
 | **Enroll** | `POST /v1/devices/enroll`: token → device key. Makes a new binding (seat taken) or re-keys the same one; another employee's live binding answers `409 DEVICE_ASSIGNED` (D2, D48) | — |
 | **Hardware ID** | The device ID the agent produces (format open, Q10). A live binding with the same ID and employee is reused (D2) | "serial" |
-| **Release** | Sets `released_at`, keeps `key_hash`, frees the seat. Ends the binding. Next call: `401 DEVICE_RELEASED`; the agent uploads with the released key for up to 24 h (accepted 7 days), then wipes and goes dormant. The row is final (D38, D45) | "deactivate", "unenroll" |
+| **Uninstall** | The uninstaller, after the uninstall token passes: sets `released_at` (if unset) and `uninstalled_at`, clears `key_hash`, frees the seat. Status `uninstalled`. Next call: `401 DEVICE_REVOKED` (B36) | "deactivate" |
+| **Release** | Sets `released_at`, keeps `key_hash`, frees the seat. Ends the binding. Next call: `401 DEVICE_RELEASED`; the agent uploads with the released key for up to 24 h (accepted 7 days), then wipes and goes dormant; WorkBeat stays installed. The row is final (D38, D45) | "deactivate", "unenroll" |
 | **Binding** | One `devices` row: device ID + company licence + employee. Its employee never changes; a device goes to someone else by release and a new WorkBeat Setup (D48, B20) | "assignment" (there is no reassign), "unassign" |
 | **Reissue** | Staff replace the licence key on the same row; unused tokens deleted; seats unchanged (D43) | "reset seats" |
 | **Archive** | "Remove" an employee: `archived_at` set. Refused while any binding of the employee is not released (D46, 0003) | "delete employee" |

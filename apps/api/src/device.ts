@@ -4,7 +4,8 @@ import { LIMITS } from './contract';
 import { ApiError, sha256, Tx } from './core';
 
 export type DeviceAuth = { device_id: string; company_id: string; employee_id: string; released: boolean };
-export type RouteKind = 'normal' | 'upload';
+// 'uninstall' accepts a released key at any time: an uninstall after a release still records it (B36).
+export type RouteKind = 'normal' | 'upload' | 'uninstall';
 
 // Throws 401s. Returns the 402 the route must answer (heartbeat still writes before answering it).
 export async function authDevice(c: Tx, key: string | undefined, kind: RouteKind): Promise<{ dev: DeviceAuth; billing: ApiError | null }> {
@@ -20,7 +21,7 @@ export async function authDeviceHash(c: Tx, keyHash: string, kind: RouteKind): P
   const d = rows[0];
   if (d.released) {
     const uploadWindow = d.released_at.getTime() + LIMITS.releasedUploadDays * 86400_000;
-    if (!(kind === 'upload' && Date.now() < uploadWindow)) {
+    if (kind !== 'uninstall' && !(kind === 'upload' && Date.now() < uploadWindow)) {
       throw new ApiError(401, 'DEVICE_RELEASED', 'Device released', {
         released_at: d.released_at,
         upload_until: new Date(d.released_at.getTime() + LIMITS.releasedUploadUntilHours * 3600_000),

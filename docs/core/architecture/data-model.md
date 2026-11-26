@@ -280,7 +280,8 @@ released and the next enrollment makes a new row.
 | active_pause_id | uuid NULL | as reported |
 | notice_ack_version | int NULL | |
 | deactivated_at | timestamptz NULL | unused since B35 (no deactivate); always NULL |
-| released_at | timestamptz NULL | seat freed, key kept → 401 `DEVICE_RELEASED` (D38) |
+| released_at | timestamptz NULL | seat freed, key kept → 401 `DEVICE_RELEASED` (D38); also set by an uninstall |
+| uninstalled_at | timestamptz NULL | removed with the uninstaller; key cleared; CHECK needs `released_at` (B36, 0019) |
 | created_at, updated_at | timestamptz NOT NULL | |
 
 - Unique `(company_id, hardware_id) WHERE released_at IS NULL`: one live binding per device ID.
@@ -288,7 +289,7 @@ released and the next enrollment makes a new row.
   `409 DEVICE_ASSIGNED` (D48); a released device's next enrollment is a new row (D38).
 - A released device comes back only through a new Downloader install, which always brings a
   fresh single-use token (D38, D43).
-- Status is derived: released → offline → online (no `deactivated` since B35, no `tamper` since B31);
+- Status is derived: uninstalled → released → offline → online (no `deactivated` since B35, no `tamper` since B31);
   plus outdated, permission pending, browser access pending, paused (Plan §5.9).
 
 ### notice_acknowledgements

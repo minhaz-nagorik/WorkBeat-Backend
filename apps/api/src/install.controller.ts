@@ -1,4 +1,4 @@
-// /health, the Downloader's /license/validate, and the agent's enroll. No deactivate route (B35).
+// /health, the Downloader's /license/validate, and the agent's enroll. No deactivate route (B35); the uninstaller uses POST /v1/agents/uninstall (B36).
 import { Body, Controller, Get, Headers, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { enrollBody, licenseValidateBody, LIMITS, normaliseLicenceKey } from './contract';

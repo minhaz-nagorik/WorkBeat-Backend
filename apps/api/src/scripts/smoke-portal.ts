@@ -411,7 +411,7 @@ async function main() {
   const devices = expect(await call('GET', '/v1/devices', it.token), 200);
   const d = devices.find((x: any) => x.id === dev.device_id);
   assert.equal(d.status, 'online', 'an open alert is not a status (B31)'); assert.ok(d.badges.includes('permission_pending') && d.badges.includes('open_alert'));
-  assert.ok('released_at' in d && !('deactivated_at' in d)); // B35
+  assert.ok('released_at' in d && 'uninstalled_at' in d && !('deactivated_at' in d)); // B35, B36
   const adaNow = expect(await call('GET', `/v1/employees/${ada.id}`, mgr.token), 200);
   assert.ok(['active', 'idle'].includes(adaNow.presence), 'an open alert leaves presence to the devices'); assert.equal(adaNow.devices[0].id, dev.device_id);
   assert.equal(expect(await call('GET', '/v1/employees', admin), 200).find((e: any) => e.id === bob.id).presence, 'no_device');
@@ -539,9 +539,17 @@ async function main() {
   expect(await call('POST', '/v1/agents/heartbeat', undefined, { agent_version: '1.0.0' }, dk), 401, 'DEVICE_RELEASED');
   expect(await call('POST', `/v1/devices/${dev.device_id}/release`, it.token), 409, 'CONFLICT');
   expect(await call('POST', `/v1/devices/${dev.device_id}/deactivate`, admin), 404); // B35: no deactivate route
+  assert.equal(expect(await call('GET', `/v1/devices/${dev.device_id}`, it.token), 200).status, 'released');
+  // B36: the uninstaller after a release still records it; the key is then gone.
+  expect(await call('POST', '/v1/agents/uninstall', undefined, undefined, dk), 204);
+  const gone = expect(await call('GET', `/v1/devices/${dev.device_id}`, it.token), 200);
+  assert.equal(gone.status, 'uninstalled'); assert.ok(gone.uninstalled_at && gone.released_at);
+  assert.ok(expect(await call('GET', '/v1/devices?status=uninstalled', it.token), 200).some((x: any) => x.id === dev.device_id));
+  expect(await call('POST', '/v1/agents/uninstall', undefined, undefined, dk), 401, 'DEVICE_REVOKED');
+  expect(await call('POST', `/v1/devices/${dev.device_id}/release`, it.token), 409, 'CONFLICT');
   expect(await call('DELETE', `/v1/employees/${ada.id}`, admin), 204);
   expect(await call('PATCH', `/v1/employees/${ada.id}`, admin, { name: 'x' }), 409);
-  ok('release frees the employee; archive; archived is read-only');
+  ok('release frees the employee; uninstall after release; archive; archived is read-only');
 
   // restore (D46): a returning employee is restored, not created again
   const adaMail = `ada-${run}@example.test`;

@@ -6,8 +6,8 @@ and the device list and rollout counts that serve them to admins and IT.
 ## ADDED Requirements
 
 ### Requirement: Status is derived in a fixed order and never stored
-<!-- source: Plan-v3.5 §2.4, §5.9 · D38 · D47 · B34 · B35 -->
-A device's `status` SHALL be computed at read time as the first that applies: `released` (`released_at` set), `offline` (`last_heartbeat_at`, or `enrolled_at` when null, more than 15 minutes before the read; threshold in `packages/shared`), else `online`. No column MUST store it, and there MUST be no `unassigned`, `tamper` or `deactivated` status (B35).
+<!-- source: Plan-v3.5 §2.4, §5.9 · D38 · D47 · B34 · B35 · B36 -->
+A device's `status` SHALL be computed at read time as the first that applies: `uninstalled` (`uninstalled_at` set), `released` (`released_at` set), `offline` (`last_heartbeat_at`, or `enrolled_at` when null, more than 15 minutes before the read; threshold in `packages/shared`), else `online`. No column MUST store it, and there MUST be no `unassigned`, `tamper` or `deactivated` status (B35).
 
 #### Scenario: A tampered device goes offline
 - **WHEN** a device has an unresolved `hosts_modified` event and last heartbeated 16 minutes ago
@@ -17,8 +17,16 @@ A device's `status` SHALL be computed at read time as the first that applies: `r
 - **WHEN** a released device has unresolved tamper events
 - **THEN** its status is `released`
 
-#### Scenario: An uninstalled computer not yet released
-- **WHEN** WorkBeat was uninstalled from a device a day ago and nobody released it
+#### Scenario: A released device is still installed
+- **WHEN** a device was released and WorkBeat is still on the computer, dormant
+- **THEN** its status is `released`
+
+#### Scenario: Removed with the uninstaller
+- **WHEN** WorkBeat was removed from a device with the uninstaller, after or without a release
+- **THEN** its status is `uninstalled`
+
+#### Scenario: Removed without the uninstaller, not yet released
+- **WHEN** WorkBeat was deleted from a device a day ago without the uninstaller and nobody released it
 - **THEN** its status is `offline`
 
 #### Scenario: Exactly 15 minutes
@@ -130,9 +138,9 @@ A device SHALL carry the badge `open_alert` while it has an unresolved tamper ev
 - **WHEN** the latest heartbeat sent `dropped_records` as `{ "app_sessions": 2 }`
 - **THEN** `health.dropped_records` is that object
 
-### Requirement: List rows carry the release time
-<!-- source: D38 · B35 -->
-Every `GET /v1/devices` row SHALL carry `released_at`, `null` when not set, and MUST NOT carry `deactivated_at`.
+### Requirement: List rows carry the release and uninstall times
+<!-- source: D38 · B35 · B36 -->
+Every `GET /v1/devices` row SHALL carry `released_at` and `uninstalled_at`, each `null` when not set, and MUST NOT carry `deactivated_at`. `?status=uninstalled` lists uninstalled devices, and `GET /v1/rollout` counts them under `status.uninstalled`.
 
 #### Scenario: A released laptop in the list
 - **WHEN** IT lists devices including one released yesterday
