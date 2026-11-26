@@ -154,6 +154,11 @@ Both routes SHALL accept `category` (`productive`, `neutral` or `unproductive`) 
 - **WHEN** an employee had 8 h of foreground time including 1 h idle
 - **THEN** `tracked_seconds` is 28800 and `idle_seconds` is 3600
 
+#### Scenario: A session spans several hours
+- **WHEN** one app session runs from 12:30 to 15:15 company time on one day
+- **THEN** the hour rows 12, 13, 14 and 15 have 1800, 3600, 3600 and 900 tracked seconds
+- **AND** the hour rows sum to the session's `duration_seconds`, from raw rows and from summaries alike
+
 #### Scenario: No samples
 - **WHEN** the scope has sessions but no `activity_buckets` rows in the range
 - **THEN** `activity_percent` is `null` and `tracked_seconds` is still summed

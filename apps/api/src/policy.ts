@@ -19,7 +19,10 @@ export async function buildPolicy(c: Tx, dev: DeviceAuth, storage: Storage, base
   );
   const [rules, sensitive, pauses] = await Promise.all([
     c.query('SELECT id, type, pattern, reason FROM block_rules WHERE company_id = app_company_id() ORDER BY created_at, id'),
-    c.query('SELECT pattern FROM sensitive_domains WHERE company_id = app_company_id() ORDER BY lower(pattern)'),
+    c.query( // the company's own sites and WorkBeat's for every company (A19); UNION de-duplicates
+      `SELECT lower(pattern) AS pattern FROM sensitive_domains WHERE company_id = app_company_id()
+       UNION SELECT lower(pattern) FROM platform_sensitive_domains ORDER BY 1`,
+    ),
     c.query(
       `SELECT id AS pause_id, starts_at, ends_at FROM monitoring_pauses
         WHERE employee_id = $1 AND cancelled_at IS NULL AND ends_at > now() ORDER BY starts_at, id`,

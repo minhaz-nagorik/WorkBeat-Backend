@@ -74,6 +74,22 @@ async function staffRoutes(t: string, myId: string, adminToken?: string) {
   if (adminToken) expect(await call('GET', '/v1/staff/companies', adminToken), 403, 'FORBIDDEN');
   ok('staff companies: list, totals, fields, 404, 403');
 
+  // WorkBeat private sites (admin round 9): staff keep them; companies see them and cannot touch them.
+  const host = `wb-${randomUUID().slice(0, 8)}.example`;
+  const site = expect(await call('POST', '/v1/staff/sensitive-domains', t, { pattern: host }), 201);
+  expect(await call('POST', '/v1/staff/sensitive-domains', t, { pattern: host }), 409);
+  expect(await call('POST', '/v1/staff/sensitive-domains', t, { pattern: '*.bank' }), 422);
+  assert.ok(expect(await call('GET', '/v1/staff/sensitive-domains', t), 200).some((x: any) => x.id === site.id));
+  if (adminToken) {
+    expect(await call('GET', '/v1/staff/sensitive-domains', adminToken), 403, 'FORBIDDEN');
+    const mine = expect(await call('GET', '/v1/sensitive-domains', adminToken), 200).find((x: any) => x.id === site.id);
+    assert.equal(mine?.source, 'workbeat');
+    expect(await call('POST', '/v1/sensitive-domains', adminToken, { pattern: host }), 409);
+    expect(await call('DELETE', `/v1/sensitive-domains/${site.id}`, adminToken), 404);
+  }
+  expect(await call('DELETE', `/v1/staff/sensitive-domains/${site.id}`, t), 204);
+  ok('WorkBeat private sites: add, 409, 422, company sees read-only, remove');
+
   const slug = process.env.STAFF_TARGET_SLUG;
   if (slug) {
     const co = expect(await call('GET', `/v1/staff/companies?q=${slug}`, t), 200).items.find((x: any) => x.slug === slug);
